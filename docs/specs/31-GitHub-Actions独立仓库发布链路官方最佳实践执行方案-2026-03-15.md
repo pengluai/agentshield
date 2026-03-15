@@ -118,6 +118,19 @@
 4. 结合 Tauri 官方“在遇到 `failed to run light.exe` 时可能需要启用 `VBSCRIPT`”的措辞，可以确认把 `VBSCRIPT` 检查做成硬性前置条件过于严格。
 5. 因此下一轮修复应保留 `windows-2022` 固定版本，但把 `VBSCRIPT` 步骤降级为“诊断 + 尝试启用”，不能因 runner 未暴露该功能而直接失败。
 
+2026-03-15 第六轮验证运行：
+
+- Run: `23102646949`
+- URL: <https://github.com/pengluai/agentshield/actions/runs/23102646949>
+
+新增确认到的事实：
+
+1. `windows-2022` 上的 `Pilot public-sale gate` 已完整成功，说明 shell、pnpm、Playwright 和 gate 流程都稳定。
+2. `Build GitHub pilot artifacts` 在 Rust 编译完成后仍然失败于 WiX `light.exe`，因此问题已被缩小到 Windows MSI/WiX bundling 层。
+3. 同一轮 run 暴露出 `tauri-action@v0` 不识别 `uploadWorkflowArtifacts`，而官方 `tauri-action` README 中该参数属于较新的输入。
+4. Tauri 官方 Windows 安装器文档明确允许使用 `NSIS` 作为 Windows 安装器，而不必强制使用 `MSI/WiX`。
+5. Tauri 官方讨论中维护者给出了在 CI 中只打 `nsis` 的直接做法（`-b nsis` 或 bundle targets），因此下一轮应改为 Windows 只构建 `NSIS`，并同步把 `tauri-action` 升级到支持 workflow artifacts 的版本。
+
 ### 3.3 约束
 
 1. 代码与命令必须优先遵守官方文档，不靠经验猜测。
@@ -162,7 +175,8 @@ flowchart LR
 3. 在 `Install dependencies` 后、执行 gate 前增加 Playwright 浏览器安装步骤。
 4. 对需要预置环境变量的 pnpm script，不在 `package.json` 中使用 POSIX 内联环境变量，改为显式调用 `bash` 包装脚本。
 5. `publish-pilot-artifacts` 使用 `tauri-action` 的 `uploadWorkflowArtifacts` 上传测试包，不在 pilot 流水线里创建或复用 GitHub Release。
-6. Windows 构建 runner 固定为 `windows-2022`，并在打包前对 `VBSCRIPT` 做诊断与尽力启用，而不是把“查不到功能”视为失败。
+6. Windows 构建 runner 固定为 `windows-2022`，并在发布流水线中改为只生成 `NSIS` 安装器，绕开 `MSI/WiX` 的不稳定路径。
+7. `tauri-action` 固定到支持 `uploadWorkflowArtifacts` 的版本，避免 pilot 工作流出现“未知输入”警告。
 
 ### 5.2 Gate 脚本
 
@@ -378,7 +392,36 @@ flowchart LR
   1. 如果未来切回 `windows-2025` 或其他镜像，仍能看到 `VBSCRIPT` 状态日志。
   2. Windows 构建的真正成败将重新回到 `tauri build` / WiX 阶段判断。
 
-### ADR-31-09: 公开配置与敏感配置继续分离到 GitHub Variables / Secrets
+### ADR-31-09: Windows 发布流水线切换为 `NSIS`
+
+- 决策: `publish-pilot-artifacts` 与 `publish-signed-release` 的 Windows 构建参数改为 `--bundles nsis`。
+- 备选:
+  1. 继续坚持 `MSI/WiX`
+  2. 同时生成 `MSI + NSIS`
+- 结论: 当前阶段只生成 `NSIS`。
+- 原因:
+  1. 第六轮验证已证明 `windows-2022` 下 gate 全部通过后，仍会在 `WiX light.exe` 失败。
+  2. Tauri 官方 Windows 安装器文档明确支持 `NSIS` 作为等价的 Windows 分发格式。
+  3. Tauri 官方讨论给出了在 CI 中直接使用 `-b nsis` / bundle targets 的推荐做法。
+- 后果:
+  1. Windows 发布链路不再依赖 WiX/MSI。
+  2. 若未来需要重新启用 MSI，应作为单独议题重新验证。
+
+### ADR-31-10: `tauri-action` 升级到支持 workflow artifacts 的版本
+
+- 决策: 发布工作流中的 `tauri-apps/tauri-action` 从 `@v0` 升级到支持 `uploadWorkflowArtifacts` 的版本。
+- 备选:
+  1. 保持 `@v0`，忽略未知输入警告
+  2. 自己改写 Windows/macOS 产物上传逻辑
+- 结论: 升级 action 版本。
+- 原因:
+  1. 第六轮 run 已明确证明当前 action 版本不识别 `uploadWorkflowArtifacts`。
+  2. 官方 README 已把该输入列为正式参数，说明当前工作流与 action 版本不匹配。
+- 后果:
+  1. pilot workflow 可按设计直接上传 workflow artifacts。
+  2. 工作流语义与官方文档重新对齐。
+
+### ADR-31-11: 公开配置与敏感配置继续分离到 GitHub Variables / Secrets
 
 - 决策: 继续使用 `vars` 管理公开配置，`secrets` 管理敏感值。
 - 备选:
@@ -456,8 +499,9 @@ flowchart LR
 5. 工作流仍然能读取许可证网关相关 `vars` / `secrets`。
 6. PowerShell 专用证书导入步骤未被 bash 默认壳破坏。
 7. `publish-pilot-artifacts` 可重复运行而不会因 GitHub Release 同名资产冲突失败。
-8. Windows MSI 构建环境会在进入 `tauri build` 前输出 `VBSCRIPT` 诊断信息，并在可用时尝试启用。
-9. 发布 workflow 不再依赖 `windows-latest` 的隐式系统升级。
+8. Windows 发布工作流不再依赖 `WiX light.exe`。
+9. pilot workflow 的 artifact 上传参数与 `tauri-action` 版本匹配。
+10. 发布 workflow 不再依赖 `windows-latest` 的隐式系统升级。
 
 ## 12. Source References With Dates
 
@@ -492,3 +536,7 @@ flowchart LR
     <https://learn.microsoft.com/en-us/windows-server/get-started/removed-deprecated-features-windows-server>
 15. Tauri GitHub Actions / 发布流水线文档，matrix 构建与根目录模式参考，检索日期 2026-03-15
     <https://tauri.app/distribute/pipelines/github/>
+16. Tauri 官方 Windows 安装器文档，关于 Windows 可使用 NSIS 分发的说明，检索日期 2026-03-15
+    <https://v2.tauri.app/distribute/windows-installer/>
+17. Tauri 官方讨论，维护者关于使用 `-b nsis` / bundle targets 排除 MSI 的说明，检索日期 2026-03-15
+    <https://github.com/tauri-apps/tauri/discussions/3744>
