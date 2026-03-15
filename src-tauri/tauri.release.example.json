@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
+  "bundle": {
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "certificateThumbprint": "REPLACE_WITH_WINDOWS_CERTIFICATE_THUMBPRINT",
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "REPLACE_WITH_WINDOWS_TIMESTAMP_URL"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY",
+      "endpoints": [
+        "https://releases.example.com/agentshield/{{target}}/{{arch}}/{{current_version}}/latest.json"
+      ]
+    }
+  }
+}

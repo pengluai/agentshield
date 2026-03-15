@@ -1,0 +1,60 @@
+name: cross-platform-validation
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: agentshield/pnpm-lock.yaml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: agentshield
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        working-directory: agentshield
+        run: pnpm exec playwright install chromium
+
+      - name: cargo test
+        working-directory: agentshield/src-tauri
+        run: cargo test
+
+      - name: pnpm build
+        working-directory: agentshield
+        run: pnpm build
+
+      - name: vitest
+        working-directory: agentshield
+        run: pnpm exec vitest run --coverage.enabled=false
+
+      - name: playwright smoke
+        working-directory: agentshield
+        run: pnpm exec playwright test e2e/smoke.spec.ts --reporter=line

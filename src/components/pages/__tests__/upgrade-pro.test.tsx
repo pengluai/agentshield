@@ -1,0 +1,51 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { UpgradePro } from '../upgrade-pro';
+import { mockInvoke } from '@/test/__mocks__/tauri';
+import { useLicenseStore } from '@/stores/licenseStore';
+import { t } from '@/constants/i18n';
+
+describe('UpgradePro', () => {
+  beforeEach(() => {
+    useLicenseStore.getState().deactivate();
+    vi.stubEnv('VITE_CHECKOUT_MONTHLY_URL', '');
+    vi.stubEnv('VITE_CHECKOUT_YEARLY_URL', '');
+    vi.stubEnv('VITE_CHECKOUT_LIFETIME_URL', '');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('starts a real trial flow and updates the license store from backend data', async () => {
+    const user = userEvent.setup();
+
+    mockInvoke('start_trial', {
+      plan: 'trial',
+      status: 'active',
+      expires_at: null,
+      trial_days_left: 14,
+    });
+
+    render(<UpgradePro />);
+
+    await user.click(screen.getByRole('button', { name: t.freeTrial30 }));
+
+    await waitFor(() => {
+      expect(useLicenseStore.getState().plan).toBe('trial');
+      expect(useLicenseStore.getState().trialDaysLeft).toBe(14);
+    });
+
+    expect((await screen.findAllByText(t.trialActive.replace('{days}', '14'))).length).toBeGreaterThan(0);
+  });
+
+  it('shows a clear error when checkout URL is not configured', async () => {
+    const user = userEvent.setup();
+
+    render(<UpgradePro />);
+    await user.click(screen.getAllByRole('button', { name: t.buyActivationCode })[0]);
+
+    expect(await screen.findByText(t.checkoutLinkMissing)).toBeInTheDocument();
+  });
+});

@@ -1,0 +1,45 @@
+[package]
+name = "agentshield"
+version = "1.0.1"
+description = "AgentShield 智盾 - AI Security Guardian"
+authors = ["AgentShield Team"]
+edition = "2021"
+default-run = "agentshield"
+
+[lib]
+name = "agentshield_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-notification = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+chrono = "0.4"
+dirs = "5"
+which = "7"
+uuid = { version = "1", features = ["v4"] }
+reqwest = { version = "0.12", features = ["json"] }
+toml = "1.0.6"
+serde_yaml = "0.9"
+notify = "8.2.0"
+keyring = "3"
+semver = "1"
+urlencoding = "2"
+base64 = "0.22"
+ed25519-dalek = "2"
+sysinfo = "0.38.3"
+walkdir = "2.5.0"
+sha2 = "0.10"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+
+[patch.crates-io]
+mac-notification-sys = { path = "vendor/mac-notification-sys" }

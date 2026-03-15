@@ -1,0 +1,13 @@
+node_modules/
+dist/
+test-results/
+output/
+src-tauri/target/
+
+.env.*.local
+
+data/license-gateway.json
+
+*.log
+*.tsbuildinfo
+.DS_Store

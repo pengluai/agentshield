@@ -1,0 +1,14 @@
+pub mod ai_orchestrator;
+pub mod builtin_catalog;
+pub mod discovery;
+pub mod install;
+pub mod license;
+pub mod notification;
+pub mod platform;
+pub mod protection;
+pub mod runtime_guard;
+pub mod runtime_settings;
+pub mod scan;
+pub mod semantic_guard;
+pub mod store;
+pub mod vault;

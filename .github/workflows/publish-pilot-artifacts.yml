@@ -1,0 +1,86 @@
+name: publish-pilot-artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - pilot
+
+jobs:
+  publish:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: ""
+            apple_signing_identity: "-"
+          - platform: windows-latest
+            args: ""
+            apple_signing_identity: ""
+    runs-on: ${{ matrix.platform }}
+    env:
+      APPLE_SIGNING_IDENTITY: ${{ matrix.apple_signing_identity }}
+      VITE_CHECKOUT_MONTHLY_URL: ${{ vars.VITE_CHECKOUT_MONTHLY_URL }}
+      VITE_CHECKOUT_YEARLY_URL: ${{ vars.VITE_CHECKOUT_YEARLY_URL }}
+      VITE_CHECKOUT_LIFETIME_URL: ${{ vars.VITE_CHECKOUT_LIFETIME_URL }}
+      AGENTSHIELD_LICENSE_GATEWAY_URL: ${{ vars.AGENTSHIELD_LICENSE_GATEWAY_URL }}
+      AGENTSHIELD_LICENSE_PUBLIC_KEY: ${{ vars.AGENTSHIELD_LICENSE_PUBLIC_KEY }}
+      LICENSE_DELIVERY_FROM_EMAIL: ${{ vars.LICENSE_DELIVERY_FROM_EMAIL }}
+      LICENSE_DELIVERY_REPLY_TO: ${{ vars.LICENSE_DELIVERY_REPLY_TO }}
+      LICENSE_GATEWAY_DATA_PATH: ${{ runner.temp }}/license-gateway.json
+      LEMONSQUEEZY_WEBHOOK_SECRET: ${{ secrets.LEMONSQUEEZY_WEBHOOK_SECRET }}
+      LICENSE_GATEWAY_ADMIN_PASSWORD: ${{ secrets.LICENSE_GATEWAY_ADMIN_PASSWORD }}
+      AGENTSHIELD_LICENSE_SIGNING_SEED: ${{ secrets.AGENTSHIELD_LICENSE_SIGNING_SEED }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: agentshield/pnpm-lock.yaml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './agentshield/src-tauri -> target'
+
+      - name: Install dependencies
+        working-directory: agentshield
+        run: pnpm install --frozen-lockfile
+
+      - name: Pilot public-sale gate
+        working-directory: agentshield
+        run: pnpm run release:github:ready
+
+      - name: Build GitHub pilot artifacts
+        uses: tauri-apps/tauri-action@v0
+        with:
+          projectPath: agentshield
+          tauriScript: pnpm tauri
+          tagName: agentshield-pilot-v__VERSION__
+          releaseName: AgentShield Pilot v__VERSION__
+          releaseBody: |
+            Pilot artifacts for GitHub distribution.
+            macOS artifacts may use ad-hoc signing only and can still require manual allow in Privacy & Security.
+          releaseDraft: true
+          prerelease: true
+          args: ${{ matrix.args }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

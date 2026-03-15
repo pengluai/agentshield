@@ -1,0 +1,124 @@
+name: publish-signed-release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release
+
+jobs:
+  publish:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin --config src-tauri/tauri.release.json
+          - platform: windows-latest
+            args: --config src-tauri/tauri.release.json
+    runs-on: ${{ matrix.platform }}
+    env:
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      VITE_CHECKOUT_MONTHLY_URL: ${{ vars.VITE_CHECKOUT_MONTHLY_URL }}
+      VITE_CHECKOUT_YEARLY_URL: ${{ vars.VITE_CHECKOUT_YEARLY_URL }}
+      VITE_CHECKOUT_LIFETIME_URL: ${{ vars.VITE_CHECKOUT_LIFETIME_URL }}
+      AGENTSHIELD_LICENSE_GATEWAY_URL: ${{ vars.AGENTSHIELD_LICENSE_GATEWAY_URL }}
+      AGENTSHIELD_LICENSE_PUBLIC_KEY: ${{ vars.AGENTSHIELD_LICENSE_PUBLIC_KEY }}
+      LICENSE_DELIVERY_FROM_EMAIL: ${{ vars.LICENSE_DELIVERY_FROM_EMAIL }}
+      LICENSE_DELIVERY_REPLY_TO: ${{ vars.LICENSE_DELIVERY_REPLY_TO }}
+      LICENSE_GATEWAY_DATA_PATH: ${{ runner.temp }}/license-gateway.json
+      LEMONSQUEEZY_WEBHOOK_SECRET: ${{ secrets.LEMONSQUEEZY_WEBHOOK_SECRET }}
+      LICENSE_GATEWAY_ADMIN_PASSWORD: ${{ secrets.LICENSE_GATEWAY_ADMIN_PASSWORD }}
+      AGENTSHIELD_LICENSE_SIGNING_SEED: ${{ secrets.AGENTSHIELD_LICENSE_SIGNING_SEED }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY }}
+      TAURI_UPDATER_ENDPOINT: ${{ vars.TAURI_UPDATER_ENDPOINT }}
+      WINDOWS_CERTIFICATE_THUMBPRINT: ${{ secrets.WINDOWS_CERTIFICATE_THUMBPRINT }}
+      WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: agentshield/pnpm-lock.yaml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './agentshield/src-tauri -> target'
+
+      - name: Install dependencies
+        working-directory: agentshield
+        run: pnpm install --frozen-lockfile
+
+      - name: Import Windows certificate
+        if: matrix.platform == 'windows-latest' && secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != ''
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          New-Item -ItemType directory -Force -Path certificate | Out-Null
+          Set-Content -Path certificate/tempCert.txt -Value $env:WINDOWS_CERTIFICATE
+          certutil -decode certificate/tempCert.txt certificate/certificate.pfx
+          Import-PfxCertificate -FilePath certificate/certificate.pfx -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText)
+
+      - name: Import Apple certificate
+        if: matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+
+      - name: Public sale gate
+        working-directory: agentshield
+        run: pnpm run release:public:ready
+
+      - name: Render Tauri release config
+        working-directory: agentshield
+        run: pnpm run release:render-config
+
+      - name: Build and publish signed release
+        uses: tauri-apps/tauri-action@v0
+        with:
+          projectPath: agentshield
+          tauriScript: pnpm tauri
+          tagName: agentshield-v__VERSION__
+          releaseName: AgentShield v__VERSION__
+          releaseBody: |
+            Signed AgentShield release artifacts.
+            See release assets for installers and updater manifests.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
