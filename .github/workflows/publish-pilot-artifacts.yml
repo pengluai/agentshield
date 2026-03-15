@@ -10,6 +10,9 @@ jobs:
   publish:
     permissions:
       contents: write
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -63,6 +66,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium
 
       - name: Pilot public-sale gate
         run: pnpm run release:github:ready
