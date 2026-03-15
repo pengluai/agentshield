@@ -26,6 +26,16 @@ echo "[public-sale-gate] validating public-sale readiness in $ROOT_DIR (release_
 missing=0
 warnings=0
 
+search_file() {
+  local pattern="$1"
+  local file_path="$2"
+  if command -v rg >/dev/null 2>&1; then
+    rg -n -- "$pattern" "$file_path" >/dev/null
+  else
+    grep -E -n -- "$pattern" "$file_path" >/dev/null
+  fi
+}
+
 check_file_exists() {
   local file_path="$1"
   if [[ ! -f "$file_path" ]]; then
@@ -41,7 +51,7 @@ check_file_contains() {
   if [[ ! -f "$file_path" ]]; then
     return
   fi
-  if ! rg -n "$pattern" "$file_path" >/dev/null; then
+  if ! search_file "$pattern" "$file_path"; then
     echo "[public-sale-gate] $file_path missing required content: $hint"
     missing=1
   fi
@@ -137,7 +147,7 @@ if [[ "$require_tauri_release_config" == "1" ]]; then
     echo "[public-sale-gate] tip: set TAURI_UPDATER_PUBLIC_KEY + TAURI_UPDATER_ENDPOINT and rerun, or copy src-tauri/tauri.release.example.json to $tauri_release_config with real values"
     missing=1
   else
-    if rg -n "REPLACE_WITH_|example.com/agentshield|__VERSION__" "$tauri_release_config" >/dev/null; then
+    if search_file "REPLACE_WITH_|example.com/agentshield|__VERSION__" "$tauri_release_config"; then
       echo "[public-sale-gate] tauri release config still contains placeholder values: $tauri_release_config"
       missing=1
     fi
