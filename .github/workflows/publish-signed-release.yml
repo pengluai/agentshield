@@ -111,7 +111,7 @@ jobs:
         run: pnpm run release:render-config
 
       - name: Build and publish signed release
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@v0.6.2
         with:
           projectPath: .
           tauriScript: pnpm tauri

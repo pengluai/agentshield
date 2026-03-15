@@ -21,7 +21,7 @@
 3. 对需要跨平台一致执行的 workflow job 统一设置 `defaults.run.shell: bash`。
 4. 避免在 `package.json` scripts 中保留 Windows 不兼容的 POSIX 内联环境变量；对 `release:github:ready` 这类命令改用显式 `bash` 包装脚本。
 5. 在运行 `release-gate.sh` 之前，显式安装 Playwright 浏览器。
-6. `publish-pilot-artifacts` 仅上传 Actions workflow artifacts，不再把试点产物写入 GitHub draft release。
+6. `publish-pilot-artifacts` 通过 GitHub 官方 `actions/upload-artifact@v4` 上传 Actions workflow artifacts，不再把试点产物写入 GitHub draft release。
 7. 继续使用 Tauri 官方推荐的 matrix 构建与 Rust cache 布局。
 
 ## 2. Problem Statement And Scope
@@ -127,9 +127,21 @@
 
 1. `windows-2022` 上的 `Pilot public-sale gate` 已完整成功，说明 shell、pnpm、Playwright 和 gate 流程都稳定。
 2. `Build GitHub pilot artifacts` 在 Rust 编译完成后仍然失败于 WiX `light.exe`，因此问题已被缩小到 Windows MSI/WiX bundling 层。
-3. 同一轮 run 暴露出 `tauri-action@v0` 不识别 `uploadWorkflowArtifacts`，而官方 `tauri-action` README 中该参数属于较新的输入。
+3. 同一轮 run 暴露出 `tauri-action@v0` 不识别 `uploadWorkflowArtifacts`，说明当前 workflow 与已发布 action 版本存在不匹配。
 4. Tauri 官方 Windows 安装器文档明确允许使用 `NSIS` 作为 Windows 安装器，而不必强制使用 `MSI/WiX`。
-5. Tauri 官方讨论中维护者给出了在 CI 中只打 `nsis` 的直接做法（`-b nsis` 或 bundle targets），因此下一轮应改为 Windows 只构建 `NSIS`，并同步把 `tauri-action` 升级到支持 workflow artifacts 的版本。
+5. Tauri 官方讨论中维护者给出了在 CI 中只打 `nsis` 的直接做法（`-b nsis` 或 bundle targets），因此下一轮应改为 Windows 只构建 `NSIS`，并重新核对 `tauri-action` 的已发布版本。
+
+2026-03-15 第七轮验证运行：
+
+- Run: `23103029689`
+- URL: <https://github.com/pengluai/agentshield/actions/runs/23103029689>
+
+新增确认到的事实：
+
+1. workflow 在 `Set up job` 就失败，错误是无法解析 `tauri-apps/tauri-action@v1`。
+2. 官方仓库 tag / release 列表确认当前已发布 tag 为 `v0.6.2` 系列，不存在 `v1`。
+3. 官方 `action.yml`（`v0.6.2`）确认 `uploadWorkflowArtifacts` 不在已发布输入集合中。
+4. 因此 pilot workflow 不能依赖未发布输入，正确方案应是 `tauri-action@v0.6.2` 负责构建，`actions/upload-artifact@v4` 负责上传产物。
 
 ### 3.3 约束
 
@@ -174,9 +186,9 @@ flowchart LR
 2. 保留 `Import Windows certificate` 的 `shell: pwsh` 显式覆盖，因为证书导入依赖 PowerShell。
 3. 在 `Install dependencies` 后、执行 gate 前增加 Playwright 浏览器安装步骤。
 4. 对需要预置环境变量的 pnpm script，不在 `package.json` 中使用 POSIX 内联环境变量，改为显式调用 `bash` 包装脚本。
-5. `publish-pilot-artifacts` 使用 `tauri-action` 的 `uploadWorkflowArtifacts` 上传测试包，不在 pilot 流水线里创建或复用 GitHub Release。
+5. `publish-pilot-artifacts` 使用 `tauri-action@v0.6.2` 负责构建，再使用 GitHub 官方 `actions/upload-artifact@v4` 上传测试包，不在 pilot 流水线里创建或复用 GitHub Release。
 6. Windows 构建 runner 固定为 `windows-2022`，并在发布流水线中改为只生成 `NSIS` 安装器，绕开 `MSI/WiX` 的不稳定路径。
-7. `tauri-action` 固定到支持 `uploadWorkflowArtifacts` 的版本，避免 pilot 工作流出现“未知输入”警告。
+7. `tauri-action` 固定到已发布的 `v0.6.2`，避免 workflow 引用不存在的 tag。
 
 ### 5.2 Gate 脚本
 
@@ -334,14 +346,14 @@ flowchart LR
 
 ### ADR-31-05: `publish-pilot-artifacts` 只上传 workflow artifacts，不上传 GitHub Release 资产
 
-- 决策: 在 pilot workflow 中省略 `tagName` / `releaseName` / `releaseId`，启用 `uploadWorkflowArtifacts: true`。
+- 决策: 在 pilot workflow 中省略 `tagName` / `releaseName` / `releaseId`，并使用 GitHub 官方 `actions/upload-artifact@v4` 上传构建产物。
 - 备选:
   1. 继续写入固定 tag 的 draft release
   2. 每次运行生成唯一 tag
   3. 在并发矩阵 job 中先删除旧 release assets
 - 结论: pilot 仅上传 workflow artifacts。
 - 原因:
-  1. tauri-action 官方明确支持“只构建并上传 workflow artifacts，不上传 release 资产”的用法。
+  1. GitHub 官方 `upload-artifact` 是上传 workflow artifacts 的标准做法。
   2. pilot 的目标是验证和下载测试包，不是发布稳定版本。
   3. 固定 tag 的 draft release 在重复运行时会发生同名资产冲突，并且并发 job 先删后传会引入共享状态竞争。
 - 后果:
@@ -407,19 +419,21 @@ flowchart LR
   1. Windows 发布链路不再依赖 WiX/MSI。
   2. 若未来需要重新启用 MSI，应作为单独议题重新验证。
 
-### ADR-31-10: `tauri-action` 升级到支持 workflow artifacts 的版本
+### ADR-31-10: `tauri-action` 固定到 `v0.6.2`，pilot 改用 GitHub 官方 artifact 上传
 
-- 决策: 发布工作流中的 `tauri-apps/tauri-action` 从 `@v0` 升级到支持 `uploadWorkflowArtifacts` 的版本。
+- 决策: `tauri-action` 固定到官方已发布的 `v0.6.2`，并在 pilot workflow 中新增 `actions/upload-artifact@v4` 上传 `bundle` 目录。
 - 备选:
   1. 保持 `@v0`，忽略未知输入警告
-  2. 自己改写 Windows/macOS 产物上传逻辑
-- 结论: 升级 action 版本。
+  2. 继续尝试未发布的 `uploadWorkflowArtifacts` 输入
+  3. 改写为完全自定义打包命令
+- 结论: 使用 `v0.6.2 + actions/upload-artifact@v4`。
 - 原因:
-  1. 第六轮 run 已明确证明当前 action 版本不识别 `uploadWorkflowArtifacts`。
-  2. 官方 README 已把该输入列为正式参数，说明当前工作流与 action 版本不匹配。
+  1. 第七轮验证已确认 `@v1` tag 不存在。
+  2. 官方 `action.yml`（`v0.6.2`）不包含 `uploadWorkflowArtifacts`，因此不能依赖该输入。
+  3. GitHub 官方 `upload-artifact` 本身就是标准做法，适合 pilot 产物分发。
 - 后果:
-  1. pilot workflow 可按设计直接上传 workflow artifacts。
-  2. 工作流语义与官方文档重新对齐。
+  1. pilot workflow 的 artifact 上传路径更加透明。
+  2. `tauri-action` 只负责构建和发布，不再承担未发布的 artifact 语义。
 
 ### ADR-31-11: 公开配置与敏感配置继续分离到 GitHub Variables / Secrets
 
@@ -500,7 +514,7 @@ flowchart LR
 6. PowerShell 专用证书导入步骤未被 bash 默认壳破坏。
 7. `publish-pilot-artifacts` 可重复运行而不会因 GitHub Release 同名资产冲突失败。
 8. Windows 发布工作流不再依赖 `WiX light.exe`。
-9. pilot workflow 的 artifact 上传参数与 `tauri-action` 版本匹配。
+9. pilot workflow 使用 GitHub 官方 `actions/upload-artifact@v4` 上传构建产物。
 10. 发布 workflow 不再依赖 `windows-latest` 的隐式系统升级。
 
 ## 12. Source References With Dates
@@ -526,8 +540,8 @@ flowchart LR
 10. pnpm `shellEmulator` 与 `scriptShell` 官方文档，说明 pnpm scripts 在跨平台 shell 语义上的官方配置方式，检索日期 2026-03-15  
     <https://pnpm.io/settings#shellemulator>  
     <https://pnpm.io/settings#scriptshell>
-11. tauri-action 官方 README，说明 `uploadWorkflowArtifacts` 与“省略 tagName/releaseName/releaseId 仅构建不上传 release 资产”的行为，检索日期 2026-03-15  
-    <https://github.com/tauri-apps/tauri-action>
+11. tauri-action 官方 `action.yml`（`v0.6.2`），用于确认已发布输入集合，检索日期 2026-03-15
+    <https://github.com/tauri-apps/tauri-action/blob/v0.6.2/action.yml>
 12. Tauri Windows 先决条件文档，关于 `failed to run light.exe` 与 `VBSCRIPT` 的说明，检索日期 2026-03-15
     <https://v2.tauri.app/start/prerequisites/>
 13. GitHub runner images 官方说明，关于显式指定 OS 版本以避免 `-latest` 迁移影响，检索日期 2026-03-15
@@ -540,3 +554,5 @@ flowchart LR
     <https://v2.tauri.app/distribute/windows-installer/>
 17. Tauri 官方讨论，维护者关于使用 `-b nsis` / bundle targets 排除 MSI 的说明，检索日期 2026-03-15
     <https://github.com/tauri-apps/tauri/discussions/3744>
+18. tauri-action 官方 releases，用于确认当前已发布版本，检索日期 2026-03-15
+    <https://github.com/tauri-apps/tauri-action/releases>
