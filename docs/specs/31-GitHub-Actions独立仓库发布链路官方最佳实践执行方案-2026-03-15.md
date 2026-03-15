@@ -21,8 +21,9 @@
 3. 对需要跨平台一致执行的 workflow job 统一设置 `defaults.run.shell: bash`。
 4. 避免在 `package.json` scripts 中保留 Windows 不兼容的 POSIX 内联环境变量；对 `release:github:ready` 这类命令改用显式 `bash` 包装脚本。
 5. 在运行 `release-gate.sh` 之前，显式安装 Playwright 浏览器。
-6. `publish-pilot-artifacts` 通过 GitHub 官方 `actions/upload-artifact@v4` 上传 Actions workflow artifacts，不再把试点产物写入 GitHub draft release。
+6. `publish-pilot-artifacts` 通过 GitHub 官方 `actions/upload-artifact` 上传 Actions workflow artifacts，不再把试点产物写入 GitHub draft release。
 7. 继续使用 Tauri 官方推荐的 matrix 构建与 Rust cache 布局。
+8. 对 GitHub 官方 JavaScript actions 跟进 `Node.js 24` 兼容主版本，避免在 2026-06-02 后被动切换运行时。
 
 ## 2. Problem Statement And Scope
 
@@ -143,6 +144,19 @@
 3. 官方 `action.yml`（`v0.6.2`）确认 `uploadWorkflowArtifacts` 不在已发布输入集合中。
 4. 因此 pilot workflow 不能依赖未发布输入，正确方案应是 `tauri-action@v0.6.2` 负责构建，`actions/upload-artifact@v4` 负责上传产物。
 
+2026-03-15 第八轮验证观察：
+
+- Run: `23103093344`
+- URL: <https://github.com/pengluai/agentshield/actions/runs/23103093344>
+
+新增确认到的事实：
+
+1. `macos-latest` 与 `windows-2022` 已全部成功，证明双端 pilot 构建链路已经打通。
+2. GitHub Actions run 注释明确提示 `actions/checkout@v4`、`actions/setup-node@v4`、`actions/upload-artifact@v4` 仍运行在 `Node.js 20`。
+3. GitHub 官方 changelog 明确说明从 `2026-06-02` 起，JavaScript actions 将默认切到 `Node.js 24`。
+4. `actions/checkout`、`actions/setup-node`、`actions/upload-artifact` 的官方资料都已提供 `v6` 用法，其中 `checkout@v6` 与 `upload-artifact@v6` 明确切到 `node24`。
+5. 因此下一轮修复应把这些官方 action 升级到 `v6`，主动完成 Node 24 兼容迁移。
+
 ### 3.3 约束
 
 1. 代码与命令必须优先遵守官方文档，不靠经验猜测。
@@ -186,9 +200,10 @@ flowchart LR
 2. 保留 `Import Windows certificate` 的 `shell: pwsh` 显式覆盖，因为证书导入依赖 PowerShell。
 3. 在 `Install dependencies` 后、执行 gate 前增加 Playwright 浏览器安装步骤。
 4. 对需要预置环境变量的 pnpm script，不在 `package.json` 中使用 POSIX 内联环境变量，改为显式调用 `bash` 包装脚本。
-5. `publish-pilot-artifacts` 使用 `tauri-action@v0.6.2` 负责构建，再使用 GitHub 官方 `actions/upload-artifact@v4` 上传测试包，不在 pilot 流水线里创建或复用 GitHub Release。
+5. `publish-pilot-artifacts` 使用 `tauri-action@v0.6.2` 负责构建，再使用 GitHub 官方 `actions/upload-artifact@v6` 上传测试包，不在 pilot 流水线里创建或复用 GitHub Release。
 6. Windows 构建 runner 固定为 `windows-2022`，并在发布流水线中改为只生成 `NSIS` 安装器，绕开 `MSI/WiX` 的不稳定路径。
 7. `tauri-action` 固定到已发布的 `v0.6.2`，避免 workflow 引用不存在的 tag。
+8. `actions/checkout`、`actions/setup-node`、`actions/upload-artifact` 升级到官方 `v6`，对齐 Node 24 运行时。
 
 ### 5.2 Gate 脚本
 
@@ -346,7 +361,7 @@ flowchart LR
 
 ### ADR-31-05: `publish-pilot-artifacts` 只上传 workflow artifacts，不上传 GitHub Release 资产
 
-- 决策: 在 pilot workflow 中省略 `tagName` / `releaseName` / `releaseId`，并使用 GitHub 官方 `actions/upload-artifact@v4` 上传构建产物。
+- 决策: 在 pilot workflow 中省略 `tagName` / `releaseName` / `releaseId`，并使用 GitHub 官方 `actions/upload-artifact@v6` 上传构建产物。
 - 备选:
   1. 继续写入固定 tag 的 draft release
   2. 每次运行生成唯一 tag
@@ -421,12 +436,12 @@ flowchart LR
 
 ### ADR-31-10: `tauri-action` 固定到 `v0.6.2`，pilot 改用 GitHub 官方 artifact 上传
 
-- 决策: `tauri-action` 固定到官方已发布的 `v0.6.2`，并在 pilot workflow 中新增 `actions/upload-artifact@v4` 上传 `bundle` 目录。
+- 决策: `tauri-action` 固定到官方已发布的 `v0.6.2`，并在 pilot workflow 中新增 `actions/upload-artifact@v6` 上传 `bundle` 目录。
 - 备选:
   1. 保持 `@v0`，忽略未知输入警告
   2. 继续尝试未发布的 `uploadWorkflowArtifacts` 输入
   3. 改写为完全自定义打包命令
-- 结论: 使用 `v0.6.2 + actions/upload-artifact@v4`。
+- 结论: 使用 `v0.6.2 + actions/upload-artifact@v6`。
 - 原因:
   1. 第七轮验证已确认 `@v1` tag 不存在。
   2. 官方 `action.yml`（`v0.6.2`）不包含 `uploadWorkflowArtifacts`，因此不能依赖该输入。
@@ -449,6 +464,21 @@ flowchart LR
   1. README 与执行文档必须同步维护清单。
   2. 新增配置时需先判断其是否敏感。
 
+### ADR-31-12: GitHub 官方 JavaScript actions 提前升级到 Node 24 兼容版本
+
+- 决策: 将发布 workflow 中的 `actions/checkout`、`actions/setup-node`、`actions/upload-artifact` 升级到官方 `v6`。
+- 备选:
+  1. 保持 `v4`，等待 GitHub 在 2026-06-02 自动切换到 Node 24
+  2. 在 workflow 中临时设置 `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`
+- 结论: 直接升级到官方 Node 24 兼容主版本。
+- 原因:
+  1. GitHub 官方 changelog 已给出确定的切换日期，属于确定性的时点风险。
+  2. `actions/checkout`、`actions/setup-node`、`actions/upload-artifact` 官方资料都已提供 `v6` 用法。
+  3. 直接升级比依赖全局环境变量强制切换更透明，也更容易回溯问题。
+- 后果:
+  1. GitHub Actions 的 Node 20 弃用注释应在后续 run 中消失或显著减少。
+  2. 若未来接入 self-hosted runner，需要同时核对 runner 版本是否满足 `2.327.1` 最低要求。
+
 ## 9. Risk Register And Mitigation
 
 | 风险 | 概率 | 影响 | 分数 | 缓解措施 | Owner |
@@ -458,6 +488,7 @@ flowchart LR
 | 新增 workflow 忘记沿用根目录路径规范 | 3 | 3 | 9 | 在文档与模板中固化根目录约束 | 工程 |
 | 变量/密钥配置错位导致运行时失败 | 3 | 4 | 12 | 继续通过 `public-sale-gate` 和 README 清单校验 | 工程 |
 | 正式签名步骤被 bash 默认壳影响 | 2 | 4 | 8 | 对 PowerShell 专用步骤显式 `shell: pwsh`，对证书导入单独验证 | 工程 |
+| GitHub Actions 在 2026-06-02 后默认切到 Node 24 导致旧 action 失效 | 4 | 3 | 12 | 提前升级 `checkout/setup-node/upload-artifact` 到 `v6` 并重跑验证 | 工程 |
 
 ## 10. Delivery Roadmap And Milestones
 
@@ -514,8 +545,9 @@ flowchart LR
 6. PowerShell 专用证书导入步骤未被 bash 默认壳破坏。
 7. `publish-pilot-artifacts` 可重复运行而不会因 GitHub Release 同名资产冲突失败。
 8. Windows 发布工作流不再依赖 `WiX light.exe`。
-9. pilot workflow 使用 GitHub 官方 `actions/upload-artifact@v4` 上传构建产物。
+9. pilot workflow 使用 GitHub 官方 `actions/upload-artifact@v6` 上传构建产物。
 10. 发布 workflow 不再依赖 `windows-latest` 的隐式系统升级。
+11. 发布 workflow 不再使用 GitHub 官方 `Node.js 20` 时代的 action 主版本。
 
 ## 12. Source References With Dates
 
@@ -556,3 +588,13 @@ flowchart LR
     <https://github.com/tauri-apps/tauri/discussions/3744>
 18. tauri-action 官方 releases，用于确认当前已发布版本，检索日期 2026-03-15
     <https://github.com/tauri-apps/tauri-action/releases>
+19. GitHub 官方 changelog，关于 GitHub Actions runner 中 JavaScript actions 从 Node 20 迁移到 Node 24 的弃用通知，检索日期 2026-03-15
+    <https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/>
+20. GitHub Actions 元数据语法，`runs.using` 支持 `node24`，检索日期 2026-03-15
+    <https://docs.github.com/en/actions/reference/workflows-and-actions/metadata-syntax>
+21. actions/checkout 官方 README，`v6` 切到 Node 24 且要求最小 runner 版本，检索日期 2026-03-15
+    <https://github.com/actions/checkout>
+22. actions/setup-node 官方文档，`v6` 用法示例，检索日期 2026-03-15
+    <https://github.com/actions/setup-node>
+23. actions/upload-artifact 官方 README，`v6` 切到 Node 24 的说明，检索日期 2026-03-15
+    <https://github.com/actions/upload-artifact>
