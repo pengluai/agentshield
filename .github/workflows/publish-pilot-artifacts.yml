@@ -18,7 +18,7 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            args: ""
+            args: --target aarch64-apple-darwin
             apple_signing_identity: "-"
           - platform: windows-2022
             args: --bundles nsis
@@ -78,6 +78,22 @@ jobs:
         with:
           projectPath: .
           tauriScript: pnpm tauri
+          tagName: agentshield-pilot-v__VERSION__
+          releaseName: AgentShield Pilot v__VERSION__
+          releaseBody: |
+            AgentShield Pilot release artifacts.
+
+            Downloads:
+            - macOS: Apple Silicon DMG
+            - Windows: x64 NSIS installer
+
+            Commercial path:
+            - 14-day trial in app
+            - Activation-code upgrade
+            - Online verification only when a stable public license gateway is configured
+          releaseDraft: true
+          prerelease: false
+          updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

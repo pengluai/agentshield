@@ -14,6 +14,7 @@
     "release:gate": "bash ./scripts/release-gate.sh",
     "release:github:ready": "bash ./scripts/release-github-ready.sh",
     "release:github:bundle": "bash ./scripts/github-release-build.sh",
+    "release:pilot:curate": "bash ./scripts/curate-pilot-release-assets.sh",
     "release:render-config": "node ./scripts/render-tauri-release-config.mjs",
     "release:public:ready": "bash ./scripts/public-sale-gate.sh",
     "release:public:bundle": "bash ./scripts/public-release-build.sh",
@@ -22,6 +23,7 @@
     "lint": "eslint src/ --ext .ts,.tsx --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",
+    "license:issue:public": "bash ./scripts/issue-public-license.sh",
     "license:issue": "cargo run --manifest-path src-tauri/Cargo.toml --bin issue_activation_code -- issue",
     "license:public-key": "cargo run --manifest-path src-tauri/Cargo.toml --bin issue_activation_code -- print-public-key"
   },

@@ -23,6 +23,44 @@ interface PurchaseOption {
   recommended?: boolean;
 }
 
+const PLACEHOLDER_OR_LOCAL_CHECKOUT_HOSTS = new Set([
+  'example.com',
+  'localhost',
+  '127.0.0.1',
+  '0.0.0.0',
+  '::1',
+  'invalid',
+  'test',
+]);
+
+function isPlaceholderCheckoutHost(hostname: string) {
+  const host = hostname.toLowerCase();
+  if (PLACEHOLDER_OR_LOCAL_CHECKOUT_HOSTS.has(host)) {
+    return true;
+  }
+  return (
+    host.endsWith('.example.com')
+    || host.endsWith('.invalid')
+    || host.endsWith('.test')
+  );
+}
+
+function isCheckoutUrlUsable(url: string) {
+  const normalized = url.trim();
+  if (!normalized) {
+    return false;
+  }
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol !== 'https:') {
+      return false;
+    }
+    return !isPlaceholderCheckoutHost(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 const FREE_FEATURES = [
   { icon: Shield, textKey: 'freeFeature1' as const },
   { icon: Key, textKey: 'freeFeature2' as const },
@@ -159,7 +197,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
 
   const handlePurchase = async (option: PurchaseOption) => {
     const checkoutBaseUrl = option.checkoutUrl.trim();
-    if (!checkoutBaseUrl) {
+    if (!isCheckoutUrlUsable(checkoutBaseUrl)) {
       setFeedback({ tone: 'error', message: t.checkoutLinkMissing });
       return;
     }

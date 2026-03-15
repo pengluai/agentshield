@@ -1,5 +1,9 @@
 # AgentShield
 
+> English: A desktop safety app for AI tools that use `MCP` and `Skill`. AgentShield helps beginners find risky local configs, exposed secrets, and unsafe automation on their own machine.
+>
+> 中文：一款面向零基础用户的 AI 工具安全桌面应用。AgentShield 专门帮助你发现本机里使用 `MCP` / `Skill` 的工具、危险配置、密钥暴露和高风险自动化问题。
+
 AgentShield is a desktop security companion for AI tools that use `MCP` and `Skill`.
 
 It is built for beginners:

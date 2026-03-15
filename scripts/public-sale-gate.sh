@@ -88,6 +88,64 @@ check_env_https_url() {
   fi
 }
 
+extract_url_host() {
+  local value="$1"
+  local normalized
+  normalized="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  normalized="${normalized#https://}"
+  normalized="${normalized%%/*}"
+  normalized="${normalized##*@}"
+  normalized="${normalized%%:*}"
+  printf '%s' "$normalized"
+}
+
+is_placeholder_or_local_host() {
+  local host="$1"
+  [[ -z "$host" ]] && return 0
+  [[ "$host" == "example.com" || "$host" == *.example.com ]] && return 0
+  [[ "$host" == "localhost" || "$host" == "127.0.0.1" || "$host" == "0.0.0.0" || "$host" == "::1" ]] && return 0
+  [[ "$host" == "invalid" || "$host" == *.invalid ]] && return 0
+  [[ "$host" == "test" || "$host" == *.test ]] && return 0
+  return 1
+}
+
+is_temporary_tunnel_host() {
+  local host="$1"
+  [[ "$host" == *.trycloudflare.com ]] && return 0
+  return 1
+}
+
+check_env_checkout_url() {
+  local var_name="$1"
+  local value="${!var_name:-}"
+  check_env_https_url "$var_name"
+  [[ -z "$value" || "$value" != https://* ]] && return
+  local host
+  host="$(extract_url_host "$value")"
+  if is_placeholder_or_local_host "$host"; then
+    echo "[public-sale-gate] $var_name cannot use placeholder/local host: $host"
+    missing=1
+  fi
+}
+
+check_env_gateway_url() {
+  local var_name="$1"
+  local value="${!var_name:-}"
+  check_env_https_url "$var_name"
+  [[ -z "$value" || "$value" != https://* ]] && return
+  local host
+  host="$(extract_url_host "$value")"
+  if is_placeholder_or_local_host "$host"; then
+    echo "[public-sale-gate] $var_name cannot use placeholder/local host: $host"
+    missing=1
+    return
+  fi
+  if [[ "$release_profile" == "public" ]] && is_temporary_tunnel_host "$host"; then
+    echo "[public-sale-gate] $var_name cannot use temporary tunnel host for public release: $host"
+    missing=1
+  fi
+}
+
 echo "[public-sale-gate] checking legal documents"
 check_file_exists "docs/legal/privacy-policy.md"
 check_file_exists "docs/legal/terms-of-service.md"
@@ -99,10 +157,10 @@ check_file_contains "docs/legal/eula.md" "^Last Updated:" "Last Updated date"
 check_file_contains "docs/legal/refund-policy.md" "^Last Updated:" "Last Updated date"
 
 echo "[public-sale-gate] checking checkout links"
-check_env_https_url "VITE_CHECKOUT_MONTHLY_URL"
-check_env_https_url "VITE_CHECKOUT_YEARLY_URL"
-check_env_https_url "VITE_CHECKOUT_LIFETIME_URL"
-check_env_https_url "AGENTSHIELD_LICENSE_GATEWAY_URL"
+check_env_checkout_url "VITE_CHECKOUT_MONTHLY_URL"
+check_env_checkout_url "VITE_CHECKOUT_YEARLY_URL"
+check_env_checkout_url "VITE_CHECKOUT_LIFETIME_URL"
+check_env_gateway_url "AGENTSHIELD_LICENSE_GATEWAY_URL"
 check_env_required "AGENTSHIELD_LICENSE_PUBLIC_KEY"
 
 echo "[public-sale-gate] checking license gateway secrets"

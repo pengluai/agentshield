@@ -5,17 +5,22 @@ import { UpgradePro } from '../upgrade-pro';
 import { mockInvoke } from '@/test/__mocks__/tauri';
 import { useLicenseStore } from '@/stores/licenseStore';
 import { t } from '@/constants/i18n';
+import * as runtimeSettings from '@/services/runtime-settings';
 
 describe('UpgradePro', () => {
+  let openExternalUrlSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     useLicenseStore.getState().deactivate();
     vi.stubEnv('VITE_CHECKOUT_MONTHLY_URL', '');
     vi.stubEnv('VITE_CHECKOUT_YEARLY_URL', '');
     vi.stubEnv('VITE_CHECKOUT_LIFETIME_URL', '');
+    openExternalUrlSpy = vi.spyOn(runtimeSettings, 'openExternalUrl').mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    openExternalUrlSpy.mockRestore();
   });
 
   it('starts a real trial flow and updates the license store from backend data', async () => {
@@ -47,5 +52,17 @@ describe('UpgradePro', () => {
     await user.click(screen.getAllByRole('button', { name: t.buyActivationCode })[0]);
 
     expect(await screen.findByText(t.checkoutLinkMissing)).toBeInTheDocument();
+    expect(openExternalUrlSpy).not.toHaveBeenCalled();
+  });
+
+  it('blocks placeholder checkout URLs and avoids opening browser', async () => {
+    const user = userEvent.setup();
+    vi.stubEnv('VITE_CHECKOUT_MONTHLY_URL', 'https://example.com/monthly');
+
+    render(<UpgradePro />);
+    await user.click(screen.getAllByRole('button', { name: t.buyActivationCode })[0]);
+
+    expect(await screen.findByText(t.checkoutLinkMissing)).toBeInTheDocument();
+    expect(openExternalUrlSpy).not.toHaveBeenCalled();
   });
 });
