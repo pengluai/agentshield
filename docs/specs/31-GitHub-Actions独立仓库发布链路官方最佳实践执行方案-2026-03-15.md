@@ -14,13 +14,14 @@
 1. `windows-latest` 上 `Pilot public-sale gate` 失败，原因是 `package.json` 中 `PUBLIC_RELEASE_PROFILE=pilot ...` 这一类 POSIX 内联环境变量写法运行在 Windows 默认 PowerShell 中。
 2. `macos-latest` 上 `Pilot public-sale gate` 失败，原因是发布工作流在执行 `release-gate.sh` 之前没有安装 Playwright 浏览器，导致 smoke test 无法启动 Chromium。
 
-根据 GitHub Actions、GitHub CLI、Tauri、Playwright 官方文档，本仓库的推荐执行方案是：
+根据 GitHub Actions、GitHub CLI、Tauri、Playwright、pnpm 官方文档，本仓库的推荐执行方案是：
 
 1. 保持独立仓库根目录作为唯一工作目录，所有 workflow 与缓存路径都以仓库根为基准。
 2. 继续使用 GitHub `Variables` 存放公开配置，`Secrets` 存放敏感凭据。
 3. 对需要跨平台一致执行的 workflow job 统一设置 `defaults.run.shell: bash`。
-4. 在运行 `release-gate.sh` 之前，显式安装 Playwright 浏览器。
-5. 继续使用 Tauri 官方推荐的 matrix 构建与 Rust cache 布局。
+4. 避免在 `package.json` scripts 中保留 Windows 不兼容的 POSIX 内联环境变量；对 `release:github:ready` 这类命令改用显式 `bash` 包装脚本。
+5. 在运行 `release-gate.sh` 之前，显式安装 Playwright 浏览器。
+6. 继续使用 Tauri 官方推荐的 matrix 构建与 Rust cache 布局。
 
 ## 2. Problem Statement And Scope
 
@@ -68,6 +69,17 @@
    - 失败现象: `browserType.launch: Executable doesn't exist`
    - Playwright 明确提示需要执行 `playwright install`
 
+2026-03-15 第二轮验证运行：
+
+- Run: `23101712100`
+- URL: <https://github.com/pengluai/agentshield/actions/runs/23101712100>
+
+新增确认到的事实：
+
+1. `Install Playwright Chromium` 已解决浏览器缺失问题。
+2. 即使 workflow step 已设置 `shell: bash`，`pnpm run release:github:ready` 在 Windows 上仍然把 `package.json` script 中的 `PUBLIC_RELEASE_PROFILE=pilot ...` 按 Windows 脚本语法解释，继续失败。
+3. 因此，workflow 默认 shell 统一只能解决 `run:` 步骤层面的 shell 语义，不能单独解决 pnpm scripts 内联环境变量问题。
+
 ### 3.3 约束
 
 1. 代码与命令必须优先遵守官方文档，不靠经验猜测。
@@ -110,6 +122,7 @@ flowchart LR
 1. 在 job 级设置 `defaults.run.shell: bash`，统一 `run:` 步骤执行模型。
 2. 保留 `Import Windows certificate` 的 `shell: pwsh` 显式覆盖，因为证书导入依赖 PowerShell。
 3. 在 `Install dependencies` 后、执行 gate 前增加 Playwright 浏览器安装步骤。
+4. 对需要预置环境变量的 pnpm script，不在 `package.json` 中使用 POSIX 内联环境变量，改为显式调用 `bash` 包装脚本。
 
 ### 5.2 Gate 脚本
 
@@ -123,7 +136,9 @@ flowchart LR
 
 1. `package.json` 中 `release:github:ready` 使用了 POSIX 内联环境变量。
 2. 在 Linux/macOS shell 中该写法可运行，在 Windows PowerShell 中不可运行。
-3. 官方推荐的低风险做法是让工作流使用兼容该语法的 `bash`，而不是在每个脚本命令上做平台分支。
+3. 第二轮验证表明，即使 workflow step 运行在 `bash` 中，`pnpm run` 在 Windows 上仍然不会自动按 POSIX 方式解析该 script。
+4. pnpm 官方文档提供了 `shellEmulator` / `scriptShell` 这两类全局配置能力，但它们会影响整个仓库的脚本执行模型。
+5. 当前仓库的低风险做法是把这一条命令迁移到显式 `bash` 包装脚本里，只修复受影响脚本，不扩大变更面。
 
 ### 5.3 测试依赖准备
 
@@ -231,7 +246,23 @@ flowchart LR
   1. PowerShell 专用步骤仍需显式 `shell: pwsh` 覆盖。
   2. 需要在文档中明确此决策，避免后续改回默认 shell。
 
-### ADR-31-03: 在发布工作流中显式安装 Playwright 浏览器
+### ADR-31-03: `release:github:ready` 改为显式 `bash` 包装脚本
+
+- 决策: 新增 `scripts/release-github-ready.sh`，由 `package.json` 直接调用该脚本，不再在 `package.json` 中保留 POSIX 内联环境变量。
+- 备选:
+  1. 开启 pnpm `shellEmulator=true`
+  2. 全局设置 pnpm `scriptShell` 指向 Git Bash
+  3. 保持现状，仅依赖 workflow 级 `shell: bash`
+- 结论: 采用显式 `bash` 包装脚本。
+- 原因:
+  1. 第二轮验证已证明 workflow 级 `bash` 不能改变 `pnpm run` 在 Windows 上执行 scripts 的方式。
+  2. pnpm 官方提供的 `shellEmulator` / `scriptShell` 会扩大整个仓库的脚本执行语义变化。
+  3. 包装脚本只影响一条已知失败命令，风险最小，行为最可控。
+- 后果:
+  1. 以后若新增带 POSIX 内联环境变量的 npm script，优先改成包装脚本或显式 step env。
+  2. 不在仓库层面引入全局脚本解释器变更。
+
+### ADR-31-04: 在发布工作流中显式安装 Playwright 浏览器
 
 - 决策: 在执行 `release-gate.sh` 前显式安装 Playwright 浏览器。
 - 备选:
@@ -247,7 +278,7 @@ flowchart LR
   1. `publish-pilot-artifacts` 与 `publish-signed-release` 都应补齐该步骤。
   2. 可根据平台裁剪参数，但不能省略安装。
 
-### ADR-31-04: 公开配置与敏感配置继续分离到 GitHub Variables / Secrets
+### ADR-31-05: 公开配置与敏感配置继续分离到 GitHub Variables / Secrets
 
 - 决策: 继续使用 `vars` 管理公开配置，`secrets` 管理敏感值。
 - 备选:
@@ -319,10 +350,11 @@ flowchart LR
 本轮修复完成的验收标准：
 
 1. `publish-pilot-artifacts` 在 `windows-latest` 不再因 shell 语义失败。
-2. `publish-pilot-artifacts` 在 `macos-latest` 不再因 Playwright 浏览器缺失失败。
-3. 两个平台均能通过 `Pilot public-sale gate`。
-4. 工作流仍然能读取许可证网关相关 `vars` / `secrets`。
-5. PowerShell 专用证书导入步骤未被 bash 默认壳破坏。
+2. `publish-pilot-artifacts` 在 `windows-latest` 不再因 pnpm script 内联环境变量失败。
+3. `publish-pilot-artifacts` 在 `macos-latest` 不再因 Playwright 浏览器缺失失败。
+4. `publish-pilot-artifacts` 的两个平台均能通过 `Pilot public-sale gate`。
+5. 工作流仍然能读取许可证网关相关 `vars` / `secrets`。
+6. PowerShell 专用证书导入步骤未被 bash 默认壳破坏。
 
 ## 12. Source References With Dates
 
@@ -344,6 +376,8 @@ flowchart LR
    <https://playwright.dev/docs/ci>
 9. Playwright GitHub Actions 示例，检索日期 2026-03-15  
    <https://playwright.dev/docs/ci-intro>
-10. Tauri GitHub Actions / 发布流水线文档，matrix 构建与根目录模式参考，检索日期 2026-03-15  
+10. pnpm `shellEmulator` 与 `scriptShell` 官方文档，说明 pnpm scripts 在跨平台 shell 语义上的官方配置方式，检索日期 2026-03-15  
+    <https://pnpm.io/settings#shellemulator>  
+    <https://pnpm.io/settings#scriptshell>
+11. Tauri GitHub Actions / 发布流水线文档，matrix 构建与根目录模式参考，检索日期 2026-03-15  
     <https://tauri.app/distribute/pipelines/github/>
-

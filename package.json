@@ -12,7 +12,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "release:gate": "bash ./scripts/release-gate.sh",
-    "release:github:ready": "PUBLIC_RELEASE_PROFILE=pilot PUBLIC_REQUIRE_TAURI_RELEASE_CONFIG=0 bash ./scripts/public-sale-gate.sh",
+    "release:github:ready": "bash ./scripts/release-github-ready.sh",
     "release:github:bundle": "bash ./scripts/github-release-build.sh",
     "release:render-config": "node ./scripts/render-tauri-release-config.mjs",
     "release:public:ready": "bash ./scripts/public-sale-gate.sh",
