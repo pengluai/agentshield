@@ -30,31 +30,26 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: agentshield/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install frontend dependencies
-        working-directory: agentshield
         run: pnpm install --frozen-lockfile
 
       - name: Install Playwright Chromium
-        working-directory: agentshield
         run: pnpm exec playwright install chromium
 
       - name: cargo test
-        working-directory: agentshield/src-tauri
+        working-directory: src-tauri
         run: cargo test
 
       - name: pnpm build
-        working-directory: agentshield
         run: pnpm build
 
       - name: vitest
-        working-directory: agentshield
         run: pnpm exec vitest run --coverage.enabled=false
 
       - name: playwright smoke
-        working-directory: agentshield
         run: pnpm exec playwright test e2e/smoke.spec.ts --reporter=line

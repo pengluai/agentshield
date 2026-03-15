@@ -30,7 +30,7 @@ jobs:
       AGENTSHIELD_LICENSE_PUBLIC_KEY: ${{ vars.AGENTSHIELD_LICENSE_PUBLIC_KEY }}
       LICENSE_DELIVERY_FROM_EMAIL: ${{ vars.LICENSE_DELIVERY_FROM_EMAIL }}
       LICENSE_DELIVERY_REPLY_TO: ${{ vars.LICENSE_DELIVERY_REPLY_TO }}
-      LICENSE_GATEWAY_DATA_PATH: ${{ runner.temp }}/license-gateway.json
+      LICENSE_GATEWAY_DATA_PATH: .tmp/license-gateway.json
       LEMONSQUEEZY_WEBHOOK_SECRET: ${{ secrets.LEMONSQUEEZY_WEBHOOK_SECRET }}
       LICENSE_GATEWAY_ADMIN_PASSWORD: ${{ secrets.LICENSE_GATEWAY_ADMIN_PASSWORD }}
       AGENTSHIELD_LICENSE_SIGNING_SEED: ${{ secrets.AGENTSHIELD_LICENSE_SIGNING_SEED }}
@@ -49,7 +49,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: agentshield/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -59,20 +59,18 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './agentshield/src-tauri -> target'
+          workspaces: './src-tauri -> target'
 
       - name: Install dependencies
-        working-directory: agentshield
         run: pnpm install --frozen-lockfile
 
       - name: Pilot public-sale gate
-        working-directory: agentshield
         run: pnpm run release:github:ready
 
       - name: Build GitHub pilot artifacts
         uses: tauri-apps/tauri-action@v0
         with:
-          projectPath: agentshield
+          projectPath: .
           tauriScript: pnpm tauri
           tagName: agentshield-pilot-v__VERSION__
           releaseName: AgentShield Pilot v__VERSION__
