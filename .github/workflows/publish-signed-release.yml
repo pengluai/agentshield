@@ -19,7 +19,7 @@ jobs:
         include:
           - platform: macos-latest
             args: --target aarch64-apple-darwin --config src-tauri/tauri.release.json
-          - platform: windows-latest
+          - platform: windows-2022
             args: --config src-tauri/tauri.release.json
     runs-on: ${{ matrix.platform }}
     env:
@@ -77,8 +77,43 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium
 
+      - name: Ensure VBSCRIPT for MSI bundling
+        if: startsWith(matrix.platform, 'windows-')
+        shell: pwsh
+        run: |
+          $feature = Get-WindowsOptionalFeature -Online -FeatureName VBSCRIPT -ErrorAction SilentlyContinue
+          if ($null -ne $feature) {
+            Write-Host "VBSCRIPT optional feature state: $($feature.State)"
+            if ($feature.State -ne 'Enabled') {
+              $result = Enable-WindowsOptionalFeature -Online -FeatureName VBSCRIPT -All -NoRestart
+              if ($result.RestartNeeded) {
+                Write-Warning "VBSCRIPT requested a restart after enablement."
+              }
+            }
+            $verified = Get-WindowsOptionalFeature -Online -FeatureName VBSCRIPT
+            if ($verified.State -ne 'Enabled') {
+              throw "VBSCRIPT optional feature is not enabled."
+            }
+            exit 0
+          }
+
+          $capability = Get-WindowsCapability -Online | Where-Object { $_.Name -like 'VBSCRIPT*' } | Select-Object -First 1
+          if ($null -eq $capability) {
+            throw "Unable to find a VBSCRIPT optional feature or capability on this runner."
+          }
+
+          Write-Host "VBSCRIPT capability state: $($capability.State) ($($capability.Name))"
+          if ($capability.State -ne 'Installed') {
+            Add-WindowsCapability -Online -Name $capability.Name | Out-Host
+          }
+
+          $verifiedCapability = Get-WindowsCapability -Online | Where-Object { $_.Name -eq $capability.Name } | Select-Object -First 1
+          if ($null -eq $verifiedCapability -or $verifiedCapability.State -ne 'Installed') {
+            throw "VBSCRIPT capability is not installed."
+          }
+
       - name: Import Windows certificate
-        if: matrix.platform == 'windows-latest' && secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != ''
+        if: startsWith(matrix.platform, 'windows-') && secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != ''
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}

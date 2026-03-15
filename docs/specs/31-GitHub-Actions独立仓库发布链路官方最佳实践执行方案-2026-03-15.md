@@ -92,6 +92,19 @@
 2. `Build GitHub pilot artifacts` 在上传 `AgentShield 智盾_1.0.1_aarch64.dmg` 时因 GitHub Release 已存在同名 draft asset 失败。
 3. 这说明 pilot 流水线若继续复用固定 `tagName` 的 draft release，会在重复运行时失去幂等性。
 
+2026-03-15 第四轮验证运行：
+
+- Run: `23101956394`
+- URL: <https://github.com/pengluai/agentshield/actions/runs/23101956394>
+
+新增确认到的事实：
+
+1. `macos-latest` 已完整成功，说明 pilot artifact-only 方案有效。
+2. `windows-latest` 已通过 `Pilot public-sale gate`，说明 shell、pnpm script 和 Playwright 依赖问题已解决。
+3. `windows-latest` 在 `Build GitHub pilot artifacts` 阶段调用 WiX `light.exe` 失败。
+4. Tauri 官方 Windows 先决条件文档把 `failed to run light.exe` 明确指向 `VBSCRIPT` 功能未启用的场景。
+5. GitHub runner 官方文档建议为稳定性使用显式 OS 版本标签，而不是依赖 `windows-latest` 的迁移行为。
+
 ### 3.3 约束
 
 1. 代码与命令必须优先遵守官方文档，不靠经验猜测。
@@ -136,6 +149,7 @@ flowchart LR
 3. 在 `Install dependencies` 后、执行 gate 前增加 Playwright 浏览器安装步骤。
 4. 对需要预置环境变量的 pnpm script，不在 `package.json` 中使用 POSIX 内联环境变量，改为显式调用 `bash` 包装脚本。
 5. `publish-pilot-artifacts` 使用 `tauri-action` 的 `uploadWorkflowArtifacts` 上传测试包，不在 pilot 流水线里创建或复用 GitHub Release。
+6. Windows 构建 runner 固定为 `windows-2022`，并在打包前显式校验 `VBSCRIPT` 可用。
 
 ### 5.2 Gate 脚本
 
@@ -307,7 +321,36 @@ flowchart LR
   1. 测试包下载入口转到 Actions run 的 artifacts。
   2. 正式对外发布仍由 `publish-signed-release` 负责 GitHub Release。
 
-### ADR-31-06: 公开配置与敏感配置继续分离到 GitHub Variables / Secrets
+### ADR-31-06: Windows 构建 runner 显式固定到 `windows-2022`
+
+- 决策: 发布 workflow 中的 Windows runner 从 `windows-latest` 固定为 `windows-2022`。
+- 备选:
+  1. 继续使用 `windows-latest`
+  2. 改用 `windows-2025`
+- 结论: 当前阶段固定到 `windows-2022`。
+- 原因:
+  1. GitHub 官方 runner 文档明确建议如果不希望受到 `-latest` 迁移影响，应显式指定 OS 版本。
+  2. 当前失败发生在 `windows-latest` 对应的 `Windows Server 2025` runner 上。
+  3. 对商用发布流水线来说，构建环境稳定性优先于追随最新镜像。
+- 后果:
+  1. 以后若要切回 `windows-2025`，应先单独验证 WiX/MSI 能力。
+  2. 现阶段先保证发布稳定。
+
+### ADR-31-07: 在 Windows 打包前显式校验并启用 `VBSCRIPT`
+
+- 决策: 在 Windows 构建阶段新增 `VBSCRIPT` 检查和启用步骤。
+- 备选:
+  1. 不做检查，继续等 WiX 在 runner 中失败
+  2. 直接放弃 MSI，只打其他 Windows 包格式
+- 结论: 先保留 MSI，前置环境能力检查。
+- 原因:
+  1. Tauri 官方文档已把 `failed to run light.exe` 指向 `VBSCRIPT` 依赖。
+  2. 这类依赖应在进入 Tauri bundling 前被显式验证，而不是在 `light.exe` 内部黑盒失败。
+- 后果:
+  1. 如果 runner 无法启用 `VBSCRIPT`，失败信息会更明确。
+  2. 若未来 Windows 镜像进一步收紧 FoD 行为，仍能快速发现。
+
+### ADR-31-08: 公开配置与敏感配置继续分离到 GitHub Variables / Secrets
 
 - 决策: 继续使用 `vars` 管理公开配置，`secrets` 管理敏感值。
 - 备选:
@@ -385,6 +428,8 @@ flowchart LR
 5. 工作流仍然能读取许可证网关相关 `vars` / `secrets`。
 6. PowerShell 专用证书导入步骤未被 bash 默认壳破坏。
 7. `publish-pilot-artifacts` 可重复运行而不会因 GitHub Release 同名资产冲突失败。
+8. Windows MSI 构建环境会在进入 `tauri build` 前显式验证 `VBSCRIPT`。
+9. 发布 workflow 不再依赖 `windows-latest` 的隐式系统升级。
 
 ## 12. Source References With Dates
 
@@ -411,5 +456,11 @@ flowchart LR
     <https://pnpm.io/settings#scriptshell>
 11. tauri-action 官方 README，说明 `uploadWorkflowArtifacts` 与“省略 tagName/releaseName/releaseId 仅构建不上传 release 资产”的行为，检索日期 2026-03-15  
     <https://github.com/tauri-apps/tauri-action>
-12. Tauri GitHub Actions / 发布流水线文档，matrix 构建与根目录模式参考，检索日期 2026-03-15  
+12. Tauri Windows 先决条件文档，关于 `failed to run light.exe` 与 `VBSCRIPT` 的说明，检索日期 2026-03-15
+    <https://v2.tauri.app/start/prerequisites/>
+13. GitHub runner images 官方说明，关于显式指定 OS 版本以避免 `-latest` 迁移影响，检索日期 2026-03-15
+    <https://github.com/actions/runner-images>
+14. Microsoft Learn，Windows Server 2025 中 VBScript 作为 Features on Demand 的说明，检索日期 2026-03-15
+    <https://learn.microsoft.com/en-us/windows-server/get-started/removed-deprecated-features-windows-server>
+15. Tauri GitHub Actions / 发布流水线文档，matrix 构建与根目录模式参考，检索日期 2026-03-15
     <https://tauri.app/distribute/pipelines/github/>

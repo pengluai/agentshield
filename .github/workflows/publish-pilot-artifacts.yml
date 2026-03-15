@@ -20,7 +20,7 @@ jobs:
           - platform: macos-latest
             args: ""
             apple_signing_identity: "-"
-          - platform: windows-latest
+          - platform: windows-2022
             args: ""
             apple_signing_identity: ""
     runs-on: ${{ matrix.platform }}
@@ -69,6 +69,41 @@ jobs:
 
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium
+
+      - name: Ensure VBSCRIPT for MSI bundling
+        if: startsWith(matrix.platform, 'windows-')
+        shell: pwsh
+        run: |
+          $feature = Get-WindowsOptionalFeature -Online -FeatureName VBSCRIPT -ErrorAction SilentlyContinue
+          if ($null -ne $feature) {
+            Write-Host "VBSCRIPT optional feature state: $($feature.State)"
+            if ($feature.State -ne 'Enabled') {
+              $result = Enable-WindowsOptionalFeature -Online -FeatureName VBSCRIPT -All -NoRestart
+              if ($result.RestartNeeded) {
+                Write-Warning "VBSCRIPT requested a restart after enablement."
+              }
+            }
+            $verified = Get-WindowsOptionalFeature -Online -FeatureName VBSCRIPT
+            if ($verified.State -ne 'Enabled') {
+              throw "VBSCRIPT optional feature is not enabled."
+            }
+            exit 0
+          }
+
+          $capability = Get-WindowsCapability -Online | Where-Object { $_.Name -like 'VBSCRIPT*' } | Select-Object -First 1
+          if ($null -eq $capability) {
+            throw "Unable to find a VBSCRIPT optional feature or capability on this runner."
+          }
+
+          Write-Host "VBSCRIPT capability state: $($capability.State) ($($capability.Name))"
+          if ($capability.State -ne 'Installed') {
+            Add-WindowsCapability -Online -Name $capability.Name | Out-Host
+          }
+
+          $verifiedCapability = Get-WindowsCapability -Online | Where-Object { $_.Name -eq $capability.Name } | Select-Object -First 1
+          if ($null -eq $verifiedCapability -or $verifiedCapability.State -ne 'Installed') {
+            throw "VBSCRIPT capability is not installed."
+          }
 
       - name: Pilot public-sale gate
         run: pnpm run release:github:ready
