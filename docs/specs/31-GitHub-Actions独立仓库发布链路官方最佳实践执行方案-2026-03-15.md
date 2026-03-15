@@ -14,14 +14,15 @@
 1. `windows-latest` 上 `Pilot public-sale gate` 失败，原因是 `package.json` 中 `PUBLIC_RELEASE_PROFILE=pilot ...` 这一类 POSIX 内联环境变量写法运行在 Windows 默认 PowerShell 中。
 2. `macos-latest` 上 `Pilot public-sale gate` 失败，原因是发布工作流在执行 `release-gate.sh` 之前没有安装 Playwright 浏览器，导致 smoke test 无法启动 Chromium。
 
-根据 GitHub Actions、GitHub CLI、Tauri、Playwright、pnpm 官方文档，本仓库的推荐执行方案是：
+根据 GitHub Actions、GitHub CLI、Tauri、tauri-action、Playwright、pnpm 官方文档，本仓库的推荐执行方案是：
 
 1. 保持独立仓库根目录作为唯一工作目录，所有 workflow 与缓存路径都以仓库根为基准。
 2. 继续使用 GitHub `Variables` 存放公开配置，`Secrets` 存放敏感凭据。
 3. 对需要跨平台一致执行的 workflow job 统一设置 `defaults.run.shell: bash`。
 4. 避免在 `package.json` scripts 中保留 Windows 不兼容的 POSIX 内联环境变量；对 `release:github:ready` 这类命令改用显式 `bash` 包装脚本。
 5. 在运行 `release-gate.sh` 之前，显式安装 Playwright 浏览器。
-6. 继续使用 Tauri 官方推荐的 matrix 构建与 Rust cache 布局。
+6. `publish-pilot-artifacts` 仅上传 Actions workflow artifacts，不再把试点产物写入 GitHub draft release。
+7. 继续使用 Tauri 官方推荐的 matrix 构建与 Rust cache 布局。
 
 ## 2. Problem Statement And Scope
 
@@ -80,6 +81,17 @@
 2. 即使 workflow step 已设置 `shell: bash`，`pnpm run release:github:ready` 在 Windows 上仍然把 `package.json` script 中的 `PUBLIC_RELEASE_PROFILE=pilot ...` 按 Windows 脚本语法解释，继续失败。
 3. 因此，workflow 默认 shell 统一只能解决 `run:` 步骤层面的 shell 语义，不能单独解决 pnpm scripts 内联环境变量问题。
 
+2026-03-15 第三轮验证运行：
+
+- Run: `23101811114`
+- URL: <https://github.com/pengluai/agentshield/actions/runs/23101811114>
+
+新增确认到的事实：
+
+1. `macos-latest` 已经通过 `Pilot public-sale gate`，说明 Playwright 依赖和 gate 链路修复有效。
+2. `Build GitHub pilot artifacts` 在上传 `AgentShield 智盾_1.0.1_aarch64.dmg` 时因 GitHub Release 已存在同名 draft asset 失败。
+3. 这说明 pilot 流水线若继续复用固定 `tagName` 的 draft release，会在重复运行时失去幂等性。
+
 ### 3.3 约束
 
 1. 代码与命令必须优先遵守官方文档，不靠经验猜测。
@@ -123,6 +135,7 @@ flowchart LR
 2. 保留 `Import Windows certificate` 的 `shell: pwsh` 显式覆盖，因为证书导入依赖 PowerShell。
 3. 在 `Install dependencies` 后、执行 gate 前增加 Playwright 浏览器安装步骤。
 4. 对需要预置环境变量的 pnpm script，不在 `package.json` 中使用 POSIX 内联环境变量，改为显式调用 `bash` 包装脚本。
+5. `publish-pilot-artifacts` 使用 `tauri-action` 的 `uploadWorkflowArtifacts` 上传测试包，不在 pilot 流水线里创建或复用 GitHub Release。
 
 ### 5.2 Gate 脚本
 
@@ -278,7 +291,23 @@ flowchart LR
   1. `publish-pilot-artifacts` 与 `publish-signed-release` 都应补齐该步骤。
   2. 可根据平台裁剪参数，但不能省略安装。
 
-### ADR-31-05: 公开配置与敏感配置继续分离到 GitHub Variables / Secrets
+### ADR-31-05: `publish-pilot-artifacts` 只上传 workflow artifacts，不上传 GitHub Release 资产
+
+- 决策: 在 pilot workflow 中省略 `tagName` / `releaseName` / `releaseId`，启用 `uploadWorkflowArtifacts: true`。
+- 备选:
+  1. 继续写入固定 tag 的 draft release
+  2. 每次运行生成唯一 tag
+  3. 在并发矩阵 job 中先删除旧 release assets
+- 结论: pilot 仅上传 workflow artifacts。
+- 原因:
+  1. tauri-action 官方明确支持“只构建并上传 workflow artifacts，不上传 release 资产”的用法。
+  2. pilot 的目标是验证和下载测试包，不是发布稳定版本。
+  3. 固定 tag 的 draft release 在重复运行时会发生同名资产冲突，并且并发 job 先删后传会引入共享状态竞争。
+- 后果:
+  1. 测试包下载入口转到 Actions run 的 artifacts。
+  2. 正式对外发布仍由 `publish-signed-release` 负责 GitHub Release。
+
+### ADR-31-06: 公开配置与敏感配置继续分离到 GitHub Variables / Secrets
 
 - 决策: 继续使用 `vars` 管理公开配置，`secrets` 管理敏感值。
 - 备选:
@@ -355,6 +384,7 @@ flowchart LR
 4. `publish-pilot-artifacts` 的两个平台均能通过 `Pilot public-sale gate`。
 5. 工作流仍然能读取许可证网关相关 `vars` / `secrets`。
 6. PowerShell 专用证书导入步骤未被 bash 默认壳破坏。
+7. `publish-pilot-artifacts` 可重复运行而不会因 GitHub Release 同名资产冲突失败。
 
 ## 12. Source References With Dates
 
@@ -379,5 +409,7 @@ flowchart LR
 10. pnpm `shellEmulator` 与 `scriptShell` 官方文档，说明 pnpm scripts 在跨平台 shell 语义上的官方配置方式，检索日期 2026-03-15  
     <https://pnpm.io/settings#shellemulator>  
     <https://pnpm.io/settings#scriptshell>
-11. Tauri GitHub Actions / 发布流水线文档，matrix 构建与根目录模式参考，检索日期 2026-03-15  
+11. tauri-action 官方 README，说明 `uploadWorkflowArtifacts` 与“省略 tagName/releaseName/releaseId 仅构建不上传 release 资产”的行为，检索日期 2026-03-15  
+    <https://github.com/tauri-apps/tauri-action>
+12. Tauri GitHub Actions / 发布流水线文档，matrix 构建与根目录模式参考，检索日期 2026-03-15  
     <https://tauri.app/distribute/pipelines/github/>

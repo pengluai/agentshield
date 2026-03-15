@@ -78,13 +78,7 @@ jobs:
         with:
           projectPath: .
           tauriScript: pnpm tauri
-          tagName: agentshield-pilot-v__VERSION__
-          releaseName: AgentShield Pilot v__VERSION__
-          releaseBody: |
-            Pilot artifacts for GitHub distribution.
-            macOS artifacts may use ad-hoc signing only and can still require manual allow in Privacy & Security.
-          releaseDraft: true
-          prerelease: true
+          uploadWorkflowArtifacts: true
           args: ${{ matrix.args }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
