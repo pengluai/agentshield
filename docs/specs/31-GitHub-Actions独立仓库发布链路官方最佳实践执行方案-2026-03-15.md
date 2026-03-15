@@ -105,6 +105,19 @@
 4. Tauri 官方 Windows 先决条件文档把 `failed to run light.exe` 明确指向 `VBSCRIPT` 功能未启用的场景。
 5. GitHub runner 官方文档建议为稳定性使用显式 OS 版本标签，而不是依赖 `windows-latest` 的迁移行为。
 
+2026-03-15 第五轮验证运行：
+
+- Run: `23102543071`
+- URL: <https://github.com/pengluai/agentshield/actions/runs/23102543071>
+
+新增确认到的事实：
+
+1. `macos-latest` 在 artifact-only pilot 流程下继续成功，说明最新工作流没有回归。
+2. `windows-2022` 不再落到 `light.exe` 黑盒失败，而是在新的 `VBSCRIPT` 预检查步骤提前失败。
+3. 失败日志显示 `windows-2022` runner 上既没有暴露 `VBSCRIPT` optional feature，也没有暴露 `VBSCRIPT` capability。
+4. 结合 Tauri 官方“在遇到 `failed to run light.exe` 时可能需要启用 `VBSCRIPT`”的措辞，可以确认把 `VBSCRIPT` 检查做成硬性前置条件过于严格。
+5. 因此下一轮修复应保留 `windows-2022` 固定版本，但把 `VBSCRIPT` 步骤降级为“诊断 + 尝试启用”，不能因 runner 未暴露该功能而直接失败。
+
 ### 3.3 约束
 
 1. 代码与命令必须优先遵守官方文档，不靠经验猜测。
@@ -149,7 +162,7 @@ flowchart LR
 3. 在 `Install dependencies` 后、执行 gate 前增加 Playwright 浏览器安装步骤。
 4. 对需要预置环境变量的 pnpm script，不在 `package.json` 中使用 POSIX 内联环境变量，改为显式调用 `bash` 包装脚本。
 5. `publish-pilot-artifacts` 使用 `tauri-action` 的 `uploadWorkflowArtifacts` 上传测试包，不在 pilot 流水线里创建或复用 GitHub Release。
-6. Windows 构建 runner 固定为 `windows-2022`，并在打包前显式校验 `VBSCRIPT` 可用。
+6. Windows 构建 runner 固定为 `windows-2022`，并在打包前对 `VBSCRIPT` 做诊断与尽力启用，而不是把“查不到功能”视为失败。
 
 ### 5.2 Gate 脚本
 
@@ -350,7 +363,22 @@ flowchart LR
   1. 如果 runner 无法启用 `VBSCRIPT`，失败信息会更明确。
   2. 若未来 Windows 镜像进一步收紧 FoD 行为，仍能快速发现。
 
-### ADR-31-08: 公开配置与敏感配置继续分离到 GitHub Variables / Secrets
+### ADR-31-08: `VBSCRIPT` 预检查降级为诊断与尽力启用
+
+- 决策: `VBSCRIPT` 步骤不再因 runner 未暴露 optional feature/capability 而直接失败；若可枚举到该能力，则记录状态并尝试启用。
+- 备选:
+  1. 继续把 `VBSCRIPT` 当成硬性前置校验
+  2. 完全移除这一步，不保留任何诊断信息
+- 结论: 保留步骤，但改为诊断型。
+- 原因:
+  1. Tauri 官方文档的表述是“遇到 `failed to run light.exe` 时，可能需要启用 `VBSCRIPT`”，不是所有 Windows runner 都必须先枚举到该功能。
+  2. 第五轮验证已确认 `windows-2022` runner 不暴露该功能，但这本身不能证明 MSI 一定无法构建。
+  3. 诊断型步骤既能保留排障信息，又不会制造新的假阳性失败。
+- 后果:
+  1. 如果未来切回 `windows-2025` 或其他镜像，仍能看到 `VBSCRIPT` 状态日志。
+  2. Windows 构建的真正成败将重新回到 `tauri build` / WiX 阶段判断。
+
+### ADR-31-09: 公开配置与敏感配置继续分离到 GitHub Variables / Secrets
 
 - 决策: 继续使用 `vars` 管理公开配置，`secrets` 管理敏感值。
 - 备选:
@@ -428,7 +456,7 @@ flowchart LR
 5. 工作流仍然能读取许可证网关相关 `vars` / `secrets`。
 6. PowerShell 专用证书导入步骤未被 bash 默认壳破坏。
 7. `publish-pilot-artifacts` 可重复运行而不会因 GitHub Release 同名资产冲突失败。
-8. Windows MSI 构建环境会在进入 `tauri build` 前显式验证 `VBSCRIPT`。
+8. Windows MSI 构建环境会在进入 `tauri build` 前输出 `VBSCRIPT` 诊断信息，并在可用时尝试启用。
 9. 发布 workflow 不再依赖 `windows-latest` 的隐式系统升级。
 
 ## 12. Source References With Dates

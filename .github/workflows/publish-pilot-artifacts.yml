@@ -70,7 +70,7 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install chromium
 
-      - name: Ensure VBSCRIPT for MSI bundling
+      - name: Diagnose VBSCRIPT for MSI bundling
         if: startsWith(matrix.platform, 'windows-')
         shell: pwsh
         run: |
@@ -78,32 +78,45 @@ jobs:
           if ($null -ne $feature) {
             Write-Host "VBSCRIPT optional feature state: $($feature.State)"
             if ($feature.State -ne 'Enabled') {
-              $result = Enable-WindowsOptionalFeature -Online -FeatureName VBSCRIPT -All -NoRestart
-              if ($result.RestartNeeded) {
-                Write-Warning "VBSCRIPT requested a restart after enablement."
+              try {
+                $result = Enable-WindowsOptionalFeature -Online -FeatureName VBSCRIPT -All -NoRestart -ErrorAction Stop
+                if ($result.RestartNeeded) {
+                  Write-Warning "VBSCRIPT requested a restart after enablement."
+                }
+              } catch {
+                Write-Warning "Failed to enable VBSCRIPT optional feature automatically: $($_.Exception.Message)"
               }
             }
             $verified = Get-WindowsOptionalFeature -Online -FeatureName VBSCRIPT
-            if ($verified.State -ne 'Enabled') {
-              throw "VBSCRIPT optional feature is not enabled."
+            if ($verified.State -eq 'Enabled') {
+              Write-Host "VBSCRIPT optional feature is enabled."
+              exit 0
             }
+            Write-Warning "VBSCRIPT optional feature exists but is not enabled. MSI bundling may still fail with light.exe."
             exit 0
           }
 
           $capability = Get-WindowsCapability -Online | Where-Object { $_.Name -like 'VBSCRIPT*' } | Select-Object -First 1
           if ($null -eq $capability) {
-            throw "Unable to find a VBSCRIPT optional feature or capability on this runner."
+            Write-Host "No VBSCRIPT optional feature or capability is exposed on this runner. Continuing."
+            exit 0
           }
 
           Write-Host "VBSCRIPT capability state: $($capability.State) ($($capability.Name))"
           if ($capability.State -ne 'Installed') {
-            Add-WindowsCapability -Online -Name $capability.Name | Out-Host
+            try {
+              Add-WindowsCapability -Online -Name $capability.Name -ErrorAction Stop | Out-Host
+            } catch {
+              Write-Warning "Failed to install VBSCRIPT capability automatically: $($_.Exception.Message)"
+            }
           }
 
           $verifiedCapability = Get-WindowsCapability -Online | Where-Object { $_.Name -eq $capability.Name } | Select-Object -First 1
-          if ($null -eq $verifiedCapability -or $verifiedCapability.State -ne 'Installed') {
-            throw "VBSCRIPT capability is not installed."
+          if ($null -ne $verifiedCapability -and $verifiedCapability.State -eq 'Installed') {
+            Write-Host "VBSCRIPT capability is installed."
+            exit 0
           }
+          Write-Warning "VBSCRIPT capability exists but is not installed. MSI bundling may still fail with light.exe."
 
       - name: Pilot public-sale gate
         run: pnpm run release:github:ready
