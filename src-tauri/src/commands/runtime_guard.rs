@@ -37,6 +37,8 @@ const APPROVAL_GRANT_TTL_SECS: i64 = 300;
 const APPROVAL_TICKET_TTL_SECS: i64 = 300;
 const MAX_HASH_BYTES: usize = 512 * 1024;
 const MAX_HASH_FILES: usize = 64;
+const MIN_RUNTIME_GUARD_POLL_INTERVAL_SECS: u64 = 2;
+const ACTIVE_SESSION_POLL_INTERVAL_SECS: u64 = 2;
 
 #[derive(Default)]
 struct ServerRiskAssessment {
@@ -2370,11 +2372,14 @@ fn remote_hosts_from_session(session: &RuntimeGuardSession) -> Vec<String> {
 }
 
 fn commandline_signals_high_risk_file_delete(commandline: &str) -> bool {
+    let commandline = commandline.to_lowercase();
     contains_any_pattern(
-        commandline,
+        &commandline,
         &[
             " rm ",
             "rm -",
+            "rm -rf",
+            "rm -fr",
             "unlink",
             "rmdir",
             "delete-file",
@@ -2383,6 +2388,14 @@ fn commandline_signals_high_risk_file_delete(commandline: &str) -> bool {
             "--delete",
             "trash",
             "recycle-bin",
+            "del /f",
+            "del /q",
+            " erase ",
+            "remove-item",
+            "rd /s /q",
+            "shutil.rmtree",
+            "os.remove(",
+            "os.unlink(",
         ],
     )
 }
@@ -3014,6 +3027,20 @@ fn stop_session_for_approval(
         session.network_connections.clear();
     }
     killed
+}
+
+fn has_running_sessions(service: &RuntimeGuardService) -> bool {
+    let sessions = lock(&service.inner.sessions);
+    sessions.iter().any(|session| session.status == "running")
+}
+
+fn effective_poll_interval_secs(policy_interval_secs: u64, running_sessions: bool) -> u64 {
+    let baseline = policy_interval_secs.max(MIN_RUNTIME_GUARD_POLL_INTERVAL_SECS);
+    if running_sessions {
+        baseline.min(ACTIVE_SESSION_POLL_INTERVAL_SECS)
+    } else {
+        baseline
+    }
 }
 
 fn existing_file(root: &Path, candidates: &[&str]) -> Option<PathBuf> {
@@ -3746,7 +3773,9 @@ fn start_poll_loop<R: Runtime>(app: AppHandle<R>, service: RuntimeGuardService) 
 
     tauri::async_runtime::spawn(async move {
         loop {
-            let interval_secs = load_policy().poll_interval_secs.max(2);
+            let policy_interval_secs = load_policy().poll_interval_secs;
+            let interval_secs =
+                effective_poll_interval_secs(policy_interval_secs, has_running_sessions(&service));
             if let Err(error) = poll_once(&app, &service) {
                 eprintln!("[AgentShield] runtime guard poll failed: {error}");
             }
@@ -4565,6 +4594,27 @@ mod tests {
         assert_eq!(candidate.action.request_kind, "file_delete");
         assert!(candidate.action.is_destructive);
         assert!(!candidate.action.action_targets.is_empty());
+    }
+
+    #[test]
+    fn file_delete_signals_include_windows_and_powershell_patterns() {
+        assert!(commandline_signals_high_risk_file_delete(
+            "powershell -command Remove-Item -Recurse C:\\temp",
+        ));
+        assert!(commandline_signals_high_risk_file_delete(
+            "cmd.exe /c del /f /q C:\\temp\\*",
+        ));
+        assert!(commandline_signals_high_risk_file_delete(
+            "cmd /c rd /s /q C:\\temp",
+        ));
+    }
+
+    #[test]
+    fn effective_poll_interval_accelerates_when_sessions_running() {
+        assert_eq!(effective_poll_interval_secs(5, false), 5);
+        assert_eq!(effective_poll_interval_secs(5, true), 2);
+        assert_eq!(effective_poll_interval_secs(1, false), 2);
+        assert_eq!(effective_poll_interval_secs(1, true), 2);
     }
 
     #[test]
