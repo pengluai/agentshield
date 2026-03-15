@@ -157,6 +157,27 @@
 4. `actions/checkout`、`actions/setup-node`、`actions/upload-artifact` 的官方资料都已提供 `v6` 用法，其中 `checkout@v6` 与 `upload-artifact@v6` 明确切到 `node24`。
 5. 因此下一轮修复应把这些官方 action 升级到 `v6`，主动完成 Node 24 兼容迁移。
 
+2026-03-15 第九轮验证运行：
+
+- Run: `23104076234`
+- URL: <https://github.com/pengluai/agentshield/actions/runs/23104076234>
+
+新增确认到的事实：
+
+1. 将 `actions/checkout`、`actions/setup-node`、`actions/upload-artifact` 升级到 `v6` 后，`publish-pilot-artifacts` 仍可在 `macos-latest` 与 `windows-2022` 双端成功。
+2. 新 run 未再出现 GitHub 的 `Node.js 20` 弃用注释，说明本仓库已完成这部分兼容迁移。
+
+2026-03-15 第十轮验证运行：
+
+- Run: `publish-signed-release` 手动 dispatch 解析失败
+
+新增确认到的事实：
+
+1. GitHub 在 workflow dispatch 前端解析阶段直接拒绝了 `publish-signed-release.yml`。
+2. 失败原因是 step `if:` 表达式直接引用了 `secrets.WINDOWS_CERTIFICATE` / `secrets.APPLE_CERTIFICATE` 等 secret 上下文。
+3. GitHub 官方文档明确说明 `secrets` 不能直接用于 `if:` 条件；正确做法是先映射到 job-level `env`，再用 `env.*` 判断。
+4. 因此下一轮修复应把这些证书类 secrets 提升到 job env，并将 step 条件改写为 `env.* != ''`。
+
 ### 3.3 约束
 
 1. 代码与命令必须优先遵守官方文档，不靠经验猜测。
@@ -204,6 +225,7 @@ flowchart LR
 6. Windows 构建 runner 固定为 `windows-2022`，并在发布流水线中改为只生成 `NSIS` 安装器，绕开 `MSI/WiX` 的不稳定路径。
 7. `tauri-action` 固定到已发布的 `v0.6.2`，避免 workflow 引用不存在的 tag。
 8. `actions/checkout`、`actions/setup-node`、`actions/upload-artifact` 升级到官方 `v6`，对齐 Node 24 运行时。
+9. 任何需要按 secret 是否存在来决定执行的步骤，必须先把 secret 映射到 job env，再在 `if:` 中使用 `env.*`。
 
 ### 5.2 Gate 脚本
 
@@ -479,6 +501,21 @@ flowchart LR
   1. GitHub Actions 的 Node 20 弃用注释应在后续 run 中消失或显著减少。
   2. 若未来接入 self-hosted runner，需要同时核对 runner 版本是否满足 `2.327.1` 最低要求。
 
+### ADR-31-13: GitHub Actions 中禁止在 `if:` 直接引用 `secrets.*`
+
+- 决策: `publish-signed-release.yml` 中所有按 secret 是否存在来决定执行的步骤，统一改为 `job env + if: env.*` 模式。
+- 备选:
+  1. 保持 `if: secrets.* != ''`
+  2. 移除条件判断，让导入证书步骤总是执行
+- 结论: 使用 job-level `env` 作为条件判断来源。
+- 原因:
+  1. GitHub 官方文档明确说明 `secrets` 不能直接在 `if:` 条件中引用。
+  2. 当前失败发生在 workflow dispatch 解析阶段，属于结构性错误，必须在 YAML 层修复。
+  3. `env.*` 条件判断是 GitHub 官方给出的直接替代方案。
+- 后果:
+  1. workflow 将恢复可 dispatch 状态。
+  2. 证书缺失时会以正常 gate / step skip 形式暴露，而不是在解析阶段失败。
+
 ## 9. Risk Register And Mitigation
 
 | 风险 | 概率 | 影响 | 分数 | 缓解措施 | Owner |
@@ -489,6 +526,7 @@ flowchart LR
 | 变量/密钥配置错位导致运行时失败 | 3 | 4 | 12 | 继续通过 `public-sale-gate` 和 README 清单校验 | 工程 |
 | 正式签名步骤被 bash 默认壳影响 | 2 | 4 | 8 | 对 PowerShell 专用步骤显式 `shell: pwsh`，对证书导入单独验证 | 工程 |
 | GitHub Actions 在 2026-06-02 后默认切到 Node 24 导致旧 action 失效 | 4 | 3 | 12 | 提前升级 `checkout/setup-node/upload-artifact` 到 `v6` 并重跑验证 | 工程 |
+| 正式发布 workflow 因 `if: secrets.*` 语法限制无法 dispatch | 4 | 4 | 16 | 改为 job env 承载 secrets，再以 `env.*` 条件判断 | 工程 |
 
 ## 10. Delivery Roadmap And Milestones
 
@@ -548,6 +586,7 @@ flowchart LR
 9. pilot workflow 使用 GitHub 官方 `actions/upload-artifact@v6` 上传构建产物。
 10. 发布 workflow 不再依赖 `windows-latest` 的隐式系统升级。
 11. 发布 workflow 不再使用 GitHub 官方 `Node.js 20` 时代的 action 主版本。
+12. `publish-signed-release` 可以被 GitHub 正常解析和 dispatch，不再被 `if: secrets.*` 阻断。
 
 ## 12. Source References With Dates
 
@@ -598,3 +637,5 @@ flowchart LR
     <https://github.com/actions/setup-node>
 23. actions/upload-artifact 官方 README，`v6` 切到 Node 24 的说明，检索日期 2026-03-15
     <https://github.com/actions/upload-artifact>
+24. GitHub Actions secrets 使用文档，关于 secrets 不能直接用于 `if:` 且应改用 job env 的说明，检索日期 2026-03-15
+    <https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions>
