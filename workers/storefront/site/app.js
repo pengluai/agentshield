@@ -7,8 +7,14 @@ const mobileMenu = document.querySelector('.mobile-menu');
 const faqTriggers = Array.from(document.querySelectorAll('.faq-trigger'));
 const mobileLinks = Array.from(document.querySelectorAll('.mobile-link, .mobile-cta'));
 
+function detectBrowserLang() {
+  var navLang = (navigator.language || navigator.userLanguage || '').toLowerCase();
+  return navLang.startsWith('zh') ? 'zh' : 'en';
+}
+
 function setLang(lang) {
   body.dataset.lang = lang;
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
   tabs.forEach((tab) => {
     tab.classList.toggle('active', tab.dataset.langSwitch === lang);
   });
@@ -30,8 +36,8 @@ function toggleMobileMenu(forceOpen) {
   mobileToggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
 }
 
-const savedLang = localStorage.getItem('agentshield-site-lang');
-setLang(savedLang === 'en' ? 'en' : 'zh');
+var savedLang = localStorage.getItem('agentshield-site-lang');
+setLang(savedLang || detectBrowserLang());
 syncTopbar();
 
 window.addEventListener('scroll', syncTopbar, { passive: true });
