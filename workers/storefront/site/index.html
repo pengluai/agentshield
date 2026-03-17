@@ -64,17 +64,17 @@
           <div class="container hero-content">
             <div class="hero-copy centered">
               <div class="hero-badge">
-                <span class="lang-block zh">🛡️ 本地 AI 工具安全面板</span>
-                <span class="lang-block en">🛡️ Security visibility for local AI tools</span>
+                <span class="lang-block zh">免费本地扫描 · 支持 16+ AI 工具</span>
+                <span class="lang-block en">Free local scanner for AI dev tools</span>
               </div>
 
               <div class="lang-block zh">
-                <h1 class="hero-title hero-title-zh">你的 AI 工具，正在泄露你的秘密</h1>
-                <p class="hero-subheadline">检查 Cursor、Claude Desktop、Windsurf 等本地 AI 工具的配置风险、密钥暴露和高风险扩展，在正式接入工作流前先把安全看清楚。</p>
+                <h1 class="hero-title hero-title-zh">你装的 AI 工具，谁在读你的密钥？</h1>
+                <p class="hero-subheadline">AgentShield 自动发现 Cursor、Claude Code、Windsurf 等 16+ 工具，扫描密钥泄露、权限过大、高危 MCP 配置。纯本地运行，数据不出设备。</p>
               </div>
               <div class="lang-block en">
-                <h1 class="hero-title hero-title-en">Your AI Tools May Be Leaking Your Secrets</h1>
-                <p class="hero-subheadline">Review config risk, exposed secrets, and high-risk extensions across Cursor, Claude Desktop, Windsurf, and other local AI tools before you trust them in daily work.</p>
+                <h1 class="hero-title hero-title-en">See What Your AI Tools Can Access</h1>
+                <p class="hero-subheadline">AgentShield scans Cursor, Claude Code, Windsurf, and 13 more tools for exposed API keys, risky MCP servers, and permission overreach. Local only — nothing leaves your laptop.</p>
               </div>
 
               <div class="hero-actions centered-actions">
@@ -87,8 +87,8 @@
                   <span class="lang-block en">Windows</span>
                 </a>
                 <a class="hero-link" href="#features">
-                  <span class="lang-block zh">查看安全报告 →</span>
-                  <span class="lang-block en">View Security Report →</span>
+                  <span class="lang-block zh">无需注册 · 无广告 · 无弹窗</span>
+                  <span class="lang-block en">No account required · No data collection</span>
                 </a>
               </div>
             </div>
@@ -102,8 +102,8 @@
         <section class="problem-section section-alt">
           <div class="container">
             <div class="section-heading centered-heading">
-              <div class="lang-block zh"><h2>你不知道的 AI 安全隐患</h2></div>
-              <div class="lang-block en"><h2>Hidden Risks in Your AI Workflow</h2></div>
+              <div class="lang-block zh"><h2>这些事，已经发生了</h2></div>
+              <div class="lang-block en"><h2>This Already Happened</h2></div>
             </div>
 
             <div class="problem-grid">
@@ -111,14 +111,14 @@
                 <div class="problem-icon danger"></div>
                 <div class="problem-large-copy">
                   <div class="lang-block zh">
-                    <div class="problem-stat">高频</div>
-                    <h3>密钥裸奔</h3>
-                    <p>问题通常来自明文配置、扩展权限过大，或长期未清理的本地缓存</p>
+                    <div class="problem-stat">43%</div>
+                    <h3>MCP 服务器存在注入漏洞</h3>
+                    <p>Equixly 2025 安全研究：43% 的 MCP 实现存在命令注入漏洞，22% 存在任意文件读取</p>
                   </div>
                   <div class="lang-block en">
-                    <div class="problem-stat">Common</div>
-                    <h3>Exposed API Keys</h3>
-                    <p>Problems usually come from plaintext configs, over-permissioned extensions, and old local caches</p>
+                    <div class="problem-stat">43%</div>
+                    <h3>of MCP servers have injection flaws</h3>
+                    <p>Equixly 2025 research: 43% of MCP implementations have command injection vulnerabilities, 22% have arbitrary file read</p>
                   </div>
                 </div>
               </article>
@@ -126,36 +126,36 @@
               <article class="problem-card bento-card">
                 <div class="problem-icon accent"></div>
                 <div class="lang-block zh">
-                  <h3>恶意扩展</h3>
-                  <p>MCP扩展可以读取你的整个文件系统，无需任何权限提示</p>
+                  <h3>一个泄露的 Key，$67,000 账单</h3>
+                  <p>某开发者 OpenAI Key 在公开仓库暴露 11 天，账单从 $400 暴涨到 $67,000</p>
                 </div>
                 <div class="lang-block en">
-                  <h3>Malicious Extensions</h3>
-                  <p>MCP extensions can read your entire filesystem without permission prompts</p>
+                  <h3>One leaked key. $67,000 in charges.</h3>
+                  <p>A developer's OpenAI key sat in a public repo for 11 days. The bill went from $400 to $67,000</p>
                 </div>
               </article>
 
               <article class="problem-card bento-card">
                 <div class="problem-icon warning"></div>
                 <div class="lang-block zh">
-                  <h3>提示词注入</h3>
-                  <p>攻击者可通过精心构造的提示词窃取你的对话和代码</p>
+                  <h3>Cursor 代理被劫持</h3>
+                  <p>CVE-2025-54135 — Slack 消息中一行提示词即可触发 Cursor 远程代码执行</p>
                 </div>
                 <div class="lang-block en">
-                  <h3>Prompt Injection</h3>
-                  <p>Attackers can steal your conversations and code through crafted prompts</p>
+                  <h3>Cursor agent hijacked</h3>
+                  <p>CVE-2025-54135 — a single prompt injection line in a Slack message triggered remote code execution</p>
                 </div>
               </article>
 
               <article class="problem-card bento-card">
                 <div class="problem-icon primary"></div>
                 <div class="lang-block zh">
-                  <h3>数据外泄</h3>
-                  <p>你的代码和对话可能正在被发送到未知的第三方服务器</p>
+                  <h3>95 万开发者受影响</h3>
+                  <p>Amazon Q VS Code 扩展被攻陷，可删除用户本地文件并破坏 AWS 基础设施</p>
                 </div>
                 <div class="lang-block en">
-                  <h3>Data Exfiltration</h3>
-                  <p>Your code and conversations may be sent to unknown third-party servers</p>
+                  <h3>950K developers affected</h3>
+                  <p>Compromised Amazon Q extension could wipe local files and disrupt AWS infrastructure</p>
                 </div>
               </article>
             </div>
@@ -167,8 +167,8 @@
           <div class="feature-backdrop right"></div>
           <div class="container">
             <div class="section-heading centered-heading">
-              <div class="lang-block zh"><h2>一键守护，全面防护</h2></div>
-              <div class="lang-block en"><h2>One-Click Protection, Complete Coverage</h2></div>
+              <div class="lang-block zh"><h2>看清风险，一键搞定</h2></div>
+              <div class="lang-block en"><h2>See the Risks. Fix What Matters.</h2></div>
             </div>
 
             <div class="feature-stack">
@@ -176,12 +176,12 @@
                 <div class="feature-text">
                   <div class="feature-chip"></div>
                   <div class="lang-block zh">
-                    <h3>安全扫描</h3>
-                    <p>深度扫描你的AI工具生态 — 自动检测Cursor、Claude Desktop、Windsurf等工具的配置漏洞、密钥泄露、权限过度开放</p>
+                    <h3>一键安全扫描</h3>
+                    <p>一分钟内扫描 16+ AI 工具，自动发现明文密钥、高危扩展、权限过大的配置文件</p>
                   </div>
                   <div class="lang-block en">
-                    <h3>Security Scan</h3>
-                    <p>Deep scan your AI tool ecosystem — Automatically detect config vulnerabilities, key leaks, and excessive permissions in Cursor, Claude Desktop, Windsurf &amp; more</p>
+                    <h3>One-Click Security Scan</h3>
+                    <p>Scan 16+ AI tools in under a minute. Find exposed keys, risky extensions, and permission problems in configs you didn't know existed</p>
                   </div>
                 </div>
                 <div class="feature-visual bento-card">
@@ -193,12 +193,12 @@
                 <div class="feature-text">
                   <div class="feature-chip"></div>
                   <div class="lang-block zh">
-                    <h3>OpenClaw 安装管理</h3>
-                    <p>安全的MCP扩展商店 — 经过安全审计的扩展，一键安装，自动配置，比手动安装安全10倍</p>
+                    <h3>已安装管理</h3>
+                    <p>可视化查看所有 AI 工具中的 MCP 和 Skill — 谁装了什么、有什么权限、信任等级，一目了然</p>
                   </div>
                   <div class="lang-block en">
-                    <h3>OpenClaw Manager</h3>
-                    <p>Secure MCP Extension Store — Security-audited extensions with one-click install and auto-configuration</p>
+                    <h3>Installed Management</h3>
+                    <p>See every MCP server and Skill across all your AI tools in one place. What's installed, what it can access, and whether you should trust it</p>
                   </div>
                 </div>
                 <div class="feature-visual bento-card">
@@ -211,11 +211,11 @@
                   <div class="feature-chip"></div>
                   <div class="lang-block zh">
                     <h3>密钥保险库</h3>
-                    <p>军事级密钥加密 — 告别明文存储，AES-256加密你的所有API密钥，防止泄露</p>
+                    <p>把暴露的密钥从明文配置转移到系统钥匙串 — macOS 钥匙串 / Windows 凭据管理器，告别明文存储</p>
                   </div>
                   <div class="lang-block en">
                     <h3>Key Vault</h3>
-                    <p>Military-Grade Key Encryption — Stop storing keys in plaintext. AES-256 encryption for all your API keys</p>
+                    <p>Move exposed keys from plaintext configs to your system keychain. macOS Keychain or Windows Credential Manager — not another config file</p>
                   </div>
                 </div>
                 <div class="feature-visual bento-card">
@@ -227,12 +227,12 @@
                 <div class="feature-text">
                   <div class="feature-chip"></div>
                   <div class="lang-block zh">
-                    <h3>实时防护</h3>
-                    <p>7×24小时监控 — 实时拦截可疑行为，阻止未授权的数据外传</p>
+                    <h3>实时监控</h3>
+                    <p>AI 工具配置文件变更时即时提醒 — 新装扩展、权限修改、配置更新，第一时间知道</p>
                   </div>
                   <div class="lang-block en">
-                    <h3>Real-time Guard</h3>
-                    <p>24/7 Monitoring — Real-time interception of suspicious behavior, blocking unauthorized data exfiltration</p>
+                    <h3>Real-Time Monitoring</h3>
+                    <p>Get notified when AI tool configs change. New extension installed, permission modified, or config updated — you'll know immediately</p>
                   </div>
                 </div>
                 <div class="feature-visual bento-card">
@@ -246,56 +246,57 @@
         <section class="social-section section-alt">
           <div class="container">
             <div class="section-heading centered-heading">
-              <div class="lang-block zh"><h2>适合这些本地 AI 工作流</h2></div>
-              <div class="lang-block en"><h2>Built for these local AI workflows</h2></div>
+              <div class="lang-block zh"><h2>给每天用 AI 工具的开发者</h2></div>
+              <div class="lang-block en"><h2>Built for developers who use AI daily</h2></div>
             </div>
 
             <div class="testimonial-grid">
               <article class="testimonial-card bento-card">
                 <div class="lang-block zh">
                   <div class="trust-kicker">01</div>
-                  <h3>独立开发</h3>
-                  <p>想先看清配置风险、密钥暴露和扩展权限，再决定要不要升级。</p>
+                  <h3>我装了 5 个 AI 工具，哪个在明文存我的 Key？</h3>
+                  <p>同时使用多个 AI 编程助手的独立开发者，需要一次性看清所有工具的安全状况。</p>
                 </div>
                 <div class="lang-block en">
                   <div class="trust-kicker">01</div>
-                  <h3>Indie builders</h3>
-                  <p>See config risk, exposed secrets, and extension permissions before deciding whether to upgrade.</p>
+                  <h3>"I use 5 AI tools. Which one has my Stripe key?"</h3>
+                  <p>Solo developers running multiple AI assistants who need a single view of all tool security.</p>
                 </div>
               </article>
 
               <article class="testimonial-card bento-card">
                 <div class="lang-block zh">
                   <div class="trust-kicker">02</div>
-                  <h3>团队试点</h3>
-                  <p>在把 Cursor、Claude Desktop、Windsurf 带进团队前，先做一次统一安全自查。</p>
+                  <h3>团队接入 AI 工具前，先做安全基线</h3>
+                  <p>在把 Cursor、Claude Code、Windsurf 带进团队工作流前，先做一次统一安全检查。</p>
                 </div>
                 <div class="lang-block en">
                   <div class="trust-kicker">02</div>
-                  <h3>Team pilots</h3>
-                  <p>Run one consistent safety check before rolling Cursor, Claude Desktop, or Windsurf into a team workflow.</p>
+                  <h3>"Before we onboard, we need a security baseline."</h3>
+                  <p>Teams evaluating AI coding tools for production use who need consistent security checks.</p>
                 </div>
               </article>
 
               <article class="testimonial-card bento-card">
                 <div class="lang-block zh">
                   <div class="trust-kicker">03</div>
-                  <h3>安全复核</h3>
-                  <p>需要一个清晰面板，知道哪些能力可免费体验，哪些高阶防护属于 Pro。</p>
+                  <h3>看看我电脑上有什么风险，清理掉</h3>
+                  <p>装了 AI 工具、想确认安全状况的普通用户，一键扫描就能看清全貌。</p>
                 </div>
                 <div class="lang-block en">
                   <div class="trust-kicker">03</div>
-                  <h3>Security review</h3>
-                  <p>Get a clear view of what is available in free scanning and what advanced protections are unlocked in Pro.</p>
+                  <h3>"I just want to see what's on my machine."</h3>
+                  <p>Anyone who installed AI tools and wants peace of mind with a quick one-click scan.</p>
                 </div>
               </article>
             </div>
 
             <div class="tool-row">
               <div class="tool-pill"><span>▶</span><strong>Cursor</strong></div>
-              <div class="tool-pill"><span>◆</span><strong>Claude Desktop</strong></div>
+              <div class="tool-pill"><span>◆</span><strong>Claude Code</strong></div>
               <div class="tool-pill"><span>◎</span><strong>Windsurf</strong></div>
               <div class="tool-pill"><span>◇</span><strong>VS Code + Copilot</strong></div>
+              <div class="tool-pill"><span>▷</span><strong>+12 more</strong></div>
             </div>
           </div>
         </section>
@@ -304,8 +305,8 @@
           <div class="hero-backdrop hero-backdrop-center"></div>
           <div class="container">
             <div class="section-heading centered-heading">
-              <div class="lang-block zh"><h2>选择你的防护等级</h2></div>
-              <div class="lang-block en"><h2>Choose Your Protection Level</h2></div>
+              <div class="lang-block zh"><h2>免费开始扫描</h2></div>
+              <div class="lang-block en"><h2>Start Scanning for Free</h2></div>
             </div>
             <p class="pricing-note" id="review-status">
               <span class="lang-block zh">当前商家收款审核中。价格和方案已公开，支付与激活码购买会在 Creem 审核通过后开放。</span>
@@ -317,10 +318,12 @@
                 <div class="lang-block zh">
                   <h3>免费版</h3>
                   <div class="price-row"><strong>¥0</strong></div>
+                  <p class="plan-desc">完整扫描 · 完整报告 · 永久免费</p>
                   <ul class="plan-list">
-                    <li>基础安全扫描</li>
-                    <li>社区MCP扩展</li>
-                    <li>手动密钥管理</li>
+                    <li>扫描全部 16+ AI 工具</li>
+                    <li>查看所有检测到的风险</li>
+                    <li>手动修复（带终端命令指引）</li>
+                    <li>密钥保险库（10 个密钥）</li>
                   </ul>
                   <div class="plan-button-stack">
                     <a class="btn-secondary full-width" href="/download/macos">免费下载</a>
@@ -330,10 +333,12 @@
                 <div class="lang-block en">
                   <h3>Free</h3>
                   <div class="price-row"><strong>$0</strong></div>
+                  <p class="plan-desc">Full scan · Full results · No limits</p>
                   <ul class="plan-list">
-                    <li>Basic security scan</li>
-                    <li>Community extensions</li>
-                    <li>Manual key management</li>
+                    <li>Scan all 16+ AI tools</li>
+                    <li>View all detected risks</li>
+                    <li>Manual fix with guided commands</li>
+                    <li>Key vault (10 keys)</li>
                   </ul>
                   <div class="plan-button-stack">
                     <a class="btn-secondary full-width" href="/download/macos">Download Free</a>
@@ -346,16 +351,16 @@
                 <div class="plan-badge"><span class="lang-block zh">推荐</span><span class="lang-block en">Best Value</span></div>
                 <div class="pricing-card-inner">
                   <div class="lang-block zh">
-                    <h3>Pro年付</h3>
+                    <h3>Pro 年付</h3>
                     <div class="price-row"><strong>¥198</strong><span>/年</span></div>
-                    <p class="plan-desc">省43%，相当于¥16.5/月</p>
+                    <p class="plan-desc">同样的扫描，更少的手动操作</p>
                     <ul class="plan-list">
-                      <li>深度安全扫描</li>
-                      <li>一键修复</li>
-                      <li>密钥保险库</li>
-                      <li>实时防护</li>
-                      <li>优先扩展商店</li>
+                      <li>免费版全部功能</li>
+                      <li>一键批量修复</li>
+                      <li>AI 修复建议</li>
+                      <li>无限密钥存储</li>
                       <li>规则热更新</li>
+                      <li>优先扩展商店</li>
                     </ul>
                     <div class="plan-button-stack">
                       <button class="btn-gradient full-width is-disabled" type="button" disabled>支付审核中</button>
@@ -365,14 +370,14 @@
                   <div class="lang-block en">
                     <h3>Pro Yearly</h3>
                     <div class="price-row"><strong>$39.9</strong><span>/year</span></div>
-                    <p class="plan-desc">Save 32%, just $3.3/mo</p>
+                    <p class="plan-desc">Same scan. Less manual work.</p>
                     <ul class="plan-list">
-                      <li>Deep security scan</li>
-                      <li>One-click fix</li>
-                      <li>Key vault</li>
-                      <li>Real-time guard</li>
-                      <li>Priority extension store</li>
+                      <li>Everything in Free</li>
+                      <li>One-click batch fix</li>
+                      <li>AI-guided remediation</li>
+                      <li>Unlimited key vault</li>
                       <li>Live rule updates</li>
+                      <li>Priority extension store</li>
                     </ul>
                     <div class="plan-button-stack">
                       <button class="btn-gradient full-width is-disabled" type="button" disabled>Checkout Pending Review</button>
@@ -384,16 +389,16 @@
 
               <article class="pricing-card bento-card">
                 <div class="lang-block zh">
-                  <h3>Pro终身</h3>
+                  <h3>Pro 终身</h3>
                   <div class="price-row"><strong>¥398</strong><span>一次买断</span></div>
-                  <p class="plan-desc">包含Pro所有功能 + 终身免费更新</p>
+                  <p class="plan-desc">全部 Pro 功能，终身免费更新</p>
                     <ul class="plan-list">
-                      <li>深度安全扫描</li>
-                      <li>一键修复</li>
-                      <li>密钥保险库</li>
-                      <li>实时防护</li>
-                      <li>优先扩展商店</li>
+                      <li>免费版全部功能</li>
+                      <li>一键批量修复</li>
+                      <li>AI 修复建议</li>
+                      <li>无限密钥存储</li>
                       <li>规则热更新</li>
+                      <li>优先扩展商店</li>
                     </ul>
                     <div class="plan-button-stack">
                       <button class="btn-secondary full-width is-disabled" type="button" disabled>一次买断（待开放）</button>
@@ -403,14 +408,14 @@
                   <div class="lang-block en">
                     <h3>Pro Lifetime</h3>
                     <div class="price-row"><strong>$79.9</strong><span>one-time</span></div>
-                    <p class="plan-desc">All Pro features + lifetime free updates</p>
+                    <p class="plan-desc">All Pro features. Lifetime updates.</p>
                     <ul class="plan-list">
-                      <li>Deep security scan</li>
-                      <li>One-click fix</li>
-                      <li>Key vault</li>
-                      <li>Real-time guard</li>
-                      <li>Priority extension store</li>
+                      <li>Everything in Free</li>
+                      <li>One-click batch fix</li>
+                      <li>AI-guided remediation</li>
+                      <li>Unlimited key vault</li>
                       <li>Live rule updates</li>
+                      <li>Priority extension store</li>
                     </ul>
                     <div class="plan-button-stack">
                       <button class="btn-secondary full-width is-disabled" type="button" disabled>One-time checkout pending</button>
@@ -444,7 +449,7 @@
             <div class="faq-list">
               <article class="faq-item bento-card">
                 <button class="faq-trigger" type="button" aria-expanded="false"><span class="lang-block zh">AgentShield 支持哪些 AI 工具？</span><span class="lang-block en">What AI tools does AgentShield support?</span></button>
-                <div class="faq-content"><div class="lang-block zh"><p>目前支持 Cursor、Claude Desktop、Windsurf、VS Code + Copilot 等主流 AI 编程工具。我们会持续增加对更多工具的支持。</p></div><div class="lang-block en"><p>Currently supports Cursor, Claude Desktop, Windsurf, VS Code + Copilot, and other major AI coding tools. We continuously add support for more tools.</p></div></div>
+                <div class="faq-content"><div class="lang-block zh"><p>支持 Cursor、Claude Code、Claude Desktop、VS Code/Cline、Windsurf、Zed、Trae、Gemini CLI、Codex CLI、Continue、Aider、OpenClaw、Kiro、CodeBuddy、Qwen Code、Antigravity 等 16+ 工具，全部自动发现，无需手动配置。</p></div><div class="lang-block en"><p>Cursor, Claude Code, Claude Desktop, VS Code/Cline, Windsurf, Zed, Trae, Gemini CLI, Codex CLI, Continue, Aider, OpenClaw, Kiro, CodeBuddy, Qwen Code, Antigravity — 16+ tools detected automatically. No manual configuration needed.</p></div></div>
               </article>
 
               <article class="faq-item bento-card">
@@ -454,7 +459,7 @@
 
               <article class="faq-item bento-card">
                 <button class="faq-trigger" type="button" aria-expanded="false"><span class="lang-block zh">免费版和 Pro 版有什么区别？</span><span class="lang-block en">What's the difference between Free and Pro?</span></button>
-                <div class="faq-content"><div class="lang-block zh"><p>免费版提供基础安全扫描功能。Pro 版增加了深度扫描、一键修复、密钥保险库、实时防护、优先扩展商店访问和规则热更新等高级功能。</p></div><div class="lang-block en"><p>Free provides basic security scanning. Pro adds deep scanning, one-click fix, key vault, real-time guard, priority extension store access, and live rule updates.</p></div></div>
+                <div class="faq-content"><div class="lang-block zh"><p>免费版提供完整的安全扫描和风险报告，可手动修复。Pro 版增加一键批量修复、AI 修复建议、无限密钥存储和规则热更新，帮你节省时间。免费版就够用，Pro 版省时间。</p></div><div class="lang-block en"><p>Free gives you the full scan and all results — you can fix issues manually with guided commands. Pro saves time with one-click batch fixes, AI-guided remediation, unlimited key vault, and live rule updates.</p></div></div>
               </article>
 
               <article class="faq-item bento-card">
@@ -479,12 +484,12 @@
           <div class="cta-gradient"></div>
           <div class="container cta-inner">
             <div class="lang-block zh">
-              <h2>别让你的AI工具成为安全漏洞</h2>
-              <p>每多等一天，你的密钥就多暴露一天</p>
+              <h2>一分钟扫描，看清所有风险</h2>
+              <p>免费下载，纯本地运行，数据不出设备</p>
             </div>
             <div class="lang-block en">
-              <h2>Don't Let Your AI Tools Become Security Holes</h2>
-              <p>Every day you wait is another day your keys are exposed</p>
+              <h2>One Minute to See What's at Risk</h2>
+              <p>Free download. Local only. No data ever leaves your machine.</p>
             </div>
             <div class="final-actions">
               <a class="btn-gradient btn-large" href="/download/macos">

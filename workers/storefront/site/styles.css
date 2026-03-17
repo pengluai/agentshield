@@ -423,7 +423,7 @@ span {
 
 @media (min-width: 1180px) {
   .hero-copy h1 {
-    white-space: nowrap;
+    white-space: normal;
   }
 }
 
