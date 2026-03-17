@@ -118,6 +118,14 @@ export class LicenseGatewayDurableObject {
       return this.handleAdminRevokeLicense(request, decodeURIComponent(revokeMatch[1]));
     }
 
+    if (request.method === 'POST' && pathname === '/admin/licenses/generate') {
+      return this.handleAdminGenerateLicenses(request);
+    }
+
+    if (request.method === 'GET' && pathname === '/admin/licenses/stats') {
+      return this.handleAdminLicenseStats();
+    }
+
     return this.json(404, { error: 'Not Found' });
   }
 
@@ -729,6 +737,130 @@ export class LicenseGatewayDurableObject {
       license_id: target.license_id,
       status: target.status,
       revoked_at: target.revoked_at,
+    });
+  }
+
+  /**
+   * POST /admin/licenses/generate
+   * Batch generate activation codes for manual distribution.
+   *
+   * Body: {
+   *   count: number (1-100),
+   *   billing_cycle: "monthly" | "yearly" | "lifetime",
+   *   label: string (e.g., "blogger-promo-march", "gift-codes")
+   * }
+   *
+   * Returns: { ok, codes: [{ license_id, activation_code, billing_cycle, expires_at, label }] }
+   */
+  async handleAdminGenerateLicenses(request) {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return this.json(400, { error: 'Invalid JSON body' });
+    }
+
+    const count = Math.min(Math.max(parseInt(body.count, 10) || 1, 1), 100);
+    const billingCycle = body.billing_cycle;
+    const label = String(body.label || 'manual').trim().slice(0, 100);
+
+    if (!['monthly', 'yearly', 'lifetime'].includes(billingCycle)) {
+      return this.json(400, {
+        error: 'billing_cycle must be "monthly", "yearly", or "lifetime"',
+      });
+    }
+
+    const now = new Date().toISOString();
+    const results = [];
+
+    for (let i = 0; i < count; i++) {
+      const licenseId = this.createId('lic');
+      const expiresAt = this.resolveExpiresAt(now, billingCycle);
+      const license = {
+        id: this.createId('row'),
+        license_id: licenseId,
+        provider_order_id: null,
+        provider_subscription_id: null,
+        plan: 'pro',
+        billing_cycle: billingCycle,
+        expires_at: expiresAt,
+        customer_email: null,
+        status: 'active',
+        issued_code_hash: '',
+        issued_at: now,
+        revoked_at: null,
+        replacement_for_license_id: null,
+        notes: `manual:${label}`,
+      };
+      const activationCode = this.issueActivationCodeFromLicense(license);
+      license.issued_code_hash = this.sha256Hex(activationCode);
+      this.data.licenses.push(license);
+      this.data.metrics.licenses_issued_total += 1;
+
+      results.push({
+        license_id: licenseId,
+        activation_code: activationCode,
+        billing_cycle: billingCycle,
+        expires_at: expiresAt,
+        label,
+      });
+    }
+
+    this.addAuditLog({
+      actor: this.actorFromRequest(request),
+      action: 'license.batch_generate',
+      target_type: 'license',
+      target_id: `batch:${count}`,
+      payload: { count, billing_cycle: billingCycle, label },
+    });
+
+    await this.saveState();
+
+    return this.json(200, {
+      ok: true,
+      generated: results.length,
+      codes: results,
+    });
+  }
+
+  /**
+   * GET /admin/licenses/stats
+   * Overview of all licenses by status, cycle, and source.
+   */
+  handleAdminLicenseStats() {
+    const all = this.data.licenses;
+    const byStatus = { active: 0, revoked: 0, expired: 0 };
+    const byCycle = { monthly: 0, yearly: 0, lifetime: 0 };
+    const bySource = { creem: 0, manual: 0 };
+    const now = Date.now();
+
+    for (const lic of all) {
+      // Status
+      if (lic.status === 'revoked') {
+        byStatus.revoked += 1;
+      } else if (lic.expires_at && new Date(lic.expires_at).getTime() < now) {
+        byStatus.expired += 1;
+      } else {
+        byStatus.active += 1;
+      }
+      // Cycle
+      if (byCycle[lic.billing_cycle] !== undefined) {
+        byCycle[lic.billing_cycle] += 1;
+      }
+      // Source
+      if (lic.provider_order_id) {
+        bySource.creem += 1;
+      } else {
+        bySource.manual += 1;
+      }
+    }
+
+    return this.json(200, {
+      total: all.length,
+      by_status: byStatus,
+      by_cycle: byCycle,
+      by_source: bySource,
+      metrics: this.data.metrics,
     });
   }
 
