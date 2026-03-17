@@ -80,57 +80,61 @@ interface FeedbackState {
   message: string;
 }
 
-const settingSections: { id: SettingSection; label: string; icon: typeof Settings }[] = [
-  { id: 'general', label: t.settingsGeneral, icon: Settings },
-  { id: 'notifications', label: t.settingsNotifications, icon: Bell },
-  { id: 'security', label: t.settingsSecurity, icon: Shield },
-  { id: 'ai', label: t.settingsAI, icon: Sparkles },
-  { id: 'language', label: t.settingsLanguageRegion, icon: Globe },
-  { id: 'about', label: t.about, icon: Info },
-];
+function getSettingSections(): { id: SettingSection; label: string; icon: typeof Settings }[] {
+  return [
+    { id: 'general', label: t.settingsGeneral, icon: Settings },
+    { id: 'notifications', label: t.settingsNotifications, icon: Bell },
+    { id: 'security', label: t.settingsSecurity, icon: Shield },
+    { id: 'ai', label: t.settingsAI, icon: Sparkles },
+    { id: 'language', label: t.settingsLanguageRegion, icon: Globe },
+    { id: 'about', label: t.about, icon: Info },
+  ];
+}
 
 const FREE_RULE_MANUAL_SYNC_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 const FREE_RULE_SYNC_LAST_KEY = 'agentshield-rule-sync-last-free';
 const AUTO_RULE_SYNC_LAST_KEY = 'agentshield-rule-sync-last-auto';
 
-const LEGAL_COPY: Record<Exclude<DialogKey, 'updates' | null>, { title: string; description: string; body: string[] }> = {
-  privacy: {
-    title: t.privacyPolicy,
-    description: t.privacyPolicyDesc,
-    body: [
-      tr(
-        'AgentShield 默认采用本地优先设计。安全扫描、MCP/Skill 检查和密钥发现优先在本机执行，不会默认上传你的项目文件。',
-        'AgentShield uses a local-first design by default. Security scans, MCP/Skill checks, and key discovery run locally and do not upload your project files.'
-      ),
-      tr(
-        '只有在你主动触发网络能力时，例如更新检查、商店刷新、规则同步或 AI 诊断，请求才会访问外部服务。',
-        'External services are only contacted when you actively trigger network features, such as update checks, store refresh, rule sync, or AI diagnostics.'
-      ),
-      tr(
-        '通知中心和本地安全记录保存在当前设备的 AgentShield 数据目录中，用于帮助你追溯安全事件和设置变更。',
-        'Notification center and local security records are stored in the AgentShield data directory on your device, helping you trace security events and setting changes.'
-      ),
-    ],
-  },
-  terms: {
-    title: t.termsOfService,
-    description: t.termsOfServiceDesc,
-    body: [
-      tr(
-        'AgentShield 提供本地安全扫描、配置修复建议和已安装 MCP/Skill 管理能力，但不替代你对第三方工具来源和权限的最终判断。',
-        'AgentShield provides local security scanning, config fix suggestions, and installed MCP/Skill management, but does not replace your final judgment on third-party tool sources and permissions.'
-      ),
-      tr(
-        '当你安装或启用第三方 MCP/Skill 时，仍需自行确认其供应链、权限范围与运行命令是否可信。',
-        'When you install or enable third-party MCP/Skills, you still need to verify their supply chain, permission scope, and run commands.'
-      ),
-      tr(
-        '应用内的风险判断基于当前规则库、静态扫描和本地可见配置，不构成对未知恶意行为的绝对保证。',
-        'In-app risk assessments are based on current rules, static scanning, and locally visible config, and do not constitute an absolute guarantee against unknown malicious behavior.'
-      ),
-    ],
-  },
-};
+function getLegalCopy(): Record<Exclude<DialogKey, 'updates' | null>, { title: string; description: string; body: string[] }> {
+  return {
+    privacy: {
+      title: t.privacyPolicy,
+      description: t.privacyPolicyDesc,
+      body: [
+        tr(
+          'AgentShield 默认采用本地优先设计。安全扫描、MCP/Skill 检查和密钥发现优先在本机执行，不会默认上传你的项目文件。',
+          'AgentShield uses a local-first design by default. Security scans, MCP/Skill checks, and key discovery run locally and do not upload your project files.'
+        ),
+        tr(
+          '只有在你主动触发网络能力时，例如更新检查、商店刷新、规则同步或 AI 诊断，请求才会访问外部服务。',
+          'External services are only contacted when you actively trigger network features, such as update checks, store refresh, rule sync, or AI diagnostics.'
+        ),
+        tr(
+          '通知中心和本地安全记录保存在当前设备的 AgentShield 数据目录中，用于帮助你追溯安全事件和设置变更。',
+          'Notification center and local security records are stored in the AgentShield data directory on your device, helping you trace security events and setting changes.'
+        ),
+      ],
+    },
+    terms: {
+      title: t.termsOfService,
+      description: t.termsOfServiceDesc,
+      body: [
+        tr(
+          'AgentShield 提供本地安全扫描、配置修复建议和已安装 MCP/Skill 管理能力，但不替代你对第三方工具来源和权限的最终判断。',
+          'AgentShield provides local security scanning, config fix suggestions, and installed MCP/Skill management, but does not replace your final judgment on third-party tool sources and permissions.'
+        ),
+        tr(
+          '当你安装或启用第三方 MCP/Skill 时，仍需自行确认其供应链、权限范围与运行命令是否可信。',
+          'When you install or enable third-party MCP/Skills, you still need to verify their supply chain, permission scope, and run commands.'
+        ),
+        tr(
+          '应用内的风险判断基于当前规则库、静态扫描和本地可见配置，不构成对未知恶意行为的绝对保证。',
+          'In-app risk assessments are based on current rules, static scanning, and locally visible config, and do not constitute an absolute guarantee against unknown malicious behavior.'
+        ),
+      ],
+    },
+  };
+}
 
 export function SettingsPage() {
   const [activeSection, setActiveSection] = useState<SettingSection>('general');
@@ -1260,7 +1264,7 @@ export function SettingsPage() {
             <h1 className="text-lg font-semibold text-white">{t.settings}</h1>
           </div>
           <nav className="space-y-1">
-            {settingSections.map((section) => (
+            {getSettingSections().map((section) => (
               <button
                 key={section.id}
                 onClick={() => setActiveSection(section.id)}
@@ -1375,7 +1379,7 @@ function SettingsDialog({
   updateAudit: InstalledUpdateAuditResult | null;
   onClose: () => void;
 }) {
-  const legalCopy = dialogKey && dialogKey !== 'updates' ? LEGAL_COPY[dialogKey] : null;
+  const legalCopy = dialogKey && dialogKey !== 'updates' ? getLegalCopy()[dialogKey] : null;
 
   return (
     <Dialog open={dialogKey !== null} onOpenChange={(open) => !open && onClose()}>

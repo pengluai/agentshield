@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { tauriInvoke as invoke } from '@/services/tauri';
 import { motion } from "framer-motion";
 import { Crown, Zap, Shield, Key, Bell, Star, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -77,12 +77,12 @@ const PRO_FEATURES = [
   { icon: Shield, textKey: 'proFeature7' as const },
 ];
 
-function appendCheckoutCustomData(baseUrl: string, skuCode: string) {
+function appendCheckoutMetadata(baseUrl: string, skuCode: string) {
   try {
     const url = new URL(baseUrl);
-    url.searchParams.set('custom_data[sku_code]', skuCode);
-    url.searchParams.set('custom_data[campaign]', 'desktop_upgrade');
-    url.searchParams.set('custom_data[source]', 'agentshield_app');
+    url.searchParams.set('metadata[sku_code]', skuCode);
+    url.searchParams.set('metadata[campaign]', 'desktop_upgrade');
+    url.searchParams.set('metadata[source]', 'agentshield_app');
     return url.toString();
   } catch {
     return baseUrl;
@@ -205,7 +205,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
     setPurchasingSku(option.id);
     setFeedback(null);
     try {
-      const checkoutUrl = appendCheckoutCustomData(checkoutBaseUrl, option.skuCode);
+      const checkoutUrl = appendCheckoutMetadata(checkoutBaseUrl, option.skuCode);
       await openExternalUrl(checkoutUrl);
       setFeedback({ tone: 'info', message: t.purchaseOpenedInBrowser });
     } catch (e) {
@@ -279,7 +279,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
                   <p className="text-sm text-white/50">{t.freeBasicProtection}</p>
                 </div>
                 <p className="text-2xl font-bold text-white">
-                  ¥0
+                  {isEnglishLocale ? '$0' : '¥0'}
                 </p>
               </div>
               <div className="space-y-2">

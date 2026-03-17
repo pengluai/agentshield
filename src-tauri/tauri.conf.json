@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
-  "productName": "AgentShield 智盾",
+  "productName": "AgentShield",
   "version": "1.0.1",
   "identifier": "com.agentshield.desktop",
   "bundle": {
@@ -33,15 +33,13 @@
     },
     "windows": [
       {
-        "title": "AgentShield 智盾",
+        "title": "AgentShield",
         "width": 1280,
         "height": 800,
         "minWidth": 1024,
         "minHeight": 680,
         "decorations": true,
-        "transparent": true,
-        "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
+        "transparent": false,
         "resizable": true,
         "center": true,
         "fullscreen": false

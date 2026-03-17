@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { tauriInvoke as invoke } from '@/services/tauri';
 import { motion } from 'framer-motion';
 import { Search, Loader2, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -18,24 +18,26 @@ import { useAppStore } from '@/stores/appStore';
 
 const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
 
-const CATEGORY_TABS = [
-  { id: 'all', label: t.storeTabAll },
-  { id: 'openclaw', label: t.storeTabOpenClaw },
-  { id: 'dev-tools', label: t.storeTabDevTools },
-  { id: 'database', label: t.storeTabDatabase },
-  { id: 'ai-ml', label: t.storeTabAI },
-  { id: 'search', label: t.storeTabSearch },
-  { id: 'cloud', label: t.storeTabCloud },
-  { id: 'communication', label: t.storeTabComm },
-  { id: 'security', label: t.storeTabSecurity },
-  { id: 'web-apis', label: t.storeTabWeb },
-  { id: 'file-management', label: t.storeTabFile },
-  { id: 'business', label: t.storeTabBiz },
-  { id: 'social', label: t.storeTabSocial },
-  { id: 'design', label: t.storeTabDesign },
-  { id: 'utility', label: t.storeTabUtil },
-  { id: 'skill', label: t.storeTabSkill },
-];
+function getCategoryTabs() {
+  return [
+    { id: 'all', label: t.storeTabAll },
+    { id: 'openclaw', label: t.storeTabOpenClaw },
+    { id: 'dev-tools', label: t.storeTabDevTools },
+    { id: 'database', label: t.storeTabDatabase },
+    { id: 'ai-ml', label: t.storeTabAI },
+    { id: 'search', label: t.storeTabSearch },
+    { id: 'cloud', label: t.storeTabCloud },
+    { id: 'communication', label: t.storeTabComm },
+    { id: 'security', label: t.storeTabSecurity },
+    { id: 'web-apis', label: t.storeTabWeb },
+    { id: 'file-management', label: t.storeTabFile },
+    { id: 'business', label: t.storeTabBiz },
+    { id: 'social', label: t.storeTabSocial },
+    { id: 'design', label: t.storeTabDesign },
+    { id: 'utility', label: t.storeTabUtil },
+    { id: 'skill', label: t.storeTabSkill },
+  ];
+}
 
 interface SkillStoreProps {
   onInstall: (item: StoreCatalogItem) => void;
@@ -177,7 +179,7 @@ export function SkillStore({ onInstall, onOpenOpenClaw }: SkillStoreProps) {
         {/* Category Tabs - scrollable */}
         <div className="overflow-x-auto pb-2 -mx-6 px-6">
           <TabBar
-            tabs={CATEGORY_TABS}
+            tabs={getCategoryTabs()}
             activeTab={activeTab}
             onTabChange={setActiveTab}
             accentColor={theme.accent}
