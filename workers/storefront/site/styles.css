@@ -866,6 +866,27 @@ span {
   padding: 32px;
 }
 
+.testimonial-card h3 {
+  margin: 0 0 12px;
+  font-size: 1.2rem;
+}
+
+.trust-kicker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 28px;
+  margin-bottom: 18px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: var(--primary-foreground);
+  background: linear-gradient(135deg, rgba(59,130,246,0.95), rgba(139,92,246,0.95));
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
 .quote-mark {
   font-size: 3rem;
   line-height: 1;
@@ -1026,6 +1047,12 @@ span {
   margin-top: 0;
 }
 
+.pricing-card .is-disabled {
+  opacity: 0.78;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .monthly-buy-row {
   display: flex;
   justify-content: center;
@@ -1045,6 +1072,11 @@ span {
 }
 
 .monthly-link {
+  font-weight: 600;
+}
+
+.monthly-note {
+  color: var(--foreground);
   font-weight: 600;
 }
 

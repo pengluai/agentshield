@@ -3,14 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AgentShield - AI Tool Security Suite</title>
+    <title>AgentShield - Local AI Tool Security</title>
     <meta
       name="description"
-      content="The first desktop security suite for AI tools. Protect Cursor, Claude Desktop, Windsurf and more from API key leaks, prompt injection, and malicious MCP extensions."
+      content="AgentShield helps you review config risk, exposed secrets, and high-risk extensions across local AI tools like Cursor, Claude Desktop, and Windsurf."
+    />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' x2='100%25' y1='0%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233b82f6'/%3E%3Cstop offset='100%25' stop-color='%238b5cf6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='18' fill='url(%23g)'/%3E%3Cpath fill='white' d='M32 10l16 7v13c0 10.4-6.8 19.9-16 24-9.2-4.1-16-13.6-16-24V17l16-7z'/%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body data-lang="zh">
+  <body data-lang="en">
     <div class="grain-overlay"></div>
     <div class="shell">
       <header class="topbar" id="top">
@@ -59,17 +64,17 @@
           <div class="container hero-content">
             <div class="hero-copy centered">
               <div class="hero-badge">
-                <span class="lang-block zh">🛡️ 全球首款 AI 工具安全防护软件</span>
-                <span class="lang-block en">🛡️ The First Desktop Security Suite for AI Tools</span>
+                <span class="lang-block zh">🛡️ 本地 AI 工具安全面板</span>
+                <span class="lang-block en">🛡️ Security visibility for local AI tools</span>
               </div>
 
               <div class="lang-block zh">
                 <h1 class="hero-title hero-title-zh">你的 AI 工具，正在泄露你的秘密</h1>
-                <p class="hero-subheadline">2025年已有 3,900万+ API密钥在GitHub上泄露。每一个AI编程助手、每一个MCP扩展，都可能是你数据的出口。</p>
+                <p class="hero-subheadline">检查 Cursor、Claude Desktop、Windsurf 等本地 AI 工具的配置风险、密钥暴露和高风险扩展，在正式接入工作流前先把安全看清楚。</p>
               </div>
               <div class="lang-block en">
                 <h1 class="hero-title hero-title-en">Your AI Tools May Be Leaking Your Secrets</h1>
-                <p class="hero-subheadline">39M+ API keys exposed on GitHub in 2025. Every AI coding assistant and MCP extension is a potential data exit point. AgentShield watches them all.</p>
+                <p class="hero-subheadline">Review config risk, exposed secrets, and high-risk extensions across Cursor, Claude Desktop, Windsurf, and other local AI tools before you trust them in daily work.</p>
               </div>
 
               <div class="hero-actions centered-actions">
@@ -89,84 +94,7 @@
             </div>
 
             <div class="window-mockup">
-              <div class="window-chrome">
-                <div class="window-dots">
-                  <span class="dot red"></span>
-                  <span class="dot yellow"></span>
-                  <span class="dot green"></span>
-                </div>
-                <div class="window-title">
-                  <span class="window-title-pill">
-                    <span class="title-mark"></span>
-                    <span>AgentShield</span>
-                  </span>
-                </div>
-                <div class="window-gap"></div>
-              </div>
-
-              <div class="window-body">
-                <div class="window-header-row">
-                  <div>
-                    <h3>Security Dashboard</h3>
-                    <p>Last scan: 2 minutes ago</p>
-                  </div>
-                  <a class="mini-cta btn-gradient" href="#download">
-                    <span class="lang-block zh">立即扫描</span>
-                    <span class="lang-block en">Scan Now</span>
-                  </a>
-                </div>
-
-                <div class="status-grid">
-                  <article class="status-card success">
-                    <div class="status-icon"></div>
-                    <div>
-                      <strong>12</strong>
-                      <span>Secured</span>
-                    </div>
-                  </article>
-                  <article class="status-card warning">
-                    <div class="status-icon"></div>
-                    <div>
-                      <strong>3</strong>
-                      <span>Warnings</span>
-                    </div>
-                  </article>
-                  <article class="status-card danger">
-                    <div class="status-icon"></div>
-                    <div>
-                      <strong>1</strong>
-                      <span>Critical</span>
-                    </div>
-                  </article>
-                </div>
-
-                <div class="result-list">
-                  <article class="result-item danger-item">
-                    <div class="result-dot"></div>
-                    <div class="result-copy">
-                      <strong>API Key exposed in .env file</strong>
-                      <span>cursor/config/.env</span>
-                    </div>
-                    <button type="button" class="result-pill">Fix Now</button>
-                  </article>
-                  <article class="result-item warning-item">
-                    <div class="result-dot"></div>
-                    <div class="result-copy">
-                      <strong>MCP extension has filesystem access</strong>
-                      <span>claude-desktop/extensions/file-manager</span>
-                    </div>
-                    <button type="button" class="result-pill">Review</button>
-                  </article>
-                  <article class="result-item success-item">
-                    <div class="result-dot"></div>
-                    <div class="result-copy">
-                      <strong>Windsurf configuration secure</strong>
-                      <span>All 5 checks passed</span>
-                    </div>
-                    <div class="result-check"></div>
-                  </article>
-                </div>
-              </div>
+              <img src="./images/dashboard.png" alt="AgentShield Dashboard" style="width:100%;border-radius:12px;display:block;" />
             </div>
           </div>
         </section>
@@ -183,14 +111,14 @@
                 <div class="problem-icon danger"></div>
                 <div class="problem-large-copy">
                   <div class="lang-block zh">
-                    <div class="problem-stat">92%</div>
+                    <div class="problem-stat">高频</div>
                     <h3>密钥裸奔</h3>
-                    <p>的开发者至少有一个API密钥存储在不安全的位置</p>
+                    <p>问题通常来自明文配置、扩展权限过大，或长期未清理的本地缓存</p>
                   </div>
                   <div class="lang-block en">
-                    <div class="problem-stat">92%</div>
+                    <div class="problem-stat">Common</div>
                     <h3>Exposed API Keys</h3>
-                    <p>of developers have at least one API key stored insecurely</p>
+                    <p>Problems usually come from plaintext configs, over-permissioned extensions, and old local caches</p>
                   </div>
                 </div>
               </article>
@@ -257,11 +185,7 @@
                   </div>
                 </div>
                 <div class="feature-visual bento-card">
-                  <div class="mini-list">
-                    <div class="mini-item danger-item"><span></span><div><strong>Critical: API Key Exposed</strong><small>cursor/.env - OPENAI_API_KEY</small></div></div>
-                    <div class="mini-item warning-item"><span></span><div><strong>Warning: Excessive Permissions</strong><small>claude-desktop/extensions/*</small></div></div>
-                    <div class="mini-item success-item"><span></span><div><strong>Windsurf: All Clear</strong><small>5/5 checks passed</small></div></div>
-                  </div>
+                  <img src="./images/scan.png" alt="Security Scan" style="width:100%;border-radius:8px;display:block;" />
                 </div>
               </article>
 
@@ -278,12 +202,7 @@
                   </div>
                 </div>
                 <div class="feature-visual bento-card">
-                  <div class="tool-grid">
-                    <div class="tool-card"><div class="tool-icon"></div><strong>File Manager</strong><button>Install</button></div>
-                    <div class="tool-card"><div class="tool-icon"></div><strong>Git Helper</strong><button>Install</button></div>
-                    <div class="tool-card"><div class="tool-icon"></div><strong>API Client</strong><button>Install</button></div>
-                    <div class="tool-card"><div class="tool-icon"></div><strong>DB Explorer</strong><button>Review</button></div>
-                  </div>
+                  <img src="./images/installed.png" alt="Installed Management" style="width:100%;border-radius:8px;display:block;" />
                 </div>
               </article>
 
@@ -300,11 +219,7 @@
                   </div>
                 </div>
                 <div class="feature-visual bento-card">
-                  <div class="secret-list">
-                    <div class="secret-item"><div class="secret-icon"></div><div><strong>OPENAI_API_KEY</strong><small>sk-****...****</small></div><div class="lock-dot"></div></div>
-                    <div class="secret-item"><div class="secret-icon"></div><div><strong>ANTHROPIC_KEY</strong><small>sk-ant-****...****</small></div><div class="lock-dot"></div></div>
-                    <div class="secret-item"><div class="secret-icon"></div><div><strong>GITHUB_TOKEN</strong><small>ghp_****...****</small></div><div class="lock-dot"></div></div>
-                  </div>
+                  <img src="./images/vault.png" alt="Key Vault" style="width:100%;border-radius:8px;display:block;" />
                 </div>
               </article>
 
@@ -321,12 +236,7 @@
                   </div>
                 </div>
                 <div class="feature-visual bento-card">
-                  <div class="guard-log">
-                    <div class="guard-header"><span class="pulse-dot"></span><strong>Active Protection</strong><small>24/7</small></div>
-                    <div class="guard-entry blocked"><span>14:23</span><p>Blocked suspicious outbound request</p></div>
-                    <div class="guard-entry ok"><span>13:45</span><p>Extension permission audit completed</p></div>
-                    <div class="guard-entry warn"><span>12:30</span><p>New MCP extension detected</p></div>
-                  </div>
+                  <img src="./images/dashboard.png" alt="Real-time Guard Dashboard" style="width:100%;border-radius:8px;display:block;" />
                 </div>
               </article>
             </div>
@@ -336,44 +246,47 @@
         <section class="social-section section-alt">
           <div class="container">
             <div class="section-heading centered-heading">
-              <div class="lang-block zh"><h2>已为 10,000+ 开发者守护 AI 安全</h2></div>
-              <div class="lang-block en"><h2>Trusted by 10,000+ developers worldwide</h2></div>
+              <div class="lang-block zh"><h2>适合这些本地 AI 工作流</h2></div>
+              <div class="lang-block en"><h2>Built for these local AI workflows</h2></div>
             </div>
 
             <div class="testimonial-grid">
               <article class="testimonial-card bento-card">
-                <div class="quote-mark">“</div>
                 <div class="lang-block zh">
-                  <p>终于不用担心API密钥泄露了。AgentShield帮我发现了3个存储在配置文件里的明文密钥！</p>
-                  <div class="testimonial-meta"><div class="avatar">李</div><div><strong>李明</strong><span>独立开发者</span></div></div>
+                  <div class="trust-kicker">01</div>
+                  <h3>独立开发</h3>
+                  <p>想先看清配置风险、密钥暴露和扩展权限，再决定要不要升级。</p>
                 </div>
                 <div class="lang-block en">
-                  <p>Finally, I don't have to worry about API key leaks. AgentShield helped me find 3 plaintext keys stored in config files!</p>
-                  <div class="testimonial-meta"><div class="avatar">M</div><div><strong>Michael Chen</strong><span>Indie Developer</span></div></div>
+                  <div class="trust-kicker">01</div>
+                  <h3>Indie builders</h3>
+                  <p>See config risk, exposed secrets, and extension permissions before deciding whether to upgrade.</p>
                 </div>
               </article>
 
               <article class="testimonial-card bento-card">
-                <div class="quote-mark">“</div>
                 <div class="lang-block zh">
-                  <p>作为CTO，团队安全是我最关心的。AgentShield让我们的AI工具使用更加规范和安全。</p>
-                  <div class="testimonial-meta"><div class="avatar">张</div><div><strong>张华</strong><span>AI创业公司CTO</span></div></div>
+                  <div class="trust-kicker">02</div>
+                  <h3>团队试点</h3>
+                  <p>在把 Cursor、Claude Desktop、Windsurf 带进团队前，先做一次统一安全自查。</p>
                 </div>
                 <div class="lang-block en">
-                  <p>As a CTO, team security is my top priority. AgentShield makes our AI tool usage more standardized and secure.</p>
-                  <div class="testimonial-meta"><div class="avatar">S</div><div><strong>Sarah Wang</strong><span>AI Startup CTO</span></div></div>
+                  <div class="trust-kicker">02</div>
+                  <h3>Team pilots</h3>
+                  <p>Run one consistent safety check before rolling Cursor, Claude Desktop, or Windsurf into a team workflow.</p>
                 </div>
               </article>
 
               <article class="testimonial-card bento-card">
-                <div class="quote-mark">“</div>
                 <div class="lang-block zh">
-                  <p>专业的安全工具，检测能力很强。推荐给所有使用AI编程工具的团队。</p>
-                  <div class="testimonial-meta"><div class="avatar">王</div><div><strong>王强</strong><span>安全工程师</span></div></div>
+                  <div class="trust-kicker">03</div>
+                  <h3>安全复核</h3>
+                  <p>需要一个清晰面板，知道哪些能力可免费体验，哪些高阶防护属于 Pro。</p>
                 </div>
                 <div class="lang-block en">
-                  <p>Professional security tool with strong detection capabilities. Recommended for all teams using AI coding tools.</p>
-                  <div class="testimonial-meta"><div class="avatar">D</div><div><strong>David Liu</strong><span>Security Engineer</span></div></div>
+                  <div class="trust-kicker">03</div>
+                  <h3>Security review</h3>
+                  <p>Get a clear view of what is available in free scanning and what advanced protections are unlocked in Pro.</p>
                 </div>
               </article>
             </div>
@@ -394,6 +307,10 @@
               <div class="lang-block zh"><h2>选择你的防护等级</h2></div>
               <div class="lang-block en"><h2>Choose Your Protection Level</h2></div>
             </div>
+            <p class="pricing-note" id="review-status">
+              <span class="lang-block zh">当前商家收款审核中。价格和方案已公开，支付与激活码购买会在 Creem 审核通过后开放。</span>
+              <span class="lang-block en">Merchant payment review is in progress. Pricing is public now, and checkout will open after Creem approves live payments.</span>
+            </p>
 
             <div class="pricing-grid">
               <article class="pricing-card bento-card">
@@ -441,8 +358,8 @@
                       <li>规则热更新</li>
                     </ul>
                     <div class="plan-button-stack">
-                      <a class="btn-gradient full-width" href="https://www.creem.io/payment/prod_7kbjugsRm1gGN6lKXOR1NG">立即升级</a>
-                      <a class="btn-secondary full-width" href="https://www.creem.io/payment/prod_7kbjugsRm1gGN6lKXOR1NG">365 天激活码</a>
+                      <button class="btn-gradient full-width is-disabled" type="button" disabled>支付审核中</button>
+                      <button class="btn-secondary full-width is-disabled" type="button" disabled>365 天激活码（待开放）</button>
                     </div>
                   </div>
                   <div class="lang-block en">
@@ -458,8 +375,8 @@
                       <li>Live rule updates</li>
                     </ul>
                     <div class="plan-button-stack">
-                      <a class="btn-gradient full-width" href="https://www.creem.io/payment/prod_7kbjugsRm1gGN6lKXOR1NG">Upgrade Now</a>
-                      <a class="btn-secondary full-width" href="https://www.creem.io/payment/prod_7kbjugsRm1gGN6lKXOR1NG">365-day Activation</a>
+                      <button class="btn-gradient full-width is-disabled" type="button" disabled>Checkout Pending Review</button>
+                      <button class="btn-secondary full-width is-disabled" type="button" disabled>365-day activation (coming soon)</button>
                     </div>
                   </div>
                 </div>
@@ -479,25 +396,25 @@
                       <li>规则热更新</li>
                     </ul>
                     <div class="plan-button-stack">
-                      <a class="btn-secondary full-width" href="https://www.creem.io/payment/prod_4rh2nT74Cqk4IQ5EfvcjbH">一次买断</a>
-                      <a class="btn-secondary full-width" href="https://www.creem.io/payment/prod_4rh2nT74Cqk4IQ5EfvcjbH">终身激活码</a>
+                      <button class="btn-secondary full-width is-disabled" type="button" disabled>一次买断（待开放）</button>
+                      <button class="btn-secondary full-width is-disabled" type="button" disabled>终身激活码（待开放）</button>
                     </div>
                   </div>
                   <div class="lang-block en">
                     <h3>Pro Lifetime</h3>
                     <div class="price-row"><strong>$79.9</strong><span>one-time</span></div>
                     <p class="plan-desc">All Pro features + lifetime free updates</p>
-                  <ul class="plan-list">
-                    <li>Deep security scan</li>
-                    <li>One-click fix</li>
+                    <ul class="plan-list">
+                      <li>Deep security scan</li>
+                      <li>One-click fix</li>
                       <li>Key vault</li>
                       <li>Real-time guard</li>
                       <li>Priority extension store</li>
                       <li>Live rule updates</li>
                     </ul>
                     <div class="plan-button-stack">
-                      <a class="btn-secondary full-width" href="https://www.creem.io/payment/prod_4rh2nT74Cqk4IQ5EfvcjbH">Buy Once, Own Forever</a>
-                      <a class="btn-secondary full-width" href="https://www.creem.io/payment/prod_4rh2nT74Cqk4IQ5EfvcjbH">Lifetime Activation</a>
+                      <button class="btn-secondary full-width is-disabled" type="button" disabled>One-time checkout pending</button>
+                      <button class="btn-secondary full-width is-disabled" type="button" disabled>Lifetime activation (coming soon)</button>
                     </div>
                   </div>
               </article>
@@ -506,11 +423,11 @@
             <div class="monthly-buy-row">
               <div class="lang-block zh">
                 <span>也可按月订阅 ¥29/月</span>
-                <a class="hero-link monthly-link" href="https://www.creem.io/payment/prod_2T8qrIwLHQ3AlG4KtTB849">30 天激活码 →</a>
+                <span class="monthly-note">30 天激活码（待开放）</span>
               </div>
               <div class="lang-block en">
                 <span>Also available monthly at $4.9/mo</span>
-                <a class="hero-link monthly-link" href="https://www.creem.io/payment/prod_2T8qrIwLHQ3AlG4KtTB849">30-day activation →</a>
+                <span class="monthly-note">30-day activation (coming soon)</span>
               </div>
             </div>
 
@@ -532,7 +449,7 @@
 
               <article class="faq-item bento-card">
                 <button class="faq-trigger" type="button" aria-expanded="false"><span class="lang-block zh">我的数据安全吗？</span><span class="lang-block en">Is my data safe?</span></button>
-                <div class="faq-content"><div class="lang-block zh"><p>AgentShield 完全在本地运行，不会将你的任何数据上传到云端。所有扫描和检测都在你的设备上完成，确保数据隐私。</p></div><div class="lang-block en"><p>AgentShield runs entirely locally and never uploads your data to the cloud. All scanning and detection happens on your device, ensuring data privacy.</p></div></div>
+                <div class="faq-content"><div class="lang-block zh"><p>核心扫描和本地防护主要在你的设备上完成。启用许可证校验、规则更新或购买相关流程时，应用可能与在线服务通信，但不会把你的源码内容当作产品分析数据上传。</p></div><div class="lang-block en"><p>Core scanning and local protection run primarily on your device. Features like license checks, rule updates, or checkout-related flows may contact online services, but AgentShield is not designed to upload your source code as product analytics data.</p></div></div>
               </article>
 
               <article class="faq-item bento-card">
@@ -547,7 +464,7 @@
 
               <article class="faq-item bento-card">
                 <button class="faq-trigger" type="button" aria-expanded="false"><span class="lang-block zh">支持退款吗？</span><span class="lang-block en">Do you offer refunds?</span></button>
-                <div class="faq-content"><div class="lang-block zh"><p>支持。如果你对产品不满意，可以在购买后 30 天内申请全额退款，无需任何理由。</p></div><div class="lang-block en"><p>Yes. If you are not satisfied, you can request a full refund within 30 days of purchase, no questions asked.</p></div></div>
+                <div class="faq-content"><div class="lang-block zh"><p>支持。默认退款窗口为购买后 14 个自然日内；激活失败、重复购买或适用法定权利时可申请退款。详情请查看退款政策。</p></div><div class="lang-block en"><p>Yes. The default refund window is within 14 calendar days of purchase. Refunds may apply for failed activation, duplicate purchases, or where statutory rights apply. See the refund policy for details.</p></div></div>
               </article>
 
               <article class="faq-item bento-card">
@@ -588,6 +505,8 @@
           <div class="footer-links">
             <a href="./privacy.html"><span class="lang-block zh">隐私政策</span><span class="lang-block en">Privacy Policy</span></a>
             <a href="./terms.html"><span class="lang-block zh">使用条款</span><span class="lang-block en">Terms</span></a>
+            <a href="./refund.html"><span class="lang-block zh">退款政策</span><span class="lang-block en">Refund Policy</span></a>
+            <a href="./eula.html">EULA</a>
             <a href="https://github.com/pengluai/agentshield-downloads">GitHub</a>
             <a href="mailto:pengluailll@gmail.com"><span class="lang-block zh">联系我们</span><span class="lang-block en">Contact</span></a>
           </div>
