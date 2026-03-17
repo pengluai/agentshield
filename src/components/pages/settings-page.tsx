@@ -22,7 +22,9 @@ import {
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
-import { t } from '@/constants/i18n';
+import { isEnglishLocale, t } from '@/constants/i18n';
+
+const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useLicenseStore } from '@/stores/licenseStore';
 import { useAppStore } from '@/stores/appStore';
@@ -96,18 +98,36 @@ const LEGAL_COPY: Record<Exclude<DialogKey, 'updates' | null>, { title: string; 
     title: t.privacyPolicy,
     description: t.privacyPolicyDesc,
     body: [
-      'AgentShield 默认采用本地优先设计。安全扫描、MCP/Skill 检查和密钥发现优先在本机执行，不会默认上传你的项目文件。',
-      '只有在你主动触发网络能力时，例如更新检查、商店刷新、规则同步或 AI 诊断，请求才会访问外部服务。',
-      '通知中心和本地安全记录保存在当前设备的 AgentShield 数据目录中，用于帮助你追溯安全事件和设置变更。',
+      tr(
+        'AgentShield 默认采用本地优先设计。安全扫描、MCP/Skill 检查和密钥发现优先在本机执行，不会默认上传你的项目文件。',
+        'AgentShield uses a local-first design by default. Security scans, MCP/Skill checks, and key discovery run locally and do not upload your project files.'
+      ),
+      tr(
+        '只有在你主动触发网络能力时，例如更新检查、商店刷新、规则同步或 AI 诊断，请求才会访问外部服务。',
+        'External services are only contacted when you actively trigger network features, such as update checks, store refresh, rule sync, or AI diagnostics.'
+      ),
+      tr(
+        '通知中心和本地安全记录保存在当前设备的 AgentShield 数据目录中，用于帮助你追溯安全事件和设置变更。',
+        'Notification center and local security records are stored in the AgentShield data directory on your device, helping you trace security events and setting changes.'
+      ),
     ],
   },
   terms: {
     title: t.termsOfService,
     description: t.termsOfServiceDesc,
     body: [
-      'AgentShield 提供本地安全扫描、配置修复建议和已安装 MCP/Skill 管理能力，但不替代你对第三方工具来源和权限的最终判断。',
-      '当你安装或启用第三方 MCP/Skill 时，仍需自行确认其供应链、权限范围与运行命令是否可信。',
-      '应用内的风险判断基于当前规则库、静态扫描和本地可见配置，不构成对未知恶意行为的绝对保证。',
+      tr(
+        'AgentShield 提供本地安全扫描、配置修复建议和已安装 MCP/Skill 管理能力，但不替代你对第三方工具来源和权限的最终判断。',
+        'AgentShield provides local security scanning, config fix suggestions, and installed MCP/Skill management, but does not replace your final judgment on third-party tool sources and permissions.'
+      ),
+      tr(
+        '当你安装或启用第三方 MCP/Skill 时，仍需自行确认其供应链、权限范围与运行命令是否可信。',
+        'When you install or enable third-party MCP/Skills, you still need to verify their supply chain, permission scope, and run commands.'
+      ),
+      tr(
+        '应用内的风险判断基于当前规则库、静态扫描和本地可见配置，不构成对未知恶意行为的绝对保证。',
+        'In-app risk assessments are based on current rules, static scanning, and locally visible config, and do not constitute an absolute guarantee against unknown malicious behavior.'
+      ),
     ],
   },
 };
@@ -276,20 +296,23 @@ export function SettingsPage() {
     if (!updateAudit) {
       return {
         title: t.checkForUpdates,
-        description: '检查已安装 MCP / Skill 的真实更新状态与托管范围',
+        description: tr('检查已安装 MCP / Skill 的真实更新状态与托管范围', 'Check real update status and managed scope for installed MCP / Skills'),
       };
     }
 
     if (updateAudit.updates.length === 0) {
       return {
         title: t.upToDate,
-        description: `已检查托管组件更新，应用版本 ${updateAudit.appVersion}；${updateAudit.untrackedCount} 个外部组件未纳入自动升级`,
+        description: tr(
+          `已检查托管组件更新，应用版本 ${updateAudit.appVersion}；${updateAudit.untrackedCount} 个外部组件未纳入自动升级`,
+          `Managed component updates checked, app version ${updateAudit.appVersion}; ${updateAudit.untrackedCount} external components not included in auto-upgrade`
+        ),
       };
     }
 
     return {
-      title: `发现 ${updateAudit.updates.length} 个可用更新`,
-      description: `应用版本 ${updateAudit.appVersion}，可前往“已安装管理”处理托管组件升级`,
+      title: tr(`发现 ${updateAudit.updates.length} 个可用更新`, `${updateAudit.updates.length} updates available`),
+      description: tr(`应用版本 ${updateAudit.appVersion}，可前往”已安装管理”处理托管组件升级`, `App version ${updateAudit.appVersion}. Go to Installed Management to handle managed component upgrades.`),
     };
   }, [updateAudit]);
 
@@ -321,11 +344,11 @@ export function SettingsPage() {
     const now = Date.now();
     if (autoRuleUpdatesUnlocked) {
       return {
-        title: '完整版规则热更新',
-        description: '自动高频同步（目标 6 小时内），检测到新规则会自动更新。',
+        title: tr('完整版规则热更新', 'Full version rule hot-update'),
+        description: tr('自动高频同步（目标 6 小时内），检测到新规则会自动更新。', 'Auto-sync at high frequency (target within 6 hours). New rules are applied automatically.'),
         detail: autoRuleSyncAt
-          ? `最近自动同步：${new Date(autoRuleSyncAt).toLocaleString()}`
-          : '尚未记录自动同步时间，应用运行后会自动检查。',
+          ? tr(`最近自动同步：${new Date(autoRuleSyncAt).toLocaleString()}`, `Last auto-sync: ${new Date(autoRuleSyncAt).toLocaleString()}`)
+          : tr('尚未记录自动同步时间，应用运行后会自动检查。', 'No auto-sync recorded yet. The app will check automatically after launch.'),
         cta: '',
       };
     }
@@ -335,32 +358,38 @@ export function SettingsPage() {
     const waitDays = Math.max(0, Math.ceil(waitHours / 24));
 
     return {
-      title: '免费版规则更新',
-      description: `${ruleUpdatesCopy.hookLine} 你仍可手动同步，但规则会明显慢于完整版。`,
+      title: tr('免费版规则更新', 'Free plan rule updates'),
+      description: tr(
+        `${ruleUpdatesCopy.hookLine} 你仍可手动同步，但规则会明显慢于完整版。`,
+        `${ruleUpdatesCopy.hookLine} You can still sync manually, but rules will lag behind the full version.`
+      ),
       detail: freeRuleSyncAt
-        ? `最近手动同步：${new Date(freeRuleSyncAt).toLocaleString()}${waitDays > 0 ? `，还需等待约 ${waitDays} 天` : ''}`
-        : '尚未执行过手动同步。',
-      cta: ruleUpdatesCopy.ctaLine ?? '升级完整版可开启自动热更新和更快防御策略下发。',
+        ? tr(
+            `最近手动同步：${new Date(freeRuleSyncAt).toLocaleString()}${waitDays > 0 ? `，还需等待约 ${waitDays} 天` : ''}`,
+            `Last manual sync: ${new Date(freeRuleSyncAt).toLocaleString()}${waitDays > 0 ? `, ~${waitDays} day(s) until next sync` : ''}`
+          )
+        : tr('尚未执行过手动同步。', 'No manual sync has been performed yet.'),
+      cta: ruleUpdatesCopy.ctaLine ?? tr('升级完整版可开启自动热更新和更快防御策略下发。', 'Upgrade to full version to enable auto hot-updates and faster defense policy delivery.'),
     };
   }, [autoRuleSyncAt, autoRuleUpdatesUnlocked, freeRuleSyncAt, ruleUpdatesCopy]);
 
   const aiConnectionSummary = useMemo(() => {
     if (!settings.aiConnectionTested) {
-      return '未完成连接测试';
+      return tr('未完成连接测试', 'Connection test not completed');
     }
-    return aiConnectionMessage ?? '连接测试通过，可用于安装失败自动诊断。';
+    return aiConnectionMessage ?? tr('连接测试通过，可用于安装失败自动诊断。', 'Connection test passed. Available for auto-diagnosis on install failures.');
   }, [aiConnectionMessage, settings.aiConnectionTested]);
 
   const protectionScopeSummary = useMemo(() => {
     if (!protectionStatus?.enabled) {
-      return '实时主动防护已关闭';
+      return tr('实时主动防护已关闭', 'Real-time active protection is disabled');
     }
 
     if (protectionStatus.watched_paths.length === 0) {
-      return '当前没有发现需要监听的 AI 工具配置目录，不会监听其它普通工具';
+      return tr('当前没有发现需要监听的 AI 工具配置目录，不会监听其它普通工具', 'No AI tool config directories found to monitor. Other apps are not monitored.');
     }
 
-    return `仅监听 ${protectionStatus.watched_paths.length} 条已发现的 AI 工具配置与 Skill 路径`;
+    return tr(`仅监听 ${protectionStatus.watched_paths.length} 条已发现的 AI 工具配置与 Skill 路径`, `Monitoring ${protectionStatus.watched_paths.length} discovered AI tool config and Skill paths only`);
   }, [protectionStatus]);
 
   const protectionScopePreview = useMemo(
@@ -396,9 +425,9 @@ export function SettingsPage() {
       try {
         const enabled = await setAutostartEnabled(checked);
         settings.setAutoStart(enabled);
-        setFeedbackMessage('success', enabled ? '已启用系统开机自启' : '已关闭系统开机自启');
+        setFeedbackMessage('success', enabled ? tr('已启用系统开机自启', 'Auto-start at login enabled') : tr('已关闭系统开机自启', 'Auto-start at login disabled'));
       } catch (error) {
-        setFeedbackMessage('error', `开机自启设置失败：${getErrorMessage(error)}`);
+        setFeedbackMessage('error', tr(`开机自启设置失败：${getErrorMessage(error)}`, `Auto-start setting failed: ${getErrorMessage(error)}`));
       }
     });
   };
@@ -409,8 +438,8 @@ export function SettingsPage() {
       setFeedbackMessage(
         'info',
         checked
-          ? '关闭窗口时会隐藏到托盘，可通过托盘图标恢复'
-          : '关闭窗口时将直接退出应用'
+          ? tr('关闭窗口时会隐藏到托盘，可通过托盘图标恢复', 'Window will minimize to tray on close. Restore via tray icon.')
+          : tr('关闭窗口时将直接退出应用', 'Window will quit the app on close.')
       );
     });
   };
@@ -419,7 +448,7 @@ export function SettingsPage() {
     await runSettingAction('checkUpdatesAuto', async () => {
       settings.setCheckUpdatesAuto(checked);
       if (!checked) {
-        setFeedbackMessage('info', '已关闭后台维护检查');
+        setFeedbackMessage('info', tr('已关闭后台维护检查', 'Background maintenance checks disabled'));
         return;
       }
 
@@ -428,8 +457,8 @@ export function SettingsPage() {
       setFeedbackMessage(
         audit.updates.length > 0 ? 'info' : 'success',
         audit.updates.length > 0
-          ? `已开启自动检查，目前发现 ${audit.updates.length} 个可用更新`
-          : '已开启自动检查，当前没有待更新组件'
+          ? tr(`已开启自动检查，目前发现 ${audit.updates.length} 个可用更新`, `Auto-check enabled. ${audit.updates.length} updates available.`)
+          : tr('已开启自动检查，当前没有待更新组件', 'Auto-check enabled. No pending component updates.')
       );
     });
   };
@@ -440,18 +469,21 @@ export function SettingsPage() {
         const granted = await ensureNotificationPermission();
         if (!granted) {
           settings.setNotificationsEnabled(false);
-          setFeedbackMessage('error', '系统通知权限未授予，无法启用桌面通知');
+          setFeedbackMessage('error', tr('系统通知权限未授予，无法启用桌面通知', 'System notification permission not granted. Cannot enable desktop notifications.'));
           return;
         }
 
         settings.setNotificationsEnabled(true);
-        await sendDesktopNotification('AgentShield 通知已启用', '后续安全提醒会通过系统通知显示');
-        setFeedbackMessage('success', '桌面通知已启用');
+        await sendDesktopNotification(
+          tr('AgentShield 通知已启用', 'AgentShield notifications enabled'),
+          tr('后续安全提醒会通过系统通知显示', 'Security alerts will be shown via system notifications')
+        );
+        setFeedbackMessage('success', tr('桌面通知已启用', 'Desktop notifications enabled'));
         return;
       }
 
       settings.setNotificationsEnabled(false);
-      setFeedbackMessage('info', '已关闭桌面通知，应用内通知中心仍会保留记录');
+      setFeedbackMessage('info', tr('已关闭桌面通知，应用内通知中心仍会保留记录', 'Desktop notifications disabled. In-app notification center will still keep records.'));
     });
   };
 
@@ -462,7 +494,7 @@ export function SettingsPage() {
       if (checked) {
         playSound('notification');
       }
-      setFeedbackMessage('success', checked ? '声音提示已开启并完成预览' : '声音提示已关闭');
+      setFeedbackMessage('success', checked ? tr('声音提示已开启并完成预览', 'Sound effects enabled and previewed') : tr('声音提示已关闭', 'Sound effects disabled'));
     });
   };
 
@@ -471,7 +503,7 @@ export function SettingsPage() {
       settings.setCriticalAlerts(checked);
       setFeedbackMessage(
         'info',
-        checked ? '高风险扫描结果将触发系统告警' : '高风险扫描结果仅保留在应用内通知中心'
+        checked ? tr('高风险扫描结果将触发系统告警', 'High-risk scan results will trigger system alerts') : tr('高风险扫描结果仅保留在应用内通知中心', 'High-risk scan results will only be kept in the in-app notification center')
       );
     });
   };
@@ -485,9 +517,9 @@ export function SettingsPage() {
         checked ? 'success' : 'info',
         checked
           ? status.watched_paths.length > 0
-            ? `实时主动防御已启用，当前仅监听 ${status.watched_paths.length} 条已发现的 AI 工具路径`
-            : '实时主动防御已启用，但当前没有发现需要监听的 AI 工具目录，不会监听其它普通工具'
-          : '实时主动防御已关闭'
+            ? tr(`实时主动防御已启用，当前仅监听 ${status.watched_paths.length} 条已发现的 AI 工具路径`, `Real-time protection enabled. Monitoring ${status.watched_paths.length} discovered AI tool paths.`)
+            : tr('实时主动防御已启用，但当前没有发现需要监听的 AI 工具目录，不会监听其它普通工具', 'Real-time protection enabled, but no AI tool directories were found to monitor. Other apps are not monitored.')
+          : tr('实时主动防御已关闭', 'Real-time active protection disabled')
       );
     });
   };
@@ -499,7 +531,7 @@ export function SettingsPage() {
       setProtectionStatus(status);
       setFeedbackMessage(
         checked ? 'success' : 'info',
-        checked ? '高风险 MCP / Skill 将自动隔离' : '已关闭自动隔离，仅记录并告警'
+        checked ? tr('高风险 MCP / Skill 将自动隔离', 'High-risk MCP / Skills will be auto-quarantined') : tr('已关闭自动隔离，仅记录并告警', 'Auto-quarantine disabled. Only logging and alerting.')
       );
     });
   };
@@ -510,8 +542,8 @@ export function SettingsPage() {
       setFeedbackMessage(
         'info',
         checked
-          ? '安全模式已启用。本次会暂停主动防护、后台扫描和自动更新检查，适合排查空白页或异常后台行为。'
-          : '安全模式已关闭。主动防护和后台任务会按你的原有设置恢复。'
+          ? tr('安全模式已启用。本次会暂停主动防护、后台扫描和自动更新检查，适合排查空白页或异常后台行为。', 'Safe mode enabled. Active protection, background scanning, and auto-update checks are paused. Useful for troubleshooting blank screens or abnormal background behavior.')
+          : tr('安全模式已关闭。主动防护和后台任务会按你的原有设置恢复。', 'Safe mode disabled. Active protection and background tasks will resume with your previous settings.')
       );
       setStartupTimeline(listStartupTimelineEvents());
     });
@@ -524,11 +556,11 @@ export function SettingsPage() {
         await pushNotification({
           type: 'system',
           priority: 'info',
-          title: '每周安全摘要已启用',
-          body: 'AgentShield 会在你使用期间按周生成一次本地安全摘要通知。',
+          title: tr('每周安全摘要已启用', 'Weekly security summary enabled'),
+          body: tr('AgentShield 会在你使用期间按周生成一次本地安全摘要通知。', 'AgentShield will generate a local security summary notification weekly while in use.'),
         });
       }
-      setFeedbackMessage('success', checked ? '每周报告已启用' : '每周报告已关闭');
+      setFeedbackMessage('success', checked ? tr('每周报告已启用', 'Weekly report enabled') : tr('每周报告已关闭', 'Weekly report disabled'));
     });
   };
 
@@ -537,7 +569,7 @@ export function SettingsPage() {
       settings.setScanAutoStart(checked);
       setFeedbackMessage(
         'info',
-        checked ? '已启用后台自动扫描，应用启动后会按频率执行' : '后台自动扫描已关闭'
+        checked ? tr('已启用后台自动扫描，应用启动后会按频率执行', 'Background auto-scan enabled. Will run at the configured frequency after app launch.') : tr('后台自动扫描已关闭', 'Background auto-scan disabled')
       );
     });
   };
@@ -547,7 +579,7 @@ export function SettingsPage() {
       settings.setScanFrequency(value);
       const label =
         value === 'daily' ? t.scanFrequencyDaily : value === 'weekly' ? t.scanFrequencyWeekly : t.scanFrequencyManual;
-      setFeedbackMessage('success', `自动扫描频率已切换为${label}`);
+      setFeedbackMessage('success', tr(`自动扫描频率已切换为${label}`, `Auto-scan frequency changed to ${label}`));
     });
   };
 
@@ -556,7 +588,7 @@ export function SettingsPage() {
       await clearProtectionIncidents();
       setProtectionIncidents([]);
       setProtectionStatus(await getProtectionStatus());
-      setFeedbackMessage('success', '已清空实时防护拦截记录');
+      setFeedbackMessage('success', tr('已清空实时防护拦截记录', 'Real-time protection incident records cleared'));
     });
   };
 
@@ -564,7 +596,7 @@ export function SettingsPage() {
     await runSettingAction('clearStartupTimeline', () => {
       clearStartupTimelineEvents();
       setStartupTimeline([]);
-      setFeedbackMessage('success', '已清空最近启动时间线。');
+      setFeedbackMessage('success', tr('已清空最近启动时间线。', 'Startup timeline cleared.'));
     });
   };
 
@@ -582,8 +614,11 @@ export function SettingsPage() {
       setFeedbackMessage(
         audit.updates.length > 0 ? 'info' : 'success',
         audit.updates.length > 0
-          ? `检查完成，发现 ${audit.updates.length} 个组件更新`
-          : `检查完成，当前没有可用更新${audit.untrackedCount > 0 ? `，另有 ${audit.untrackedCount} 个外部组件未纳入自动升级` : ''}`
+          ? tr(`检查完成，发现 ${audit.updates.length} 个组件更新`, `Check complete. ${audit.updates.length} component updates found.`)
+          : tr(
+              `检查完成，当前没有可用更新${audit.untrackedCount > 0 ? `，另有 ${audit.untrackedCount} 个外部组件未纳入自动升级` : ''}`,
+              `Check complete. No updates available.${audit.untrackedCount > 0 ? ` ${audit.untrackedCount} external components are not included in auto-upgrade.` : ''}`
+            )
       );
     });
   };
@@ -597,7 +632,10 @@ export function SettingsPage() {
         if (lastSync > 0 && now < nextAvailableAt) {
           setFeedbackMessage(
             'info',
-            `免费版规则同步频率为每 7 天一次，请在 ${new Date(nextAvailableAt).toLocaleString()} 后重试。`
+            tr(
+              `免费版规则同步频率为每 7 天一次，请在 ${new Date(nextAvailableAt).toLocaleString()} 后重试。`,
+              `Free plan rule sync is limited to once every 7 days. Please try again after ${new Date(nextAvailableAt).toLocaleString()}.`
+            )
           );
           return;
         }
@@ -620,22 +658,22 @@ export function SettingsPage() {
   const handleTestAiConnection = async () => {
     await runSettingAction('testAiConnection', async () => {
       if (!aiFeatureUnlocked) {
-        setFeedbackMessage('info', '免费版不包含 AI 自动诊断。升级完整版后可开启。');
+        setFeedbackMessage('info', tr('免费版不包含 AI 自动诊断。升级完整版后可开启。', 'AI auto-diagnosis is not available on the free plan. Upgrade to full version to enable.'));
         return;
       }
 
       if (settings.aiApiKey.trim().length === 0) {
-        setFeedbackMessage('error', '请先填写 API 密钥。');
+        setFeedbackMessage('error', tr('请先填写 API 密钥。', 'Please enter your API key first.'));
         return;
       }
 
       if (settings.aiModel.trim().length === 0) {
-        setFeedbackMessage('error', '请先填写模型名称。');
+        setFeedbackMessage('error', tr('请先填写模型名称。', 'Please enter the model name first.'));
         return;
       }
 
       if (settings.aiProvider === 'custom' && settings.aiBaseUrl.trim().length === 0) {
-        setFeedbackMessage('error', '自定义服务商必须填写 API 端点。');
+        setFeedbackMessage('error', tr('自定义服务商必须填写 API 端点。', 'Custom provider requires an API endpoint.'));
         return;
       }
 
@@ -667,7 +705,7 @@ export function SettingsPage() {
       await clearSemanticGuardKey();
       const status = await getSemanticGuardStatus();
       setSemanticGuardStatus(status);
-      setFeedbackMessage('info', '已清除高级语义研判访问密钥');
+      setFeedbackMessage('info', tr('已清除高级语义研判访问密钥', 'Advanced semantic analysis access key cleared'));
     });
   };
 
@@ -760,8 +798,8 @@ export function SettingsPage() {
                 onChange={handleAutoQuarantineToggle}
               />
               <SettingToggle
-                label="安全模式启动"
-                description="只保留界面和启动诊断，暂停主动防护、后台扫描与自动更新检查，适合排查空白页和异常后台行为"
+                label={tr('安全模式启动', 'Safe mode startup')}
+                description={tr('只保留界面和启动诊断，暂停主动防护、后台扫描与自动更新检查，适合排查空白页和异常后台行为', 'Only keeps the UI and startup diagnostics. Pauses active protection, background scanning, and auto-update checks. Useful for troubleshooting blank screens and abnormal background behavior.')}
                 checked={settings.safeMode}
                 disabled={busyKey === 'safeMode'}
                 onChange={handleSafeModeToggle}
@@ -790,14 +828,14 @@ export function SettingsPage() {
               <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm font-medium text-white">高级语义研判</p>
+                    <p className="text-sm font-medium text-white">{tr('高级语义研判', 'Advanced Semantic Analysis')}</p>
                     <p className="mt-1 text-xs text-white/50">
-                      只对高风险 MCP / Skill 命中做深度复核，不上传整个项目或完整源码。
+                      {tr('只对高风险 MCP / Skill 命中做深度复核，不上传整个项目或完整源码。', 'Deep review only for high-risk MCP / Skill hits. Does not upload entire projects or full source code.')}
                     </p>
                     <p className="mt-2 text-xs text-white/60">
                       {semanticUnlocked
-                        ? semanticGuardStatus?.message ?? '检查高级语义研判状态中'
-                        : '仅 Pro / 试用版可用，且需要你自行填写访问密钥。启用后只会对最可疑的少量项目做深度判定，以控制成本。'}
+                        ? semanticGuardStatus?.message ?? tr('检查高级语义研判状态中', 'Checking advanced semantic analysis status')
+                        : tr('仅 Pro / 试用版可用，且需要你自行填写访问密钥。启用后只会对最可疑的少量项目做深度判定，以控制成本。', 'Available for Pro / trial only. You need to provide your own access key. When enabled, only the most suspicious items undergo deep analysis to control costs.')}
                     </p>
                   </div>
                   <div
@@ -810,10 +848,10 @@ export function SettingsPage() {
                   >
                     {semanticUnlocked
                       ? semanticGuardStatus?.active
-                        ? '已就绪'
+                        ? tr('已就绪', 'Ready')
                         : semanticGuardStatus?.configured
-                          ? '待启用'
-                          : '未配置'
+                          ? tr('待启用', 'Pending')
+                          : tr('未配置', 'Not configured')
                       : 'Pro'}
                   </div>
                 </div>
@@ -828,7 +866,7 @@ export function SettingsPage() {
                           setSemanticDialogOpen(true);
                         }}
                       >
-                        {semanticGuardStatus?.configured ? '更新访问密钥' : '配置访问密钥'}
+                        {semanticGuardStatus?.configured ? tr('更新访问密钥', 'Update access key') : tr('配置访问密钥', 'Configure access key')}
                       </Button>
                       {semanticGuardStatus?.configured && (
                         <Button
@@ -837,7 +875,7 @@ export function SettingsPage() {
                           onClick={handleClearSemanticAccessKey}
                           disabled={busyKey === 'semanticGuardClear'}
                         >
-                          清除密钥
+                          {tr('清除密钥', 'Clear key')}
                         </Button>
                       )}
                     </>
@@ -847,7 +885,7 @@ export function SettingsPage() {
                       className="border border-white/10 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white"
                       onClick={() => navigateToUpgrade('semantic_guard_locked')}
                     >
-                      升级 Pro
+                      {tr('升级 Pro', 'Upgrade to Pro')}
                     </Button>
                   )}
                 </div>
@@ -855,7 +893,7 @@ export function SettingsPage() {
               <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm font-medium text-white">实时防护状态</p>
+                    <p className="text-sm font-medium text-white">{tr('实时防护状态', 'Real-time Protection Status')}</p>
                     <p className="mt-1 text-xs text-white/50">
                       {protectionScopeSummary}
                     </p>
@@ -888,7 +926,7 @@ export function SettingsPage() {
                     ))}
                     {protectionStatus && protectionStatus.watched_paths.length > protectionScopePreview.length ? (
                       <p className="text-[11px] text-white/35">
-                        其余 {protectionStatus.watched_paths.length - protectionScopePreview.length} 条路径已省略。
+                        {tr(`其余 ${protectionStatus.watched_paths.length - protectionScopePreview.length} 条路径已省略。`, `${protectionStatus.watched_paths.length - protectionScopePreview.length} more paths omitted.`)}
                       </p>
                     ) : null}
                   </div>
@@ -897,9 +935,9 @@ export function SettingsPage() {
               <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm font-medium text-white">最近启动发生了什么</p>
+                    <p className="text-sm font-medium text-white">{tr('最近启动发生了什么', 'What happened at last startup')}</p>
                     <p className="mt-1 text-xs text-white/50">
-                      用来判断这次启动是否启用了主动防护、后台扫描、审批中心和安全模式。
+                      {tr('用来判断这次启动是否启用了主动防护、后台扫描、审批中心和安全模式。', 'Check whether active protection, background scanning, approval center, and safe mode were enabled at this startup.')}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -911,7 +949,7 @@ export function SettingsPage() {
                           : 'bg-emerald-500/15 text-emerald-300'
                       )}
                     >
-                      {settings.safeMode ? '安全模式' : '正常模式'}
+                      {settings.safeMode ? tr('安全模式', 'Safe mode') : tr('正常模式', 'Normal mode')}
                     </span>
                     <Button
                       variant="ghost"
@@ -919,14 +957,14 @@ export function SettingsPage() {
                       onClick={handleClearStartupTimeline}
                       disabled={busyKey === 'clearStartupTimeline' || startupTimeline.length === 0}
                     >
-                      清空时间线
+                      {tr('清空时间线', 'Clear timeline')}
                     </Button>
                   </div>
                 </div>
                 <div className="mt-4 space-y-3">
                   {startupTimeline.length === 0 ? (
                     <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-white/50">
-                      当前没有最近启动记录。
+                      {tr('当前没有最近启动记录。', 'No recent startup records.')}
                     </div>
                   ) : (
                     startupTimeline.slice(0, 8).map((event) => (
@@ -964,7 +1002,7 @@ export function SettingsPage() {
                   <div>
                     <p className="text-sm font-medium text-white">{t.protectionRecentIncidents}</p>
                     <p className="mt-1 text-xs text-white/50">
-                      {protectionIncidents.length > 0 ? `共 ${protectionIncidents.length} 条最近事件` : t.protectionNoIncidents}
+                      {protectionIncidents.length > 0 ? tr(`共 ${protectionIncidents.length} 条最近事件`, `${protectionIncidents.length} recent events`) : t.protectionNoIncidents}
                     </p>
                   </div>
                   <Button
@@ -994,7 +1032,7 @@ export function SettingsPage() {
                                 : 'bg-amber-500/15 text-amber-300'
                             )}
                           >
-                            {incident.action.startsWith('quarantined') || incident.action === 'blocked' ? '已拦截' : '已记录'}
+                            {incident.action.startsWith('quarantined') || incident.action === 'blocked' ? tr('已拦截', 'Blocked') : tr('已记录', 'Logged')}
                           </span>
                         </div>
                         <p className="mt-1 text-xs leading-5 text-white/60">{incident.description}</p>
@@ -1025,7 +1063,7 @@ export function SettingsPage() {
                   <div>
                     <p className="text-sm font-medium text-white">{t.settingsAIDesc}</p>
                     <p className="mt-1 text-xs text-white/50">
-                      用于 OpenClaw 一键向导失败时自动诊断原因，不会上传完整项目文件。
+                      {tr('用于 OpenClaw 一键向导失败时自动诊断原因，不会上传完整项目文件。', 'Used for auto-diagnosing OpenClaw wizard failures. Does not upload entire project files.')}
                     </p>
                     <p className="mt-2 text-xs text-white/60">{aiConnectionSummary}</p>
                   </div>
@@ -1035,7 +1073,7 @@ export function SettingsPage() {
                       aiFeatureUnlocked ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/10 text-white/60'
                     )}
                   >
-                    {aiFeatureUnlocked ? '已解锁' : '完整版'}
+                    {aiFeatureUnlocked ? tr('已解锁', 'Unlocked') : tr('完整版', 'Full version')}
                   </span>
                 </div>
               </div>
@@ -1113,7 +1151,7 @@ export function SettingsPage() {
                       className="border border-white/10 bg-white/5 text-white/75 hover:bg-white/10 hover:text-white"
                       onClick={() => navigateToUpgrade('ai_diagnosis_locked')}
                     >
-                      升级完整版
+                      {tr('升级完整版', 'Upgrade to full version')}
                     </Button>
                   ) : null}
                 </div>
@@ -1152,7 +1190,7 @@ export function SettingsPage() {
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-violet-500">
                   <Shield className="h-8 w-8 text-white" />
                 </div>
-                <h3 className="text-xl font-semibold text-white">AgentShield 智盾</h3>
+                <h3 className="text-xl font-semibold text-white">{tr('AgentShield 智盾', 'AgentShield')}</h3>
                 <p className="mt-1 text-sm text-white/60">
                   {updateAudit ? `Version ${updateAudit.appVersion}` : t.versionInfo}
                 </p>
@@ -1179,7 +1217,7 @@ export function SettingsPage() {
                       className="border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
                       onClick={() => navigateToUpgrade('rule_updates_locked')}
                     >
-                      升级
+                      {tr('升级', 'Upgrade')}
                     </Button>
                   ) : null}
                 </div>
@@ -1263,23 +1301,23 @@ export function SettingsPage() {
       <Dialog open={semanticDialogOpen} onOpenChange={setSemanticDialogOpen}>
         <DialogContent className="max-w-lg border-white/10 bg-slate-900 text-white">
             <DialogHeader>
-              <DialogTitle>配置高级语义研判</DialogTitle>
+              <DialogTitle>{tr('配置高级语义研判', 'Configure Advanced Semantic Analysis')}</DialogTitle>
               <DialogDescription className="text-white/60">
-              Pro 用户需要自行填写安全研判访问密钥来启用深度复核。密钥只会保存在系统钥匙串，不写入浏览器存储或本地设置文件。
+              {tr('Pro 用户需要自行填写安全研判访问密钥来启用深度复核。密钥只会保存在系统钥匙串，不写入浏览器存储或本地设置文件。', 'Pro users need to provide their own access key for deep review. The key is stored only in the system keychain, not in browser storage or local settings files.')}
               </DialogDescription>
             </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-medium text-white">访问密钥</label>
+              <label className="mb-2 block text-sm font-medium text-white">{tr('访问密钥', 'Access Key')}</label>
               <input
                 type="password"
                 value={semanticAccessKey}
                 onChange={(event) => setSemanticAccessKey(event.target.value)}
-                placeholder="输入你的安全研判访问密钥"
+                placeholder={tr('输入你的安全研判访问密钥', 'Enter your semantic analysis access key')}
                 className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-sky-400/40"
               />
               <p className="mt-2 text-xs leading-5 text-white/50">
-                建议只在 Pro 用户环境中启用。系统会仅对最可疑的少量结果做深度研判，并对相同证据命中本地缓存，避免重复消耗。
+                {tr('建议只在 Pro 用户环境中启用。系统会仅对最可疑的少量结果做深度研判，并对相同证据命中本地缓存，避免重复消耗。', 'Recommended for Pro users only. The system only deeply analyzes the most suspicious results and caches identical evidence locally to avoid redundant costs.')}
               </p>
             </div>
             <div className="flex items-center justify-end gap-3">
@@ -1288,7 +1326,7 @@ export function SettingsPage() {
                 className="text-white/70 hover:bg-white/10 hover:text-white"
                 onClick={() => setSemanticDialogOpen(false)}
               >
-                取消
+                {t.cancel}
               </Button>
               <Button
                 className="bg-sky-500 text-white hover:bg-sky-400"
@@ -1298,10 +1336,10 @@ export function SettingsPage() {
                 {busyKey === 'semanticGuardSave' ? (
                   <span className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    连接中
+                    {tr('连接中', 'Connecting')}
                   </span>
                 ) : (
-                  '保存并连接'
+                  tr('保存并连接', 'Save and connect')
                 )}
               </Button>
             </div>
@@ -1345,17 +1383,17 @@ function SettingsDialog({
         {dialogKey === 'updates' ? (
           <>
             <DialogHeader>
-              <DialogTitle>更新检查结果</DialogTitle>
+              <DialogTitle>{tr('更新检查结果', 'Update Check Results')}</DialogTitle>
               <DialogDescription className="text-white/60">
                 {updateAudit
-                  ? `应用版本 ${updateAudit.appVersion}，检查时间 ${new Date(updateAudit.checkedAt).toLocaleString()}`
-                  : '尚未完成检查'}
+                  ? tr(`应用版本 ${updateAudit.appVersion}，检查时间 ${new Date(updateAudit.checkedAt).toLocaleString()}`, `App version ${updateAudit.appVersion}, checked at ${new Date(updateAudit.checkedAt).toLocaleString()}`)
+                  : tr('尚未完成检查', 'Check not completed yet')}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
               {!updateAudit || updateAudit.updates.length === 0 ? (
                 <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-200">
-                  当前没有已安装 MCP / Skill 组件需要更新。
+                  {tr('当前没有已安装 MCP / Skill 组件需要更新。', 'No installed MCP / Skill components need updating.')}
                 </div>
               ) : (
                 updateAudit.updates.map((item) => (
@@ -1374,7 +1412,7 @@ function SettingsDialog({
                       className="text-white/70 hover:bg-white/10 hover:text-white"
                       onClick={() => useAppStore.getState().setCurrentModule('installed')}
                     >
-                      前往更新
+                      {tr('前往更新', 'Go to update')}
                     </Button>
                   </div>
                 ))
@@ -1462,5 +1500,5 @@ function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
   }
-  return '未知错误';
+  return tr('未知错误', 'Unknown error');
 }

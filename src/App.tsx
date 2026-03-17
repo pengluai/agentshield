@@ -122,7 +122,7 @@ function AppContent() {
   const bypassCloseInterceptRef = useRef(false);
   const trayCloseArmedAtRef = useRef<number | null>(null);
   const prefersNativeCloseOnMac =
-    typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || navigator.userAgent);
+    typeof navigator !== 'undefined' && /macintosh|mac os x|darwin/i.test(navigator.userAgent);
 
   const recordStartupStepOnce = (
     step: string,
@@ -363,7 +363,7 @@ function AppContent() {
       }
 
       if (useSettingsStore.getState().notificationsEnabled) {
-        await sendDesktopNotification('AgentShield 需要你点头', approval.title);
+        await sendDesktopNotification(tr('AgentShield 需要你点头', 'AgentShield needs your approval'), approval.title);
       }
     };
 
@@ -436,14 +436,23 @@ function AppContent() {
       await useNotificationStore.getState().pushNotification({
         type: 'update',
         priority: 'info',
-        title: `发现 ${audit.updates.length} 个组件更新`,
-        body: '请前往“已安装管理”页面查看并执行升级。',
+        title: tr(
+          `发现 ${audit.updates.length} 个组件更新`,
+          `${audit.updates.length} component update(s) available`
+        ),
+        body: tr(
+          '请前往”已安装管理”页面查看并执行升级。',
+          'Go to Installed Management to review and apply upgrades.'
+        ),
       });
 
       if (useSettingsStore.getState().notificationsEnabled) {
         await sendDesktopNotification(
-          'AgentShield 发现组件更新',
-          `已有 ${audit.updates.length} 个 MCP / Skill 组件可以升级`
+          tr('AgentShield 发现组件更新', 'AgentShield found component updates'),
+          tr(
+            `已有 ${audit.updates.length} 个 MCP / Skill 组件可以升级`,
+            `${audit.updates.length} MCP / Skill component(s) can be upgraded`
+          )
         );
       }
     };
@@ -826,9 +835,10 @@ function AppContent() {
     } catch (error) {
       console.error('Failed to resolve runtime approval request:', error);
       setApprovalError(
-        isEnglishLocale
-          ? 'Approval submission failed. Please try again. If it keeps failing, check console logs.'
-          : '审批提交失败，请重试一次。若持续失败，请查看控制台日志。'
+        tr(
+          '审批提交失败，请重试一次。若持续失败，请查看控制台日志。',
+          'Approval submission failed. Please try again. If it keeps failing, check console logs.'
+        )
       );
     } finally {
       setApprovalBusyId(null);
@@ -845,9 +855,10 @@ function AppContent() {
       <AppLayout>
         {safeMode ? (
           <div className="sticky top-0 z-30 border-b border-amber-300/20 bg-amber-500/10 px-6 py-3 text-sm text-amber-100 backdrop-blur">
-            {isEnglishLocale
-              ? 'Safe mode is enabled. Active protection, background scans, and automatic update checks are paused. Disable safe mode after troubleshooting.'
-              : '安全模式已启用。实时主动防护、后台扫描与自动更新检查已暂停。排查完成后请尽快关闭。'}
+            {tr(
+              '安全模式已启用。实时主动防护、后台扫描与自动更新检查已暂停。排查完成后请尽快关闭。',
+              'Safe mode is enabled. Active protection, background scans, and automatic update checks are paused. Disable safe mode after troubleshooting.'
+            )}
           </div>
         ) : null}
         <ErrorBoundary onReset={() => setCurrentModule('smartGuard')}>

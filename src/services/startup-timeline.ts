@@ -1,3 +1,7 @@
+import { isEnglishLocale } from '@/constants/i18n';
+
+const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
+
 export type StartupTimelineStatus = 'started' | 'completed' | 'skipped' | 'failed';
 
 export interface StartupTimelineEvent {
@@ -75,7 +79,7 @@ export function beginStartupTimelineSession(options: { safeMode: boolean }) {
     'app_boot',
     'started',
     options.safeMode
-      ? '应用以安全模式启动，本次会跳过后台扫描、自动更新检查和主动防护。'
-      : '应用正常启动，开始初始化本地防护与审批能力。'
+      ? tr('应用以安全模式启动，本次会跳过后台扫描、自动更新检查和主动防护。', 'App started in safe mode. Background scans, auto-update checks, and active protection are skipped.')
+      : tr('应用正常启动，开始初始化本地防护与审批能力。', 'App started normally. Initializing local protection and approval capabilities.')
   );
 }

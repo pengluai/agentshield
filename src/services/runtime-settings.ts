@@ -1,5 +1,4 @@
 import { getVersion } from '@tauri-apps/api/app';
-import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart';
 import {
@@ -8,6 +7,10 @@ import {
   sendNotification,
 } from '@tauri-apps/plugin-notification';
 import { open } from '@tauri-apps/plugin-shell';
+import { tauriInvoke as invoke } from '@/services/tauri';
+import { isEnglishLocale } from '@/constants/i18n';
+
+const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
 
 export type MacPermissionPane = 'fullDiskAccess' | 'accessibility' | 'automation' | 'notifications';
 
@@ -41,34 +44,35 @@ const MAC_PERMISSION_URLS: Record<MacPermissionPane, string[]> = {
 
 const MAC_PERMISSION_MANUAL_GUIDES: Record<MacPermissionPane, string[]> = {
   fullDiskAccess: [
-    '系统设置',
-    '隐私与安全性',
-    '完全磁盘访问',
-    '打开 AgentShield 开关',
+    tr('系统设置', 'System Settings'),
+    tr('隐私与安全性', 'Privacy & Security'),
+    tr('完全磁盘访问', 'Full Disk Access'),
+    tr('打开 AgentShield 开关', 'Enable AgentShield toggle'),
   ],
   accessibility: [
-    '系统设置',
-    '隐私与安全性',
-    '辅助功能',
-    '打开 AgentShield 开关',
+    tr('系统设置', 'System Settings'),
+    tr('隐私与安全性', 'Privacy & Security'),
+    tr('辅助功能', 'Accessibility'),
+    tr('打开 AgentShield 开关', 'Enable AgentShield toggle'),
   ],
   automation: [
-    '系统设置',
-    '隐私与安全性',
-    '自动化',
-    '在 AgentShield 下勾选目标应用',
+    tr('系统设置', 'System Settings'),
+    tr('隐私与安全性', 'Privacy & Security'),
+    tr('自动化', 'Automation'),
+    tr('在 AgentShield 下勾选目标应用', 'Check the target app under AgentShield'),
   ],
   notifications: [
-    '系统设置',
-    '通知',
+    tr('系统设置', 'System Settings'),
+    tr('通知', 'Notifications'),
     'AgentShield',
-    '允许通知并启用横幅提醒',
+    tr('允许通知并启用横幅提醒', 'Allow notifications and enable banner alerts'),
   ],
 };
 
 const ALLOWED_EXTERNAL_URL_PATTERNS = [
   /^https:\/\/.+/i,
   /^x-apple\.systempreferences:.+/i,
+  /^ms-settings:.+/i,
 ];
 
 export interface InstalledUpdateAuditItem {

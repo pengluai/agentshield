@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   AlertCircle,
@@ -15,7 +15,6 @@ import {
   Wand2,
   XCircle,
 } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/lib/utils';
 import { MODULE_THEMES } from '@/constants/colors';
 import { isEnglishLocale, t } from '@/constants/i18n';
@@ -25,7 +24,7 @@ import { requestRuntimeGuardActionApproval } from '@/services/runtime-guard';
 import { aiDiagnoseError, executeInstallStep, type AiDiagnosis, type StepResult } from '@/services/ai-orchestrator';
 import { detectAiTools, type DetectedTool } from '@/services/scanner';
 import { openExternalUrl } from '@/services/runtime-settings';
-import { isTauriEnvironment } from '@/services/tauri';
+import { isTauriEnvironment, tauriInvoke as invoke } from '@/services/tauri';
 import { useLicenseStore } from '@/stores/licenseStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useProGate } from '@/hooks/useProGate';
@@ -131,154 +130,158 @@ function localizeOpenClawBackendText(value: string, fallback: string): string {
   return fallback;
 }
 
-const SETUP_STEPS: SetupStepDefinition[] = [
-  {
-    id: 'check_node',
-    title: tr('检查基础环境', 'Check baseline environment'),
-    description: tr('确认 Node.js 和 npm 可以正常使用', 'Confirm Node.js and npm are available'),
-  },
-  {
-    id: 'install_openclaw',
-    title: tr('安装 OpenClaw', 'Install OpenClaw'),
-    description: tr('真实执行 npm 安装命令', 'Run real npm installation command'),
-  },
-  {
-    id: 'run_onboard',
-    title: tr('初始化 OpenClaw', 'Initialize OpenClaw'),
-    description: tr('执行 openclaw onboard 完成首次初始化', 'Run openclaw onboard for first-time initialization'),
-  },
-  {
-    id: 'setup_mcp',
-    title: tr('接入本机 AI 工具', 'Connect local AI tools'),
-    description: tr('把 OpenClaw MCP 自动写入已发现宿主配置', 'Auto-write OpenClaw MCP into discovered host configs'),
-  },
-  {
-    id: 'harden_permissions',
-    title: tr('加固配置权限', 'Harden config permissions'),
-    description: tr('把关键配置权限收紧到仅当前用户可读写', 'Restrict key configs to current-user read/write'),
-  },
-  {
-    id: 'configure_channel',
-    title: tr('配置通知渠道', 'Configure notification channel'),
-    description: tr('写入飞书/企业微信/Telegram 渠道配置', 'Write channel config for Telegram / Feishu / WeCom and more'),
-  },
-  {
-    id: 'verify_install',
-    title: tr('最终验证', 'Final verification'),
-    description: tr('验证 OpenClaw 版本与配置目录', 'Verify OpenClaw version and config directory'),
-  },
-];
+function getSetupSteps(): SetupStepDefinition[] {
+  return [
+    {
+      id: 'check_node',
+      title: tr('检查基础环境', 'Check baseline environment'),
+      description: tr('确认 Node.js 和 npm 可以正常使用', 'Confirm Node.js and npm are available'),
+    },
+    {
+      id: 'install_openclaw',
+      title: tr('安装 OpenClaw', 'Install OpenClaw'),
+      description: tr('真实执行 npm 安装命令', 'Run real npm installation command'),
+    },
+    {
+      id: 'run_onboard',
+      title: tr('初始化 OpenClaw', 'Initialize OpenClaw'),
+      description: tr('执行 openclaw onboard 完成首次初始化', 'Run openclaw onboard for first-time initialization'),
+    },
+    {
+      id: 'setup_mcp',
+      title: tr('接入本机 AI 工具', 'Connect local AI tools'),
+      description: tr('把 OpenClaw MCP 自动写入已发现宿主配置', 'Auto-write OpenClaw MCP into discovered host configs'),
+    },
+    {
+      id: 'harden_permissions',
+      title: tr('加固配置权限', 'Harden config permissions'),
+      description: tr('把关键配置权限收紧到仅当前用户可读写', 'Restrict key configs to current-user read/write'),
+    },
+    {
+      id: 'configure_channel',
+      title: tr('配置通知渠道', 'Configure notification channel'),
+      description: tr('写入飞书/企业微信/Telegram 渠道配置', 'Write channel config for Telegram / Feishu / WeCom and more'),
+    },
+    {
+      id: 'verify_install',
+      title: tr('最终验证', 'Final verification'),
+      description: tr('验证 OpenClaw 版本与配置目录', 'Verify OpenClaw version and config directory'),
+    },
+  ];
+}
 
-const CHANNEL_OPTIONS: ChannelOption[] = [
-  {
-    id: 'telegram',
-    name: 'Telegram',
-    tokenLabel: 'Bot Token',
-    tokenPlaceholder: tr('123456789:AA...（BotFather 提供）', '123456789:AA... (provided by BotFather)'),
-    setupGuide: [
-      tr('在 Telegram 联系 BotFather 创建机器人', 'Create a bot with BotFather in Telegram'),
-      tr('复制 Bot Token 到下方输入框', 'Paste the Bot Token into the input below'),
-      tr('点击“开始一键配置”自动落地配置', 'Click "Start one-click setup" to apply configuration'),
-    ],
-    docsUrl: 'https://core.telegram.org/bots/tutorial',
-  },
-  {
-    id: 'feishu',
-    name: tr('飞书', 'Feishu'),
-    tokenLabel: tr('Webhook Token 或密钥', 'Webhook token or secret'),
-    tokenPlaceholder: tr('open-apis/bot/v2/hook/ 后面的 token', 'Token after open-apis/bot/v2/hook/'),
-    setupGuide: [
-      tr('在飞书群添加自定义机器人', 'Add a custom bot in Feishu group'),
-      tr('复制 webhook token 或签名密钥', 'Copy webhook token or signing secret'),
-      tr('点击“开始一键配置”自动写入本机', 'Click "Start one-click setup" to write local config'),
-    ],
-    docsUrl: 'https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot',
-  },
-  {
-    id: 'wework',
-    name: tr('企业微信', 'WeCom'),
-    tokenLabel: tr('机器人 Key', 'Bot key'),
-    tokenPlaceholder: tr('https://qyapi.weixin.qq.com/...key= 后面的 key', 'Key after ...?key= in webhook URL'),
-    setupGuide: [
-      tr('在企业微信群添加机器人', 'Add a bot in a WeCom group'),
-      tr('复制 webhook key', 'Copy webhook key'),
-      tr('点击“开始一键配置”自动写入本机', 'Click "Start one-click setup" to write local config'),
-    ],
-    docsUrl: 'https://developer.work.weixin.qq.com/document/path/91770',
-  },
-  {
-    id: 'dingtalk',
-    name: tr('钉钉', 'DingTalk'),
-    tokenLabel: 'Webhook Access Token',
-    tokenPlaceholder: 'https://oapi.dingtalk.com/robot/send?access_token=...',
-    setupGuide: [
-      tr('在钉钉群添加自定义机器人', 'Add a custom bot in a DingTalk group'),
-      tr('复制 access_token（和可选签名密钥）', 'Copy access_token (and optional signing secret)'),
-      tr('点击“开始一键配置”自动写入本机', 'Click "Start one-click setup" to write local config'),
-    ],
-    docsUrl: 'https://open.dingtalk.com/document/robots/custom-robot-access',
-  },
-  {
-    id: 'slack',
-    name: 'Slack',
-    tokenLabel: 'Bot Token',
-    tokenPlaceholder: 'xoxb-...',
-    setupGuide: [
-      tr('在 Slack 创建 App 并启用 Bot Token', 'Create a Slack app and enable Bot Token'),
-      tr('复制 xoxb token 到输入框', 'Copy xoxb token into the input'),
-      tr('点击“开始一键配置”自动写入本机', 'Click "Start one-click setup" to write local config'),
-    ],
-    docsUrl: 'https://api.slack.com/authentication/token-types',
-  },
-  {
-    id: 'discord',
-    name: 'Discord',
-    tokenLabel: 'Bot Token',
-    tokenPlaceholder: tr('MT...（Discord Developer Portal）', 'MT... (Discord Developer Portal)'),
-    setupGuide: [
-      tr('在 Discord Developer Portal 创建机器人', 'Create a bot in Discord Developer Portal'),
-      tr('复制 Bot Token 到输入框', 'Copy Bot Token into the input'),
-      tr('点击“开始一键配置”自动写入本机', 'Click "Start one-click setup" to write local config'),
-    ],
-    docsUrl: 'https://discord.com/developers/docs/topics/oauth2',
-  },
-  {
-    id: 'ntfy',
-    name: 'ntfy',
-    tokenLabel: tr('主题 / 令牌', 'Topic / token'),
-    tokenPlaceholder: tr('例如: myalerts 或 token@topic', 'Example: myalerts or token@topic'),
-    setupGuide: [
-      tr('准备 ntfy 主题（可选访问令牌）', 'Prepare an ntfy topic (optional access token)'),
-      tr('将主题或 token@topic 填入输入框', 'Enter topic or token@topic in the input'),
-      tr('点击“开始一键配置”自动写入本机', 'Click "Start one-click setup" to write local config'),
-    ],
-    docsUrl: 'https://docs.ntfy.sh',
-  },
-  {
-    id: 'webhook',
-    name: 'Webhook',
-    tokenLabel: tr('Webhook URL 或令牌', 'Webhook URL or token'),
-    tokenPlaceholder: tr('https://example.com/hook 或 Bearer token', 'https://example.com/hook or Bearer token'),
-    setupGuide: [
-      tr('准备可接收 JSON 的 webhook 端点', 'Prepare a webhook endpoint that accepts JSON'),
-      tr('粘贴 URL 或鉴权令牌到输入框', 'Paste URL or auth token in the input'),
-      tr('点击“开始一键配置”自动写入本机', 'Click "Start one-click setup" to write local config'),
-    ],
-    docsUrl: 'https://docs.openclaw.ai/automation/webhook',
-  },
-  {
-    id: 'email',
-    name: 'Email',
-    tokenLabel: tr('SMTP 凭据', 'SMTP credential'),
-    tokenPlaceholder: tr('smtp://user:pass@mail.example.com:587', 'smtp://user:pass@mail.example.com:587'),
-    setupGuide: [
-      tr('准备 SMTP 帐号与发件配置', 'Prepare SMTP account and sender configuration'),
-      tr('将 SMTP 凭据填入输入框', 'Enter SMTP credential in the input'),
-      tr('点击“开始一键配置”自动写入本机', 'Click "Start one-click setup" to write local config'),
-    ],
-    docsUrl: 'https://docs.openclaw.ai/channels',
-  },
-];
+function getChannelOptions(): ChannelOption[] {
+  return [
+    {
+      id: 'telegram',
+      name: 'Telegram',
+      tokenLabel: 'Bot Token',
+      tokenPlaceholder: tr('123456789:AA...（BotFather 提供）', '123456789:AA... (provided by BotFather)'),
+      setupGuide: [
+        tr('在 Telegram 联系 BotFather 创建机器人', 'Create a bot with BotFather in Telegram'),
+        tr('复制 Bot Token 到下方输入框', 'Paste the Bot Token into the input below'),
+        tr('点击”开始一键配置”自动落地配置', 'Click “Start one-click setup” to apply configuration'),
+      ],
+      docsUrl: 'https://core.telegram.org/bots/tutorial',
+    },
+    {
+      id: 'feishu',
+      name: tr('飞书', 'Feishu'),
+      tokenLabel: tr('Webhook Token 或密钥', 'Webhook token or secret'),
+      tokenPlaceholder: tr('open-apis/bot/v2/hook/ 后面的 token', 'Token after open-apis/bot/v2/hook/'),
+      setupGuide: [
+        tr('在飞书群添加自定义机器人', 'Add a custom bot in Feishu group'),
+        tr('复制 webhook token 或签名密钥', 'Copy webhook token or signing secret'),
+        tr('点击”开始一键配置”自动写入本机', 'Click “Start one-click setup” to write local config'),
+      ],
+      docsUrl: 'https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot',
+    },
+    {
+      id: 'wework',
+      name: tr('企业微信', 'WeCom'),
+      tokenLabel: tr('机器人 Key', 'Bot key'),
+      tokenPlaceholder: tr('https://qyapi.weixin.qq.com/...key= 后面的 key', 'Key after ...?key= in webhook URL'),
+      setupGuide: [
+        tr('在企业微信群添加机器人', 'Add a bot in a WeCom group'),
+        tr('复制 webhook key', 'Copy webhook key'),
+        tr('点击”开始一键配置”自动写入本机', 'Click “Start one-click setup” to write local config'),
+      ],
+      docsUrl: 'https://developer.work.weixin.qq.com/document/path/91770',
+    },
+    {
+      id: 'dingtalk',
+      name: tr('钉钉', 'DingTalk'),
+      tokenLabel: 'Webhook Access Token',
+      tokenPlaceholder: 'https://oapi.dingtalk.com/robot/send?access_token=...',
+      setupGuide: [
+        tr('在钉钉群添加自定义机器人', 'Add a custom bot in a DingTalk group'),
+        tr('复制 access_token（和可选签名密钥）', 'Copy access_token (and optional signing secret)'),
+        tr('点击”开始一键配置”自动写入本机', 'Click “Start one-click setup” to write local config'),
+      ],
+      docsUrl: 'https://open.dingtalk.com/document/robots/custom-robot-access',
+    },
+    {
+      id: 'slack',
+      name: 'Slack',
+      tokenLabel: 'Bot Token',
+      tokenPlaceholder: 'xoxb-...',
+      setupGuide: [
+        tr('在 Slack 创建 App 并启用 Bot Token', 'Create a Slack app and enable Bot Token'),
+        tr('复制 xoxb token 到输入框', 'Copy xoxb token into the input'),
+        tr('点击”开始一键配置”自动写入本机', 'Click “Start one-click setup” to write local config'),
+      ],
+      docsUrl: 'https://api.slack.com/authentication/token-types',
+    },
+    {
+      id: 'discord',
+      name: 'Discord',
+      tokenLabel: 'Bot Token',
+      tokenPlaceholder: tr('MT...（Discord Developer Portal）', 'MT... (Discord Developer Portal)'),
+      setupGuide: [
+        tr('在 Discord Developer Portal 创建机器人', 'Create a bot in Discord Developer Portal'),
+        tr('复制 Bot Token 到输入框', 'Copy Bot Token into the input'),
+        tr('点击”开始一键配置”自动写入本机', 'Click “Start one-click setup” to write local config'),
+      ],
+      docsUrl: 'https://discord.com/developers/docs/topics/oauth2',
+    },
+    {
+      id: 'ntfy',
+      name: 'ntfy',
+      tokenLabel: tr('主题 / 令牌', 'Topic / token'),
+      tokenPlaceholder: tr('例如: myalerts 或 token@topic', 'Example: myalerts or token@topic'),
+      setupGuide: [
+        tr('准备 ntfy 主题（可选访问令牌）', 'Prepare an ntfy topic (optional access token)'),
+        tr('将主题或 token@topic 填入输入框', 'Enter topic or token@topic in the input'),
+        tr('点击”开始一键配置”自动写入本机', 'Click “Start one-click setup” to write local config'),
+      ],
+      docsUrl: 'https://docs.ntfy.sh',
+    },
+    {
+      id: 'webhook',
+      name: 'Webhook',
+      tokenLabel: tr('Webhook URL 或令牌', 'Webhook URL or token'),
+      tokenPlaceholder: tr('https://example.com/hook 或 Bearer token', 'https://example.com/hook or Bearer token'),
+      setupGuide: [
+        tr('准备可接收 JSON 的 webhook 端点', 'Prepare a webhook endpoint that accepts JSON'),
+        tr('粘贴 URL 或鉴权令牌到输入框', 'Paste URL or auth token in the input'),
+        tr('点击”开始一键配置”自动写入本机', 'Click “Start one-click setup” to write local config'),
+      ],
+      docsUrl: 'https://docs.openclaw.ai/automation/webhook',
+    },
+    {
+      id: 'email',
+      name: 'Email',
+      tokenLabel: tr('SMTP 凭据', 'SMTP credential'),
+      tokenPlaceholder: tr('smtp://user:pass@mail.example.com:587', 'smtp://user:pass@mail.example.com:587'),
+      setupGuide: [
+        tr('准备 SMTP 帐号与发件配置', 'Prepare SMTP account and sender configuration'),
+        tr('将 SMTP 凭据填入输入框', 'Enter SMTP credential in the input'),
+        tr('点击”开始一键配置”自动写入本机', 'Click “Start one-click setup” to write local config'),
+      ],
+      docsUrl: 'https://docs.openclaw.ai/channels',
+    },
+  ];
+}
 
 function createInitialStepMap(): Record<SetupStepId, SetupStepStatus> {
   return {
@@ -350,9 +353,14 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
     open: boolean;
     action: 'setup' | 'install' | 'update' | 'uninstall';
   }>({ open: false, action: 'setup' });
+  const loadDataInFlightRef = useRef(false);
+  const focusRefreshTimerRef = useRef<number | null>(null);
 
   const selectedChannel = useMemo(
-    () => CHANNEL_OPTIONS.find((channel) => channel.id === selectedChannelId) ?? CHANNEL_OPTIONS[0],
+    () => {
+      const options = getChannelOptions();
+      return options.find((channel) => channel.id === selectedChannelId) ?? options[0];
+    },
     [selectedChannelId]
   );
 
@@ -429,28 +437,31 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
   );
 
   const loadData = useCallback(async () => {
-    setLoading(true);
-
-    if (browserShell) {
-      setStatus({
-        installed: false,
-        version: null,
-        config_dir: null,
-        node_installed: false,
-        npm_installed: false,
-        skills_count: 0,
-        mcps_count: 0,
-      });
-      setSkills([]);
-      setMcps([]);
-      setLatestVersion(null);
-      setDetectedTools([]);
-      setSelectedPlatforms([]);
-      setLoading(false);
+    if (loadDataInFlightRef.current) {
       return;
     }
+    loadDataInFlightRef.current = true;
+    setLoading(true);
 
     try {
+      if (browserShell) {
+        setStatus({
+          installed: false,
+          version: null,
+          config_dir: null,
+          node_installed: false,
+          npm_installed: false,
+          skills_count: 0,
+          mcps_count: 0,
+        });
+        setSkills([]);
+        setMcps([]);
+        setLatestVersion(null);
+        setDetectedTools([]);
+        setSelectedPlatforms([]);
+        return;
+      }
+
       const fallbackStatus: OpenClawStatus = {
         installed: false,
         version: null,
@@ -527,9 +538,10 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
         mcps_count: 0,
       });
       setDetectedTools([]);
+    } finally {
+      loadDataInFlightRef.current = false;
+      setLoading(false);
     }
-
-    setLoading(false);
   }, [browserShell]);
 
   useEffect(() => {
@@ -541,12 +553,22 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
       return;
     }
 
+    const scheduleRefresh = () => {
+      if (focusRefreshTimerRef.current !== null) {
+        window.clearTimeout(focusRefreshTimerRef.current);
+      }
+      focusRefreshTimerRef.current = window.setTimeout(() => {
+        focusRefreshTimerRef.current = null;
+        void loadData();
+      }, 900);
+    };
+
     const handleWindowFocus = () => {
-      void loadData();
+      scheduleRefresh();
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        void loadData();
+        scheduleRefresh();
       }
     };
     const pollId = window.setInterval(() => {
@@ -560,6 +582,10 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
       window.clearInterval(pollId);
       window.removeEventListener('focus', handleWindowFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (focusRefreshTimerRef.current !== null) {
+        window.clearTimeout(focusRefreshTimerRef.current);
+        focusRefreshTimerRef.current = null;
+      }
     };
   }, [browserShell, loadData]);
 
@@ -788,10 +814,19 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
           platform_name: 'OpenClaw',
           ...approvalInput,
         });
-        if (approval.status !== 'approved' || !approval.approval_ticket) {
+        if (approval.status === 'pending') {
           const message = tr(
             `已弹出「${step.title}」审批。请先确认，再重新执行一键配置。`,
             `Approval was requested for "${step.title}". Confirm it first, then run one-click setup again.`
+          );
+          markStepStatus(step.id, 'pending', message);
+          setSetupError(message);
+          return false;
+        }
+        if (approval.status !== 'approved' || !approval.approval_ticket) {
+          const message = tr(
+            `「${step.title}」审批未通过，操作已停止。`,
+            `Approval for "${step.title}" was not granted. The operation has been stopped.`
           );
           markStepStatus(step.id, 'failed', message);
           setSetupError(message);
@@ -865,7 +900,7 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
     setSetupBusy(true);
 
     try {
-      for (const step of SETUP_STEPS) {
+      for (const step of getSetupSteps()) {
         const ok = await runStep(step);
         if (!ok) {
           setSetupBusy(false);
@@ -1330,7 +1365,7 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
                   {tr('填入 token 后会自动写入 OpenClaw 渠道配置目录。', 'After filling the token, configuration will be written to OpenClaw channel directory.')}
                 </p>
                 <div className="mt-2.5 grid gap-1.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                  {CHANNEL_OPTIONS.map((channel) => (
+                  {getChannelOptions().map((channel) => (
                     <button
                       key={channel.id}
                       type="button"
@@ -1410,12 +1445,12 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
                 </button>
               ) : null}
               <span className="text-xs text-white/55">
-                {tr('已完成', 'Completed')} {setupCompletedSteps}/{SETUP_STEPS.length} {tr('步', 'steps')}
+                {tr('已完成', 'Completed')} {setupCompletedSteps}/{getSetupSteps().length} {tr('步', 'steps')}
               </span>
             </div>
 
             <div className="mt-2.5 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {SETUP_STEPS.map((step) => (
+              {getSetupSteps().map((step) => (
                 <SetupStepRow
                   key={step.id}
                   step={step}

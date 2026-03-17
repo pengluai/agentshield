@@ -1,10 +1,12 @@
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Lock, Plus, Copy, Trash2, AlertTriangle, Download, X, Check } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
+import { tauriInvoke as invoke } from '@/services/tauri';
 import { cn } from '@/lib/utils';
 import { MODULE_THEMES } from '@/constants/colors';
-import { t } from '@/constants/i18n';
+import { isEnglishLocale, t } from '@/constants/i18n';
+
+const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
 import { ModuleHeroPage } from '@/components/module-hero-page';
 import { GlassmorphicCard } from '@/components/glassmorphic-card';
 import { ProUpgradeBanner } from '@/components/pro-upgrade-banner';
@@ -112,17 +114,17 @@ export function KeyVaultDetail({ keyId, onBack }: KeyVaultDetailProps) {
         action_source: 'user_requested_key_delete',
         action_targets: [vaultKey.name],
         action_preview: [
-          `目标密钥: ${vaultKey.name}`,
-          `服务: ${vaultKey.service}`,
-          '放行后会从 AgentShield 保险库与系统钥匙串中删除该密钥',
+          tr(`目标密钥: ${vaultKey.name}`, `Target key: ${vaultKey.name}`),
+          tr(`服务: ${vaultKey.service}`, `Service: ${vaultKey.service}`),
+          tr('放行后会从 AgentShield 保险库与系统钥匙串中删除该密钥', 'After approval, the key will be deleted from both AgentShield vault and system keychain'),
         ],
-        sensitive_capabilities: ['导出密钥'],
+        sensitive_capabilities: [tr('导出密钥', 'Export key')],
         is_destructive: true,
         is_batch: false,
       });
 
       if (approval.status !== 'approved' || !approval.approval_ticket) {
-        setFeedback('已弹出密钥删除审批。请先确认，再次点击删除。');
+        setFeedback(tr('已弹出密钥删除审批。请先确认，再次点击删除。', 'Key deletion approval requested. Confirm it, then click delete again.'));
         return;
       }
 
@@ -131,10 +133,10 @@ export function KeyVaultDetail({ keyId, onBack }: KeyVaultDetailProps) {
         approvalTicket: approval.approval_ticket,
       });
       setVaultKeys(prev => prev.filter(k => k.id !== vaultKey.id));
-      setFeedback('密钥已删除');
+      setFeedback(tr('密钥已删除', 'Key deleted'));
     } catch (e) {
       console.error('Failed to delete key:', e);
-      setFeedback(`删除失败：${String(e)}`);
+      setFeedback(tr(`删除失败：${String(e)}`, `Delete failed: ${String(e)}`));
     }
   }, [browserShell, previewMessage]);
 
@@ -156,17 +158,17 @@ export function KeyVaultDetail({ keyId, onBack }: KeyVaultDetailProps) {
         action_source: 'user_requested_key_export',
         action_targets: [vaultKey.name],
         action_preview: [
-          `目标密钥: ${vaultKey.name}`,
-          `服务: ${vaultKey.service}`,
-          '放行后会读取系统钥匙串中的明文并复制到剪贴板',
+          tr(`目标密钥: ${vaultKey.name}`, `Target key: ${vaultKey.name}`),
+          tr(`服务: ${vaultKey.service}`, `Service: ${vaultKey.service}`),
+          tr('放行后会读取系统钥匙串中的明文并复制到剪贴板', 'After approval, the plaintext secret will be read from the system keychain and copied to clipboard'),
         ],
-        sensitive_capabilities: ['导出密钥'],
+        sensitive_capabilities: [tr('导出密钥', 'Export key')],
         is_destructive: true,
         is_batch: false,
       });
 
       if (approval.status !== 'approved' || !approval.approval_ticket) {
-        setFeedback('已弹出密钥导出审批。请先确认，再次点击复制。');
+        setFeedback(tr('已弹出密钥导出审批。请先确认，再次点击复制。', 'Key export approval requested. Confirm it, then click copy again.'));
         return false;
       }
 
@@ -175,11 +177,11 @@ export function KeyVaultDetail({ keyId, onBack }: KeyVaultDetailProps) {
         approvalTicket: approval.approval_ticket,
       });
       await navigator.clipboard.writeText(rawValue);
-      setFeedback(`已复制 ${vaultKey.name} 到剪贴板`);
+      setFeedback(tr(`已复制 ${vaultKey.name} 到剪贴板`, `Copied ${vaultKey.name} to clipboard`));
       return true;
     } catch (error) {
       console.error('Failed to copy secret from vault:', error);
-      setFeedback(`复制失败：${String(error)}`);
+      setFeedback(tr(`复制失败：${String(error)}`, `Copy failed: ${String(error)}`));
       return false;
     }
   }, [browserShell, previewMessage]);
@@ -196,10 +198,10 @@ export function KeyVaultDetail({ keyId, onBack }: KeyVaultDetailProps) {
       // Refresh vault keys to include the newly imported key
       const stored = await invoke<VaultKeyInfo[]>('vault_list_keys');
       setVaultKeys(stored);
-      setFeedback('已导入密钥保险库');
+      setFeedback(tr('已导入密钥保险库', 'Imported to key vault'));
     } catch (e) {
       console.error('Failed to import exposed key:', e);
-      setFeedback(`导入失败：${String(e)}`);
+      setFeedback(tr(`导入失败：${String(e)}`, `Import failed: ${String(e)}`));
     }
   }, []);
 
@@ -214,10 +216,10 @@ export function KeyVaultDetail({ keyId, onBack }: KeyVaultDetailProps) {
         const newKey = await invoke<VaultKeyInfo>('vault_add_key', { name, service, value });
         setVaultKeys(prev => [...prev, newKey]);
         setShowAddForm(false);
-        setFeedback('密钥已安全保存到系统钥匙串');
+        setFeedback(tr('密钥已安全保存到系统钥匙串', 'Key saved securely to system keychain'));
       } catch (e) {
         console.error('Failed to add key:', e);
-        setFeedback(`保存失败：${String(e)}`);
+        setFeedback(tr(`保存失败：${String(e)}`, `Save failed: ${String(e)}`));
       }
     },
     [browserShell, previewMessage]
@@ -283,7 +285,10 @@ export function KeyVaultDetail({ keyId, onBack }: KeyVaultDetailProps) {
 
         {atFreeLimit && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-            免费版已达到 {FREE_VAULT_KEY_LIMIT} 个密钥上限。删除旧密钥或升级 Pro 后可继续添加。
+            {tr(
+              `免费版已达到 ${FREE_VAULT_KEY_LIMIT} 个密钥上限。删除旧密钥或升级 Pro 后可继续添加。`,
+              `Free plan limit of ${FREE_VAULT_KEY_LIMIT} keys reached. Delete old keys or upgrade to Pro to add more.`
+            )}
           </div>
         )}
 

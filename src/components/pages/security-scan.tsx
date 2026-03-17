@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { tauriInvoke as invoke } from '@/services/tauri';
 import { motion } from 'framer-motion';
 import { Search, ChevronRight, AlertCircle, AlertTriangle, Info, CheckCircle, Loader2, Shield, Cpu, Eye, Lock, FileSearch, FolderOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -240,20 +240,23 @@ const SCAN_PHASE_ORDER = [
   'system_protection',
 ] as const;
 
-const SCAN_PHASE_LABELS: Record<(typeof SCAN_PHASE_ORDER)[number], string> = {
-  detect_tools: tr('正在检测你的 AI 工具', 'Detecting your AI tools'),
-  mcp_security: tr('检查隐私泄露风险', 'Checking for privacy leaks'),
-  key_security: tr('检查密码暴露风险', 'Checking for password exposure'),
-  skill_security: tr('检查恶意插件风险', 'Checking for malicious plugins'),
-  env_config: tr('检查权限配置风险', 'Checking permission settings'),
-  system_protection: tr('检查后台偷跑风险', 'Checking background activity'),
-};
+function getScanPhaseLabels(): Record<(typeof SCAN_PHASE_ORDER)[number], string> {
+  return {
+    detect_tools: tr('正在检测你的 AI 工具', 'Detecting your AI tools'),
+    mcp_security: tr('检查隐私泄露风险', 'Checking for privacy leaks'),
+    key_security: tr('检查密码暴露风险', 'Checking for password exposure'),
+    skill_security: tr('检查恶意插件风险', 'Checking for malicious plugins'),
+    env_config: tr('检查权限配置风险', 'Checking permission settings'),
+    system_protection: tr('检查后台偷跑风险', 'Checking background activity'),
+  };
+}
 
 function localizeProgressLabel(phaseId: string, label: string): string {
   if (!isEnglishLocale || !containsCjk(label)) {
     return label;
   }
-  const base = SCAN_PHASE_LABELS[phaseId as keyof typeof SCAN_PHASE_LABELS] ?? 'Running security checks';
+  const labels = getScanPhaseLabels();
+  const base = labels[phaseId as (typeof SCAN_PHASE_ORDER)[number]] ?? 'Running security checks';
   const detail = label.split('·').slice(1).join('·').trim();
   return detail ? `${base} · ${detail}` : base;
 }
@@ -261,14 +264,16 @@ function localizeProgressLabel(phaseId: string, label: string): string {
 const MIN_SCAN_PHASE_VISIBLE_MS = 900;
 const MIN_SCAN_TOTAL_MS = 6500;
 
-const SCAN_STEPS = [
-  { icon: FileSearch, label: tr('正在检测你的 AI 工具', 'Detecting your AI tools') },
-  { icon: Cpu, label: tr('检查隐私泄露风险', 'Checking for privacy leaks') },
-  { icon: Lock, label: tr('检查密码暴露风险', 'Checking for password exposure') },
-  { icon: Eye, label: tr('检查恶意插件风险', 'Checking for malicious plugins') },
-  { icon: Search, label: tr('检查权限配置风险', 'Checking permission settings') },
-  { icon: Shield, label: tr('检查后台偷跑风险', 'Checking background activity') },
-];
+function getScanSteps() {
+  return [
+    { icon: FileSearch, label: tr('正在检测你的 AI 工具', 'Detecting your AI tools') },
+    { icon: Cpu, label: tr('检查隐私泄露风险', 'Checking for privacy leaks') },
+    { icon: Lock, label: tr('检查密码暴露风险', 'Checking for password exposure') },
+    { icon: Eye, label: tr('检查恶意插件风险', 'Checking for malicious plugins') },
+    { icon: Search, label: tr('检查权限配置风险', 'Checking permission settings') },
+    { icon: Shield, label: tr('检查后台偷跑风险', 'Checking background activity') },
+  ];
+}
 
 function ScanningAnimation({
   currentStep,
@@ -359,7 +364,7 @@ function ScanningAnimation({
 
       {/* Step list */}
       <div className="w-80 space-y-3">
-        {SCAN_STEPS.map((step, i) => {
+        {getScanSteps().map((step, i) => {
           const StepIcon = step.icon;
           const allDone = progress >= 100;
           const isDone = allDone || i < currentStep;
@@ -418,7 +423,7 @@ export function SecurityScanDetail({ onBack, cachedIssues, categoryTitle }: Secu
   const [totalLoaded, setTotalLoaded] = useState(useCached ? cachedIssues.length : 0);
   const [scanStep, setScanStep] = useState(0);
   const [scanProgress, setScanProgress] = useState(0);
-  const [scanLabel, setScanLabel] = useState(SCAN_PHASE_LABELS.detect_tools);
+  const [scanLabel, setScanLabel] = useState(getScanPhaseLabels().detect_tools);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanErrorType, setScanErrorType] = useState<'preview' | 'generic' | null>(null);
   const [scanAttempt, setScanAttempt] = useState(0);
@@ -444,7 +449,7 @@ export function SecurityScanDetail({ onBack, cachedIssues, categoryTitle }: Secu
     setTotalLoaded(0);
     setScanStep(0);
     setScanProgress(0);
-    setScanLabel(SCAN_PHASE_LABELS.detect_tools);
+    setScanLabel(getScanPhaseLabels().detect_tools);
     setSemanticGuard(null);
     setScanScore(null);
     setScanErrorType(null);
@@ -496,7 +501,7 @@ export function SecurityScanDetail({ onBack, cachedIssues, categoryTitle }: Secu
         bufferedVisualizer.finalize(() => {
           if (cancelled) return;
           setScanProgress(100);
-          setScanStep(SCAN_STEPS.length - 1);
+          setScanStep(getScanSteps().length - 1);
           const elapsed = Date.now() - scanStartedAt;
           const waitMs = Math.max(0, MIN_SCAN_TOTAL_MS - elapsed);
           finalizeTimer = window.setTimeout(() => {
