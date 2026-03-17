@@ -47,11 +47,13 @@ TODO: Add 2-4 screenshots of the app UI here
 | Threat | Real-World Example | Status |
 |--------|-------------------|--------|
 | **Secret Exposure** | API keys in plaintext MCP configs (`mcp.json`, `settings.json`) | ✅ Detected |
-| **Permission Overreach** | Config files readable by any user on the machine | ✅ Detected |
+| **Permission Overreach** | Config files readable by any user on the machine | ✅ Detected + Auto-fix |
 | **Unsafe Automation** | MCP servers with unrestricted filesystem or shell access | ✅ Detected |
-| **Unvetted Plugins** | Skills/MCP from unknown sources without security review | ✅ Detected |
+| **Unvetted Plugins** | Skills/MCP from unknown sources without security review | ✅ Detected + Sandboxed |
 | **Key Sprawl** | Same API key copy-pasted across 5 different tool configs | ✅ Detected |
 | **Orphaned Configs** | Leftover MCP configs from uninstalled tools still holding secrets | ✅ Detected |
+| **Dangerous Runtime Actions** | MCP deleting files, sending payments, exfiltrating data | ✅ Blocked + Approval |
+| **Unauthorized Network Access** | Unknown MCP connecting to external servers | ✅ Monitored + Sandboxed |
 
 ## 🛡️ Supported AI Tools
 
@@ -62,18 +64,22 @@ AgentShield automatically discovers and scans configs for:
 | **Cursor** | **Claude Code** | **Claude Desktop** | **VS Code / Cline** |
 | **Windsurf** | **Zed** | **Trae** | **Gemini CLI** |
 | **Codex CLI** | **Continue** | **Aider** | **OpenClaw** |
+| **Kiro** | **CodeBuddy** | **Qwen Code** | **Antigravity** |
 
-> 12+ AI hosts detected automatically. No manual config needed.
+> 16+ AI hosts detected automatically via dynamic discovery. No manual config needed.
 
 ## ⚡ How It Works
 
 ```
-1. Install          2. Scan              3. Review & Fix
-   ↓                   ↓                    ↓
- Download DMG/EXE   One-click full scan   See every risk with
- → open → done      of all AI tools       clear fix suggestions
-                    on your machine        → fix one by one (Free)
-                                           → batch fix all (Pro)
+1. Install          2. Scan              3. Protect            4. Fix
+   ↓                   ↓                    ↓                    ↓
+ Download DMG/EXE   One-click full scan   Real-time watcher    Manual fix (Free)
+ → open → done      of all AI tools       auto-quarantines     or batch fix (Pro)
+                    on your machine        new threats
+                                           Sandbox blocks
+                                           untrusted processes
+                                           Approval popup for
+                                           high-risk actions
 ```
 
 ## 📦 Download
@@ -86,9 +92,13 @@ AgentShield automatically discovers and scans configs for:
 ## ✨ Core Features
 
 - **🔍 Security Scan** — Deep scan of all local AI tool configs, MCP servers, and Skills
-- **🗺️ Security Map** — Visual ownership: which MCP/Skill belongs to which AI tool
+- **🛡️ Real-Time Protection** — Filesystem watcher detects new threats the instant a config changes
+- **🔒 Sandbox Isolation** — macOS `sandbox-exec` blocks untrusted MCP/Skills from network & filesystem access
+- **⚠️ Runtime Approval** — High-risk actions (file delete, shell exec, payments) require your explicit approval before executing
 - **🔐 Key Vault** — Import exposed keys into system keychain (macOS Keychain / Windows Credential Manager)
+- **🔔 System Notifications** — Native macOS/Windows notification alerts for critical security events
 - **🛒 Skill Store** — Browse and install security-reviewed MCP/Skills from curated catalog
+- **🗺️ Installed Management** — Visual overview of all MCP/Skills across all AI tools, with trust levels and network policies
 - **🤖 AI Advisor** — AI-powered analysis with context-aware fix suggestions
 - **⚙️ OpenClaw Deploy** — One-click environment setup for OpenClaw ecosystem
 
@@ -97,13 +107,16 @@ AgentShield automatically discovers and scans configs for:
 |  | Free | Pro |
 |--|------|-----|
 | Full security scan | ✅ | ✅ |
-| Risk review & security map | ✅ | ✅ |
+| Real-time protection & auto-quarantine | ✅ | ✅ |
+| Sandbox isolation (network & filesystem) | ✅ | ✅ |
+| Runtime action approval (12 risk types) | ✅ | ✅ |
+| System notifications (macOS native) | ✅ | ✅ |
 | Key vault (system keychain) | ✅ | ✅ |
 | Skill store browsing | ✅ | ✅ |
-| Fix issues one-by-one | ✅ | ✅ |
+| Manual fix with terminal commands | ✅ | ✅ |
 | **One-click batch fix** | — | ✅ |
+| **One-click install / uninstall** | — | ✅ |
 | **AI-powered fix suggestions** | — | ✅ |
-| **Automation acceleration** | — | ✅ |
 | **Priority support** | — | ✅ |
 
 > **Start free.** Everything you need to find and understand risks is included.
@@ -119,11 +132,13 @@ AgentShield automatically discovers and scans configs for:
 │     Frontend           │     Backend (Rust)           │
 ├────────────────────────┼─────────────────────────────┤
 │ React 19 + TypeScript  │ Tauri v2 (native, no Electron) │
-│ Tailwind CSS           │ 69 IPC commands              │
+│ Tailwind CSS           │ 91 IPC commands              │
 │ Zustand state mgmt     │ tokio async runtime          │
 │ Framer Motion          │ keyring (system keychain)     │
 │ Radix UI primitives    │ Ed25519 license signatures    │
-│ Recharts               │ sysinfo + walkdir scanning   │
+│ Recharts               │ sandbox-exec process isolation│
+│                        │ sysinfo + walkdir scanning   │
+│                        │ notify fs watcher            │
 └────────────────────────┴─────────────────────────────┘
 ```
 
@@ -149,9 +164,13 @@ AgentShield 30 秒扫描全盘，帮你一眼看清所有风险。
 | 功能 | 说明 |
 |------|------|
 | 🔍 **安全扫描** | 自动发现 12+ AI 工具，深度扫描 MCP / Skill 配置 |
-| 🗺️ **安全映射** | 可视化展示每个 MCP / Skill 归属哪个 AI 工具 |
+| 🛡️ **实时防护** | 文件系统监控，配置文件变更即刻检测威胁并自动隔离 |
+| 🔒 **沙箱隔离** | 使用 macOS sandbox-exec 阻断不可信组件的网络和文件写入 |
+| ⚠️ **行为审批** | 12 种高危操作（删除文件、执行命令、发送支付等）需你手动授权才能执行 |
 | 🔐 **密钥保险库** | 将暴露的密钥导入系统钥匙串，告别明文存储 |
+| 🔔 **系统通知** | macOS 原生通知推送安全告警 |
 | 🛒 **技能商店** | 浏览和安装经过安全审核的 MCP / Skill |
+| 🗺️ **已安装管理** | 可视化展示每个 MCP / Skill 归属、信任状态和网络策略 |
 | 🤖 **AI 助手** | 智能分析风险，给出修复建议 |
 | ⚙️ **一键部署** | OpenClaw 环境一键配置 |
 
@@ -169,9 +188,14 @@ AgentShield 30 秒扫描全盘，帮你一眼看清所有风险。
 | | 免费版 | 专业版 |
 |--|--------|--------|
 | 完整扫描 + 风险审查 | ✅ | ✅ |
-| 密钥保险库 + 安全映射 | ✅ | ✅ |
-| 逐项修复 | ✅ | ✅ |
+| 实时防护 + 自动隔离 | ✅ | ✅ |
+| 沙箱隔离（网络 + 文件系统） | ✅ | ✅ |
+| 行为审批（12 种高危操作） | ✅ | ✅ |
+| 系统通知 | ✅ | ✅ |
+| 密钥保险库 | ✅ | ✅ |
+| 手动修复（终端命令） | ✅ | ✅ |
 | **一键批量修复** | — | ✅ |
+| **一键安装/卸载** | — | ✅ |
 | **AI 智能修复建议** | — | ✅ |
 
 > 免费版功能完整，够用。专业版省时间。
