@@ -33,8 +33,10 @@ jobs:
       AGENTSHIELD_LICENSE_PUBLIC_KEY: ${{ vars.AGENTSHIELD_LICENSE_PUBLIC_KEY }}
       LICENSE_DELIVERY_FROM_EMAIL: ${{ vars.LICENSE_DELIVERY_FROM_EMAIL }}
       LICENSE_DELIVERY_REPLY_TO: ${{ vars.LICENSE_DELIVERY_REPLY_TO }}
+      CREEM_SKU_BILLING_MAP_JSON: ${{ vars.CREEM_SKU_BILLING_MAP_JSON }}
+      CREEM_PRODUCT_BILLING_MAP_JSON: ${{ vars.CREEM_PRODUCT_BILLING_MAP_JSON }}
       LICENSE_GATEWAY_DATA_PATH: .tmp/license-gateway.json
-      LEMONSQUEEZY_WEBHOOK_SECRET: ${{ secrets.LEMONSQUEEZY_WEBHOOK_SECRET }}
+      CREEM_WEBHOOK_SECRET: ${{ secrets.CREEM_WEBHOOK_SECRET }}
       LICENSE_GATEWAY_ADMIN_PASSWORD: ${{ secrets.LICENSE_GATEWAY_ADMIN_PASSWORD }}
       AGENTSHIELD_LICENSE_SIGNING_SEED: ${{ secrets.AGENTSHIELD_LICENSE_SIGNING_SEED }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
@@ -102,5 +104,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: agentshield-pilot-${{ matrix.platform }}
-          path: src-tauri/target/release/bundle/
+          path: |
+            src-tauri/target/release/bundle/
+            src-tauri/target/aarch64-apple-darwin/release/bundle/
           if-no-files-found: error
