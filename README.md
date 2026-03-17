@@ -1,317 +1,172 @@
-# AgentShield
+<div align="center">
 
-> English: A desktop safety app for AI tools that use `MCP` and `Skill`. AgentShield helps beginners find risky local configs, exposed secrets, and unsafe automation on their own machine.
->
-> 中文：一款面向零基础用户的 AI 工具安全桌面应用。AgentShield 专门帮助你发现本机里使用 `MCP` / `Skill` 的工具、危险配置、密钥暴露和高风险自动化问题。
+<img src="src-tauri/icons/icon.png" width="120" alt="AgentShield Logo" />
 
-AgentShield is a desktop security companion for AI tools that use `MCP` and `Skill`.
+# AgentShield 智盾
 
-It is built for beginners:
+**守护本机 AI 工具生态的桌面安全应用**
 
-- detect which AI tools on this machine use MCP / Skill
-- find where their MCP / Skill configs live
-- scan those configs and installed items for risky behavior
-- help install, update, review, and uninstall managed MCP / Skill items
-- protect OpenClaw as one supported ecosystem, not the only one
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-blue?style=flat-square)](https://github.com/pengluai/agentshield/releases)
+[![Version](https://img.shields.io/badge/Version-1.0.1-green?style=flat-square)](https://github.com/pengluai/agentshield/releases/tag/agentshield-pilot-v1.0.1)
+[![Built with](https://img.shields.io/badge/Built%20with-Tauri%20v2%20%2B%20React-purple?style=flat-square)](https://v2.tauri.app)
 
-AgentShield is **not** a system-wide antivirus. It only focuses on AI tools and local ecosystems that use `MCP` / `Skill`.
+[中文](#-中文) | [English](#-english)
 
-## Quick Start
+</div>
 
-1. Download the latest GitHub release for your system.
-2. Install it directly from the downloaded asset. You do not need the Apple App Store or Microsoft Store.
-3. Open AgentShield and finish onboarding.
-4. Run the first full scan.
-5. Review:
-   - detected AI tools
-   - detected MCP / Skill items
-   - risky configs
-   - high-risk approvals
+---
 
-First success checkpoint:
+## 🇨🇳 中文
 
-- the app opens normally
-- at least one AI host or config path is detected, or the scan completes with a clear "nothing found" result
-- you can open `Security Scan`, `Installed`, and `Key Vault` without fake/demo behavior
+AgentShield 是一款**专门保护本机 AI 工具生态**的桌面安全应用。
 
-## What AgentShield Protects
+它不是传统杀毒软件。它更像一个 **"AI 工具安全助手"**，帮你看清电脑里哪些 AI 工具、MCP、Skill 和本地配置正在运行，哪些可能带来密钥泄露、危险权限、恶意插件或高风险自动化问题。
 
-AgentShield currently targets AI tools and hosts that use MCP / Skill, including:
+### 🎯 解决什么问题
 
-- Codex CLI
-- Cursor
-- VS Code / Cline / Roo-style config locations
-- Claude Code / Claude Desktop
-- Windsurf
-- Zed
-- Trae
-- Gemini CLI
-- Continue
-- Aider
-- Antigravity
-- OpenClaw
+| 痛点 | AgentShield 的解决方式 |
+|------|------------------------|
+| AI 工具越来越多，不知道谁在读配置、拿权限 | 一键扫描，全盘可视化 |
+| MCP / Skill 风险难以分辨 | 智能风险标签 + 归属映射 |
+| 密钥泄露和权限失控发现太晚 | 密钥保险库 + 实时安全审查 |
+| 危险操作缺少确认机制 | 删除/修复/卸载前强制确认 |
 
-The exact discovery list is implemented in the desktop scanner and may expand over time.
+### ✨ 核心功能
 
-## What It Does Today
+- 🔍 **安全扫描** — 扫描本机 AI 工具和 MCP / Skill 配置
+- 🚨 **风险识别** — 检测危险配置、弱权限、密钥暴露和高风险自动化
+- 🗺️ **安全映射** — 显示哪个 MCP / Skill 属于哪个 AI 工具
+- 🔐 **密钥保险库** — 系统钥匙串支持的安全密钥存储
+- 🛒 **技能商店** — 浏览和安装安全审核过的 MCP / Skill
+- 🤖 **AI 安全助手** — 智能分析和修复建议
+- ⚙️ **OpenClaw 一键部署** — 快速配置安全工具环境
 
-- Detect installed AI tools and their MCP config locations
-- Scan local MCP / Skill configs for risky patterns and weak file permissions
-- Show which MCP / Skill belongs to which AI tool
-- Refresh, install, update, and uninstall managed catalog items
-- Provide a system-keychain-backed key vault
-- Run controlled launch and network allowlist checks for supported local components
-- Require backend approval tickets before:
-  - deleting keys
-  - revealing keys in plaintext
-  - uninstalling OpenClaw
-  - uninstalling managed MCP / Skill items
-  - running one-click batch permission fixes
+### 🛡️ 支持扫描的 AI 工具
 
-## Free vs Pro (Current Truth)
+Codex CLI · Cursor · VS Code / Cline · Claude Code / Claude Desktop · Windsurf · Zed · Trae · Gemini CLI · Continue · Aider · Antigravity · OpenClaw
 
-- Free:
-  - full scan and risk review
-  - manual per-item fix and approval
-  - no one-click batch fix
-- Pro / Trial:
-  - one-click batch fix for supported issues
-  - faster automation-oriented handling for repeated operations
+### 📦 下载安装
 
-## What It Does Not Claim Yet
+| 平台 | 下载链接 | 说明 |
+|------|----------|------|
+| 🍎 **macOS** (Apple Silicon) | [AgentShield-pilot-1.0.1-macos-arm64.dmg](https://github.com/pengluai/agentshield/releases/download/agentshield-pilot-v1.0.1/AgentShield-pilot-1.0.1-macos-arm64.dmg) | 首次打开需在「隐私与安全性」中允许 |
+| 🪟 **Windows** (x64) | [AgentShield-pilot-1.0.1-windows-x64-setup.exe](https://github.com/pengluai/agentshield/releases/download/agentshield-pilot-v1.0.1/AgentShield-pilot-1.0.1-windows-x64-setup.exe) | 如遇安全提示，确认来源后继续安装 |
 
-AgentShield does **not** currently claim all of the following:
+### 💰 版本说明
 
-- system-wide protection for every app on the computer
-- complete action-level interception of every third-party agent delete / email / browser / payment action
-- in-app self-serve monthly or annual subscription checkout
+| 版本 | 功能 |
+|------|------|
+| **免费版** | 完整扫描 + 风险审查 + 逐项修复 |
+| **专业版** (14天试用) | 一键批量修复 + 自动化操作加速 |
 
-Known current gaps:
+---
 
-- approval UI is still a full modal (corner-card approval UX is not shipped yet)
-- opening macOS permission pages can fail on some setups; manual fallback is required
-- Feishu / WeCom / Telegram guided notification setup is not shipped yet
+## 🇺🇸 English
 
-Current real license path:
+AgentShield is a desktop safety app built for **local AI tool ecosystems**.
 
-- free plan
-- 14-day trial
-- one-time checkout links for monthly / yearly / lifetime activation codes
-- offline activation code
+It is not a traditional antivirus. Think of it as an **AI tool safety companion** — helping you see which AI tools, MCP servers, Skills, and local configs are running on your machine, and which may expose secrets, overreach permissions, or trigger unsafe automation.
 
-## License Gateway (Minimal Commercial Loop)
+### 🎯 What Problem This Solves
 
-This repository now includes a minimal `License Gateway` service for:
+| Pain Point | How AgentShield Helps |
+|------------|----------------------|
+| Too many AI tools, no visibility into configs | One-click scan, full visibility |
+| Hard to tell risky MCP / Skill from safe ones | Smart risk labels + ownership mapping |
+| Secret leaks and permission drift discovered too late | Key vault + real-time security review |
+| Dangerous operations lack confirmation | Forced confirmation before delete/fix/uninstall |
 
-- Lemon Squeezy webhook verification (`order_created`, `order_refunded`, `subscription_payment_refunded`)
-- idempotent order processing
-- activation code issuance via existing `issue_activation_code` signer
-- automatic license revoke on refund webhooks
-- public client verification endpoint (`POST /client/licenses/verify`) for in-app online status checks
-- admin resend/reissue/revoke operations
-- local audit and delivery records
+### ✨ Core Features
 
-### Run locally
+- 🔍 **Security Scan** — Scan local AI tools and MCP / Skill configs
+- 🚨 **Risk Detection** — Detect risky configs, weak permissions, secret exposure
+- 🗺️ **Security Map** — Show which MCP / Skill belongs to which AI tool
+- 🔐 **Key Vault** — System-keychain-backed secret storage
+- 🛒 **Skill Store** — Browse and install security-vetted MCP / Skills
+- 🤖 **AI Security Advisor** — Smart analysis and fix suggestions
+- ⚙️ **OpenClaw One-Click Deploy** — Quick security tool environment setup
 
-```bash
-cp .env.license-gateway.example .env.license-gateway.local
-# fill required secrets in .env.license-gateway.local
-set -a && source .env.license-gateway.local && set +a
-pnpm run gateway:dev
+### 🛡️ Supported AI Tools
+
+Codex CLI · Cursor · VS Code / Cline · Claude Code / Claude Desktop · Windsurf · Zed · Trae · Gemini CLI · Continue · Aider · Antigravity · OpenClaw
+
+### 📦 Download
+
+| Platform | Download | Note |
+|----------|----------|------|
+| 🍎 **macOS** (Apple Silicon) | [AgentShield-pilot-1.0.1-macos-arm64.dmg](https://github.com/pengluai/agentshield/releases/download/agentshield-pilot-v1.0.1/AgentShield-pilot-1.0.1-macos-arm64.dmg) | May need to allow in Privacy & Security |
+| 🪟 **Windows** (x64) | [AgentShield-pilot-1.0.1-windows-x64-setup.exe](https://github.com/pengluai/agentshield/releases/download/agentshield-pilot-v1.0.1/AgentShield-pilot-1.0.1-windows-x64-setup.exe) | Accept trust warning after verifying source |
+
+### 💰 Plans
+
+| Plan | Features |
+|------|----------|
+| **Free** | Full scan + risk review + per-item fix |
+| **Pro** (14-day trial) | One-click batch fix + automation acceleration |
+
+---
+
+<div align="center">
+
+### 🏗️ Tech Stack / 技术架构
+
+</div>
+
+```
+┌─────────────────────────────────────────────────┐
+│              AgentShield 智盾 v1.0.1             │
+├─────────────────────┬───────────────────────────┤
+│   Frontend 前端      │   Backend 后端 (Rust)      │
+├─────────────────────┼───────────────────────────┤
+│ React 19 + TS       │ Tauri v2                  │
+│ Tailwind CSS        │ 69 IPC Commands           │
+│ Zustand (7 stores)  │ tokio async runtime       │
+│ Framer Motion       │ keyring (系统钥匙串)       │
+│ Radix UI            │ Ed25519 签名验证           │
+│ Recharts            │ sysinfo + walkdir          │
+└─────────────────────┴───────────────────────────┘
 ```
 
-The service listens on `LICENSE_GATEWAY_PORT` (default `8787`) and persists data to `LICENSE_GATEWAY_DATA_PATH` (default `data/license-gateway.json`).
+---
 
-Required env vars:
+## 🚀 快速开始 / Quick Start
 
-- `LEMONSQUEEZY_WEBHOOK_SECRET`
-- `LICENSE_GATEWAY_ADMIN_PASSWORD`
-- `AGENTSHIELD_LICENSE_SIGNING_SEED`
+1. 从上方下载对应平台的安装包 / Download the installer for your platform
+2. 安装并打开应用 / Install and open the app
+3. 完成新手引导 / Complete the onboarding wizard
+4. 运行首次全盘扫描 / Run your first full scan
+5. 查看风险报告并处理 / Review the risk report and take action
 
-Optional (real email delivery instead of delivery-log only):
+## ❓ 常见问题 / FAQ
 
-- `RESEND_API_KEY`
-- `LICENSE_DELIVERY_FROM_EMAIL`
-- `LICENSE_DELIVERY_REPLY_TO`
+<details>
+<summary><b>macOS 提示「无法验证开发者」/ macOS says "unverified developer"</b></summary>
 
-Recommended webhook subscriptions on Lemon Squeezy:
+打开「系统设置 → 隐私与安全性」，点击「仍要打开」即可。
 
-- `order_created`
-- `order_refunded`
-- `subscription_payment_refunded`
+Go to System Settings → Privacy & Security, then click "Open Anyway".
+</details>
 
-## Public Sale Readiness and Packaging
+<details>
+<summary><b>Windows 提示「未知发布者」/ Windows shows "unknown publisher"</b></summary>
 
-Before public commercial release, prepare:
+这是因为安装包尚未使用代码签名证书。确认下载来源是本仓库的 Release 页面后，点击「仍要运行」继续安装。
 
-- legal docs under `docs/legal/`
-- real checkout URLs in env (`VITE_CHECKOUT_*`)
-- real online verification endpoint in env (`AGENTSHIELD_LICENSE_GATEWAY_URL`)
-- real release signing env + updater env (`TAURI_SIGNING_*`, `TAURI_UPDATER_*`)
+The installer is not code-signed yet. After verifying the download source, click "Run anyway" to proceed.
+</details>
 
-For GitHub direct distribution (pilot/public sale without notarization):
+<details>
+<summary><b>扫描没有发现任何 AI 工具 / No AI tools detected</b></summary>
 
-```bash
-# optional: bootstrap local release env template
-cp .env.public-sale.example .env.public-sale.local
-# fill .env.public-sale.local with real values
+请确保 AI 工具已安装在本机，并至少运行过一次（以创建配置目录），然后重新扫描。
 
-pnpm run release:github:ready
-pnpm run release:github:bundle
-```
+Make sure the AI tool is installed and has been launched at least once, then scan again.
+</details>
 
-For notarized public release (strict signing + updater path):
+---
 
-```bash
-# optional: bootstrap local release env template
-cp .env.public-sale.example .env.public-sale.local
-# fill .env.public-sale.local with real values
+<div align="center">
 
-pnpm run release:public:ready
-pnpm run release:public:bundle
-```
+**Made with ❤️ by AgentShield Team**
 
-`scripts/public-sale-gate.sh` will auto-load `.env.public-sale.local` when present.
-If `src-tauri/tauri.release.json` is absent, the gate will auto-generate it from `TAURI_UPDATER_PUBLIC_KEY` and `TAURI_UPDATER_ENDPOINT` via `pnpm run release:render-config`.
-
-### GitHub Actions configuration
-
-The release workflows in `.github/workflows/` expect the following GitHub repository configuration:
-
-Repository Variables:
-
-- `VITE_CHECKOUT_MONTHLY_URL`
-- `VITE_CHECKOUT_YEARLY_URL`
-- `VITE_CHECKOUT_LIFETIME_URL`
-- `AGENTSHIELD_LICENSE_GATEWAY_URL`
-- `AGENTSHIELD_LICENSE_PUBLIC_KEY`
-- `LICENSE_DELIVERY_FROM_EMAIL`
-- `LICENSE_DELIVERY_REPLY_TO` (optional)
-- `TAURI_UPDATER_ENDPOINT` (signed release)
-- `WINDOWS_TIMESTAMP_URL` (signed release)
-
-Repository Secrets:
-
-- `LEMONSQUEEZY_WEBHOOK_SECRET`
-- `LICENSE_GATEWAY_ADMIN_PASSWORD`
-- `AGENTSHIELD_LICENSE_SIGNING_SEED`
-- `RESEND_API_KEY`
-- `TAURI_SIGNING_PRIVATE_KEY` (signed release)
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (signed release)
-- `TAURI_UPDATER_PUBLIC_KEY` (signed release)
-- `WINDOWS_CERTIFICATE` (optional if Windows auto-import is enabled)
-- `WINDOWS_CERTIFICATE_PASSWORD` (optional if Windows auto-import is enabled)
-- `WINDOWS_CERTIFICATE_THUMBPRINT` (signed release)
-- `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` / `APPLE_SIGNING_IDENTITY` (macOS signed release)
-- `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `KEYCHAIN_PASSWORD` (optional if macOS certificate import is automated)
-
-Workflows:
-
-- `publish-pilot-artifacts`: builds draft macOS + Windows pilot artifacts from the `pilot` branch or manual dispatch
-- `publish-signed-release`: builds draft signed artifacts from the `release` branch or manual dispatch
-
-## GitHub Direct Install
-
-### Windows
-
-- Download the release asset from GitHub.
-- If Windows shows a trust warning, verify the download source and filename first.
-- Continue only if the asset came from this repository's GitHub release page.
-
-### macOS
-
-- Download the release asset from GitHub.
-- Open it normally first.
-- If macOS blocks the app, go to `Privacy & Security` and allow it there, then reopen the app.
-
-Direct GitHub install is supported for pilot distribution. App Store distribution is not required for this project.
-
-## Beginner Workflow
-
-### 1. Scan this machine
-
-Open `Security Scan` and run a full scan.
-
-You should be able to tell at a glance:
-
-- which AI tools were found
-- which MCP / Skill items were found
-- what the risk means
-- whether AgentShield can auto-fix it
-
-### 2. Review installed items
-
-Open `Installed`.
-
-Use it to:
-
-- see which platform owns each MCP / Skill
-- check versions and source URLs
-- check for updates
-- uninstall managed items
-
-### 3. Protect keys
-
-Open `Key Vault`.
-
-Use it to:
-
-- import exposed plaintext keys
-- store keys in the system keychain
-- export or delete keys only after explicit approval
-
-### 4. Manage OpenClaw when needed
-
-Open `OpenClaw Hub` only if you use OpenClaw.
-
-Use it to:
-
-- install OpenClaw
-- update OpenClaw
-- uninstall OpenClaw
-- inspect OpenClaw-specific Skill / MCP configuration
-
-OpenClaw is one supported ecosystem inside AgentShield. It is not the whole product scope.
-
-## Troubleshooting
-
-### No AI tools were detected
-
-- Make sure the AI tool is actually installed on this machine.
-- Launch the tool once if it has never created its config directory.
-- Run the scan again.
-
-### The app says a desktop action is unavailable
-
-- Browser-shell preview mode cannot execute native desktop actions.
-- Use the packaged desktop build from GitHub releases.
-
-### Auto-fix says there is nothing to fix
-
-- Auto-fix currently focuses on issues AgentShield can change safely and truthfully.
-- Re-run the scan first; if the issue is still present but marked manual, review the file path and suggested fix instead.
-
-### A dangerous action is blocked
-
-- This is expected for key export, key deletion, uninstall, and batch fix flows that now require explicit approval.
-
-## Developer Validation
-
-These checks were used to validate the current repo-local desktop build:
-
-```bash
-cargo test --manifest-path src-tauri/Cargo.toml
-pnpm typecheck
-pnpm test
-pnpm exec playwright test e2e/smoke.spec.ts --reporter=line
-pnpm run release:gate
-```
-
-## Sources
-
-- Internal delivery boundary: [docs/specs/21-商用发布前复核与阻塞项更新-2026-03-11.md](docs/specs/21-商用发布前复核与阻塞项更新-2026-03-11.md), updated 2026-03-11
-- Completion audit and gap list: [docs/specs/24-代码完成度核对与未完成清单-2026-03-11.md](docs/specs/24-代码完成度核对与未完成清单-2026-03-11.md), updated 2026-03-11
-- GitHub pilot distribution flow: [docs/specs/16-试点GitHub分发流程.md](docs/specs/16-试点GitHub分发流程.md), updated 2026-03-09
-- Release pipeline and signing expectations: [docs/specs/15-GitHub发布流水线与密钥配置.md](docs/specs/15-GitHub发布流水线与密钥配置.md), updated 2026-03-09
-- Tauri macOS signing docs: [v2.tauri.app/distribute/sign/macos](https://v2.tauri.app/distribute/sign/macos/), checked 2026-03-11
-- Tauri Windows signing docs: [v2.tauri.app/distribute/sign/windows](https://v2.tauri.app/distribute/sign/windows/), checked 2026-03-11
+</div>
