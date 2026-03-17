@@ -30,7 +30,7 @@ export function MacOSFrame({
   contentScrollMode = 'auto',
 }: MacOSFrameProps) {
   const isMac =
-    typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || navigator.userAgent);
+    typeof navigator !== 'undefined' && /macintosh|mac os x|darwin/i.test(navigator.userAgent);
 
   return (
     <motion.div

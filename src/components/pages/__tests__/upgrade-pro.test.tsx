@@ -65,4 +65,22 @@ describe('UpgradePro', () => {
     expect(await screen.findByText(t.checkoutLinkMissing)).toBeInTheDocument();
     expect(openExternalUrlSpy).not.toHaveBeenCalled();
   });
+
+  it('appends checkout metadata for Creem links before opening browser', async () => {
+    const user = userEvent.setup();
+    vi.stubEnv('VITE_CHECKOUT_MONTHLY_URL', 'https://checkout.creem.io/session_123');
+
+    render(<UpgradePro />);
+    await user.click(screen.getAllByRole('button', { name: t.buyActivationCode })[0]);
+
+    await waitFor(() => {
+      expect(openExternalUrlSpy).toHaveBeenCalledTimes(1);
+    });
+
+    const checkoutUrl = openExternalUrlSpy.mock.calls[0][0];
+    const parsed = new URL(checkoutUrl);
+    expect(parsed.searchParams.get('metadata[sku_code]')).toBe('AGSH_PRO_30D');
+    expect(parsed.searchParams.get('metadata[campaign]')).toBe('desktop_upgrade');
+    expect(parsed.searchParams.get('metadata[source]')).toBe('agentshield_app');
+  });
 });

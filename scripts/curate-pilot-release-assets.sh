@@ -2,7 +2,8 @@
 
 set -euo pipefail
 
-repo="pengluai/agentshield"
+workflow_repo="pengluai/agentshield"
+release_repo="pengluai/agentshield-downloads"
 run_id=""
 tag=""
 version=""
@@ -13,7 +14,7 @@ usage() {
 Download pilot workflow artifacts, normalize file names, and upload them to a GitHub release.
 
 Usage:
-  ./scripts/curate-pilot-release-assets.sh --run-id <run-id> --tag <release-tag> --version <app-version> [--repo owner/repo] [--keep-existing]
+  ./scripts/curate-pilot-release-assets.sh --run-id <run-id> --tag <release-tag> --version <app-version> [--workflow-repo owner/repo] [--release-repo owner/repo] [--repo owner/repo] [--keep-existing]
 
 Examples:
   ./scripts/curate-pilot-release-assets.sh \
@@ -30,7 +31,16 @@ fi
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --repo)
-      repo="$2"
+      workflow_repo="$2"
+      release_repo="$2"
+      shift 2
+      ;;
+    --workflow-repo)
+      workflow_repo="$2"
+      shift 2
+      ;;
+    --release-repo)
+      release_repo="$2"
       shift 2
       ;;
     --run-id)
@@ -75,8 +85,8 @@ win_dir="$workdir/windows"
 stage_dir="$workdir/stage"
 mkdir -p "$mac_dir" "$win_dir" "$stage_dir"
 
-gh run download "$run_id" --repo "$repo" -n agentshield-pilot-macos-latest -D "$mac_dir"
-gh run download "$run_id" --repo "$repo" -n agentshield-pilot-windows-2022 -D "$win_dir"
+gh run download "$run_id" --repo "$workflow_repo" -n agentshield-pilot-macos-latest -D "$mac_dir"
+gh run download "$run_id" --repo "$workflow_repo" -n agentshield-pilot-windows-2022 -D "$win_dir"
 
 mac_dmg="$(find "$mac_dir" -type f -name '*.dmg' | head -n 1)"
 mac_tar="$(find "$mac_dir" -type f -name '*.app.tar.gz' | head -n 1)"
@@ -94,15 +104,21 @@ cp "$mac_dmg" "$stage_dir/AgentShield-pilot-${version}-macos-arm64.dmg"
 cp "$mac_tar" "$stage_dir/AgentShield-pilot-${version}-macos-arm64.app.tar.gz"
 cp "$win_exe" "$stage_dir/AgentShield-pilot-${version}-windows-x64-setup.exe"
 
+# Keep a stable alias for GitHub latest/download links so storefront buttons
+# do not need to change on every release.
+cp "$mac_dmg" "$stage_dir/AgentShield-macos-arm64.dmg"
+cp "$mac_tar" "$stage_dir/AgentShield-macos-arm64.app.tar.gz"
+cp "$win_exe" "$stage_dir/AgentShield-windows-x64-setup.exe"
+
 if [[ "$keep_existing" -eq 0 ]]; then
   while IFS= read -r asset_name; do
     if [[ "$asset_name" == AgentShield.* || "$asset_name" == AgentShield\ 智盾* ]]; then
-      gh release delete-asset "$tag" "$asset_name" --repo "$repo" --yes
+      gh release delete-asset "$tag" "$asset_name" --repo "$release_repo" --yes
     fi
-  done < <(gh release view "$tag" --repo "$repo" --json assets --jq '.assets[].name')
+  done < <(gh release view "$tag" --repo "$release_repo" --json assets --jq '.assets[].name')
 fi
 
-gh release upload "$tag" "$stage_dir"/* --repo "$repo" --clobber
+gh release upload "$tag" "$stage_dir"/* --repo "$release_repo" --clobber
 
 echo "[curate-pilot-release-assets] uploaded curated assets:"
 ls -1 "$stage_dir"

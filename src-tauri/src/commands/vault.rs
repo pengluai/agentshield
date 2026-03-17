@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 #[cfg(test)]
@@ -11,6 +11,7 @@ use std::os::unix::fs::PermissionsExt;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use zeroize::Zeroize;
 
 use crate::commands::scan::{collect_config_files, scan_file_for_keys};
 use crate::commands::{license, runtime_guard};
@@ -39,12 +40,21 @@ struct LegacyVaultEntry {
 }
 
 static EXPOSED_KEY_CACHE: Mutex<Option<HashMap<String, ExposedKeyCache>>> = Mutex::new(None);
+static VAULT_IO_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Clone)]
 struct ExposedKeyCache {
     raw_value: String,
     name: String,
     service: String,
+}
+
+fn clear_exposed_key_cache(cache: &mut Option<HashMap<String, ExposedKeyCache>>) {
+    if let Some(existing) = cache.take() {
+        for (_, mut entry) in existing {
+            entry.raw_value.zeroize();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -61,6 +71,74 @@ fn get_legacy_backup_path() -> PathBuf {
     home.join(".agentshield").join("vault-legacy-backup.json")
 }
 
+#[cfg(windows)]
+fn harden_windows_paths(paths: &[PathBuf]) -> Result<(), String> {
+    let targets = paths
+        .iter()
+        .filter(|path| path.exists())
+        .map(|path| path.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+    if targets.is_empty() {
+        return Ok(());
+    }
+
+    let results = crate::commands::scan::run_windows_permission_fix(&targets, false)?;
+    let failures = results
+        .into_iter()
+        .filter(|result| !result.success)
+        .map(|result| {
+            format!(
+                "{} ({})",
+                result.path,
+                result.error.unwrap_or_else(|| "unknown error".to_string())
+            )
+        })
+        .collect::<Vec<_>>();
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Failed to harden Windows vault ACL for: {}",
+            failures.join(", ")
+        ))
+    }
+}
+
+#[cfg(not(windows))]
+fn harden_windows_paths(_paths: &[PathBuf]) -> Result<(), String> {
+    Ok(())
+}
+
+fn harden_path_permissions(path: &Path, is_dir: bool) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let mode = if is_dir { 0o700 } else { 0o600 };
+        fs::set_permissions(path, fs::Permissions::from_mode(mode))
+            .map_err(|error| format!("Failed to harden permissions for {}: {error}", path.display()))?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, is_dir);
+    }
+    Ok(())
+}
+
+fn harden_vault_artifacts() -> Result<(), String> {
+    let vault_dir = dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".agentshield");
+    harden_path_permissions(&vault_dir, true)?;
+
+    let targets = vec![get_vault_path(), get_legacy_backup_path()];
+    for target in &targets {
+        if target.exists() {
+            harden_path_permissions(target, false)?;
+        }
+    }
+    harden_windows_paths(&targets)?;
+    Ok(())
+}
+
 fn ensure_vault_dir() -> Result<(), String> {
     let dir = dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -70,12 +148,8 @@ fn ensure_vault_dir() -> Result<(), String> {
         fs::create_dir_all(&dir).map_err(|e| format!("Failed to create vault dir: {e}"))?;
     }
 
-    #[cfg(unix)]
-    {
-        let perms = fs::Permissions::from_mode(0o700);
-        fs::set_permissions(&dir, perms)
-            .map_err(|e| format!("Failed to set dir permissions: {e}"))?;
-    }
+    harden_path_permissions(&dir, true)?;
+    harden_windows_paths(&[dir])?;
 
     Ok(())
 }
@@ -152,12 +226,7 @@ fn save_vault(entries: &[VaultEntry]) -> Result<(), String> {
         .map_err(|e| format!("Failed to serialize vault metadata: {e}"))?;
     fs::write(&path, data).map_err(|e| format!("Failed to write vault metadata file: {e}"))?;
 
-    #[cfg(unix)]
-    {
-        let perms = fs::Permissions::from_mode(0o600);
-        fs::set_permissions(&path, perms)
-            .map_err(|e| format!("Failed to set file permissions: {e}"))?;
-    }
+    harden_vault_artifacts()?;
 
     Ok(())
 }
@@ -198,6 +267,7 @@ fn migrate_legacy_vault_if_needed() -> Result<(), String> {
     if !backup_path.exists() {
         fs::write(&backup_path, &data)
             .map_err(|e| format!("Failed to write vault backup file: {e}"))?;
+        harden_vault_artifacts()?;
     }
 
     let mut migrated_entries = Vec::with_capacity(legacy_entries.len());
@@ -281,6 +351,9 @@ fn extract_raw_value_from_file(file_path: &str, masked: &str) -> Option<String> 
 
 #[tauri::command]
 pub async fn vault_list_keys() -> Result<Vec<VaultKeyInfo>, String> {
+    let _vault_guard = VAULT_IO_LOCK
+        .lock()
+        .map_err(|error| format!("Vault lock error: {error}"))?;
     let entries = load_vault()?;
     Ok(entries.iter().map(entry_to_info).collect())
 }
@@ -291,10 +364,14 @@ pub async fn vault_add_key(
     service: String,
     value: String,
 ) -> Result<VaultKeyInfo, String> {
-    let mut entries = load_vault()?;
     let license = license::check_license_status().await?;
     let unlimited = matches!(license.plan.as_str(), "pro" | "enterprise" | "trial")
         && license.status == "active";
+
+    let _vault_guard = VAULT_IO_LOCK
+        .lock()
+        .map_err(|error| format!("Vault lock error: {error}"))?;
+    let mut entries = load_vault()?;
 
     if !unlimited && entries.len() >= FREE_VAULT_KEY_LIMIT {
         return Err(format!(
@@ -324,6 +401,9 @@ pub async fn vault_delete_key(
     key_id: String,
     approval_ticket: Option<String>,
 ) -> Result<bool, String> {
+    let _vault_guard = VAULT_IO_LOCK
+        .lock()
+        .map_err(|error| format!("Vault lock error: {error}"))?;
     let mut entries = load_vault()?;
     let Some(index) = entries.iter().position(|entry| entry.id == key_id) else {
         return Ok(false);
@@ -345,6 +425,9 @@ pub async fn vault_delete_key(
 
 #[tauri::command]
 pub async fn vault_get_key(key_id: String) -> Result<Option<VaultKeyInfo>, String> {
+    let _vault_guard = VAULT_IO_LOCK
+        .lock()
+        .map_err(|error| format!("Vault lock error: {error}"))?;
     let entries = load_vault()?;
     Ok(entries
         .iter()
@@ -357,6 +440,9 @@ pub async fn vault_reveal_key_value(
     key_id: String,
     approval_ticket: Option<String>,
 ) -> Result<String, String> {
+    let _vault_guard = VAULT_IO_LOCK
+        .lock()
+        .map_err(|error| format!("Vault lock error: {error}"))?;
     let mut entries = load_vault()?;
     let Some(index) = entries.iter().position(|entry| entry.id == key_id) else {
         return Err("Key not found".to_string());
@@ -404,6 +490,7 @@ pub async fn vault_scan_exposed_keys() -> Result<Vec<ExposedKey>, String> {
     }
 
     if let Ok(mut guard) = EXPOSED_KEY_CACHE.lock() {
+        clear_exposed_key_cache(&mut *guard);
         *guard = Some(cache);
     }
 
@@ -419,7 +506,7 @@ pub async fn vault_import_exposed_key(key_id: String) -> Result<bool, String> {
         guard.as_ref().and_then(|cache| cache.get(&key_id).cloned())
     };
 
-    let cached = cached.ok_or_else(|| {
+    let mut cached = cached.ok_or_else(|| {
         "Exposed key not found in scan cache. Please run the vault exposure scan again.".to_string()
     })?;
 
@@ -427,10 +514,14 @@ pub async fn vault_import_exposed_key(key_id: String) -> Result<bool, String> {
         return Err("Unable to recover the raw key from the source file.".to_string());
     }
 
-    let mut entries = load_vault()?;
     let license = license::check_license_status().await?;
     let unlimited = matches!(license.plan.as_str(), "pro" | "enterprise" | "trial")
         && license.status == "active";
+
+    let _vault_guard = VAULT_IO_LOCK
+        .lock()
+        .map_err(|error| format!("Vault lock error: {error}"))?;
+    let mut entries = load_vault()?;
     if !unlimited && entries.len() >= FREE_VAULT_KEY_LIMIT {
         return Err(format!(
             "免费版最多可保存 {} 个密钥，请升级 Pro 或先删除旧密钥。",
@@ -449,6 +540,7 @@ pub async fn vault_import_exposed_key(key_id: String) -> Result<bool, String> {
     store_secret(&entry.id, &cached.raw_value)?;
     entries.push(entry);
     save_vault(&entries)?;
+    cached.raw_value.zeroize();
 
     Ok(true)
 }

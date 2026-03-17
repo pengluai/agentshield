@@ -1,0 +1,27 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "agentshield-license-gateway",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-03-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "LICENSE_GATEWAY",
+        "class_name": "LicenseGatewayDurableObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["LicenseGatewayDurableObject"]
+    }
+  ],
+  "vars": {
+    "LICENSE_GATEWAY_ADMIN_USERNAME": "admin",
+    "CREEM_STRICT_BILLING_RESOLUTION": "1",
+    "CREEM_SKU_BILLING_MAP_JSON": "{\"AGSH_PRO_30D\":\"monthly\",\"AGSH_PRO_365D\":\"yearly\",\"AGSH_PRO_LIFETIME\":\"lifetime\"}",
+    "CREEM_PRODUCT_BILLING_MAP_JSON": "{\"prod_2T8qrIwLHQ3AlG4KtTB849\":\"monthly\",\"prod_7kbjugsRm1gGN6lKXOR1NG\":\"yearly\",\"prod_4rh2nT74Cqk4IQ5EfvcjbH\":\"lifetime\"}"
+  }
+}

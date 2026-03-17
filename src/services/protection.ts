@@ -1,5 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { tauriInvoke as invoke } from '@/services/tauri';
 
 export interface ProtectionIncident {
   id: string;

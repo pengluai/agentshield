@@ -1,10 +1,13 @@
 use serde::{Deserialize, Serialize};
-use std::process::Command;
+use std::path::PathBuf;
+use std::process::{Command, Output};
 
 use crate::commands::license;
 use crate::commands::platform::{npm_command, openclaw_command, preferred_openclaw_config_dir};
 use crate::commands::runtime_guard;
 use crate::commands::store::get_mcp_config_for_platform;
+
+const CHANNEL_KEYRING_SERVICE: &str = "com.agentshield.openclaw.channels";
 
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone)]
@@ -65,6 +68,94 @@ fn get_default_model(provider: &str) -> &str {
         "openai" => "gpt-4o-mini",
         _ => "deepseek-chat",
     }
+}
+
+#[cfg(windows)]
+fn apply_no_window_flag(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn apply_no_window_flag(_command: &mut Command) {}
+
+fn command_output(mut command: Command) -> std::io::Result<Output> {
+    apply_no_window_flag(&mut command);
+    command.output()
+}
+
+async fn command_output_async(command: Command) -> Result<Output, String> {
+    tokio::task::spawn_blocking(move || command_output(command))
+        .await
+        .map_err(|error| format!("Command execution task failed: {error}"))?
+        .map_err(|error| format!("Command execution failed: {error}"))
+}
+
+fn mask_channel_secret(value: &str) -> String {
+    let chars: Vec<char> = value.chars().collect();
+    if chars.len() <= 6 {
+        return "*".repeat(chars.len().max(4));
+    }
+    let prefix: String = chars.iter().take(3).collect();
+    let suffix: String = chars
+        .iter()
+        .rev()
+        .take(2)
+        .copied()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("{prefix}***{suffix}")
+}
+
+fn store_channel_secret(channel: &str, raw_token: &str) -> Result<String, String> {
+    let key_id = format!("channel:{}:{}", channel.trim(), uuid::Uuid::new_v4());
+    let entry = keyring::Entry::new(CHANNEL_KEYRING_SERVICE, &key_id)
+        .map_err(|error| format!("Failed to create channel keyring entry: {error}"))?;
+    entry
+        .set_password(raw_token)
+        .map_err(|error| format!("Failed to persist channel secret in keyring: {error}"))?;
+    Ok(key_id)
+}
+
+#[cfg(windows)]
+fn harden_windows_paths(paths: &[PathBuf]) -> Result<(), String> {
+    let targets = paths
+        .iter()
+        .filter(|path| path.exists())
+        .map(|path| path.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+    if targets.is_empty() {
+        return Ok(());
+    }
+
+    let results = crate::commands::scan::run_windows_permission_fix(&targets, false)?;
+    let failures = results
+        .into_iter()
+        .filter(|result| !result.success)
+        .map(|result| {
+            format!(
+                "{} ({})",
+                result.path,
+                result.error.unwrap_or_else(|| "unknown error".to_string())
+            )
+        })
+        .collect::<Vec<_>>();
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Failed to harden Windows ACL for OpenClaw config files: {}",
+            failures.join(", ")
+        ))
+    }
+}
+
+#[cfg(not(windows))]
+fn harden_windows_paths(_paths: &[PathBuf]) -> Result<(), String> {
+    Ok(())
 }
 
 fn license_allows_one_click_automation(plan: &str, status: &str) -> bool {
@@ -343,7 +434,7 @@ pub async fn ai_diagnose_error(
     let url = format!("{}/v1/chat/completions", base);
 
     let prompt = format!(
-        "You are a system administrator assistant for macOS. The user is installing OpenClaw (an AI security tool). \
+        "You are a system administrator assistant for {}. The user is installing OpenClaw (an AI security tool). \
         During the step '{}', the following error occurred:\n\n{}\n\n\
         Provide a JSON response with these fields:\n\
         - diagnosis: brief explanation of what went wrong (in Chinese)\n\
@@ -351,7 +442,9 @@ pub async fn ai_diagnose_error(
         - auto_fixable: boolean, whether a shell command can fix it\n\
         - fix_command: the shell command to run if auto_fixable is true, null otherwise\n\
         Respond ONLY with valid JSON, no markdown.",
-        step_name, error_context
+        std::env::consts::OS,
+        step_name,
+        error_context
     );
 
     let body = serde_json::json!({
@@ -445,9 +538,10 @@ pub async fn execute_install_step(
             let node_ok = which::which("node").is_ok();
             let npm_ok = which::which("npm").is_ok();
             if node_ok && npm_ok {
-                let version = Command::new("node")
-                    .arg("--version")
-                    .output()
+                let mut version_command = Command::new("node");
+                version_command.arg("--version");
+                let version = command_output_async(version_command)
+                    .await
                     .ok()
                     .and_then(|o| String::from_utf8(o.stdout).ok())
                     .map(|v| v.trim().to_string())
@@ -475,9 +569,10 @@ pub async fn execute_install_step(
         "install_openclaw" => {
             // Check if already installed
             if which::which("openclaw").is_ok() {
-                let version = Command::new(openclaw_command())
-                    .arg("--version")
-                    .output()
+                let mut version_command = Command::new(openclaw_command());
+                version_command.arg("--version");
+                let version = command_output_async(version_command)
+                    .await
                     .ok()
                     .and_then(|o| String::from_utf8(o.stdout).ok())
                     .map(|v| v.trim().to_string())
@@ -493,10 +588,11 @@ pub async fn execute_install_step(
             }
 
             // Run npm install
-            let output = Command::new(npm_command())
-                .args(["install", "-g", "openclaw@latest"])
-                .output()
-                .map_err(|e| format!("Failed to run npm: {}", e))?;
+            let mut install_command = Command::new(npm_command());
+            install_command.args(["install", "-g", "openclaw@latest"]);
+            let output = command_output_async(install_command)
+                .await
+                .map_err(|error| format!("Failed to run npm: {error}"))?;
 
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -522,9 +618,9 @@ pub async fn execute_install_step(
         }
 
         "run_onboard" => {
-            let output = Command::new(openclaw_command())
-                .args(["onboard", "--install-daemon"])
-                .output();
+            let mut onboard_command = Command::new(openclaw_command());
+            onboard_command.args(["onboard", "--install-daemon"]);
+            let output = command_output_async(onboard_command).await;
 
             match output {
                 Ok(o) if o.status.success() => Ok(StepResult {
@@ -584,25 +680,29 @@ pub async fn execute_install_step(
             let home = dirs::home_dir().ok_or("Cannot find home directory")?;
             let config_dir = preferred_openclaw_config_dir(&home).join("channels");
             std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+            let token_ref = store_channel_secret(&channel, &token_val)?;
 
             let config = serde_json::json!({
                 "channel": channel,
-                "token": token_val,
+                "token_ref": token_ref,
+                "token_masked": mask_channel_secret(&token_val),
                 "enabled": true,
                 "created_at": chrono::Utc::now().to_rfc3339(),
             });
 
             let config_path = config_dir.join(format!("{}.json", channel));
-            std::fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
-                .map_err(|e| e.to_string())?;
+            let serialized =
+                serde_json::to_string_pretty(&config).map_err(|error| error.to_string())?;
+            std::fs::write(&config_path, serialized).map_err(|error| error.to_string())?;
 
-            // Set file permissions to 600
+            // Harden channel config permissions after write.
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
                 std::fs::set_permissions(&config_path, std::fs::Permissions::from_mode(0o600))
                     .map_err(|e| e.to_string())?;
             }
+            harden_windows_paths(&[config_dir.clone(), config_path.clone()])?;
 
             Ok(StepResult {
                 success: true,
@@ -651,41 +751,55 @@ pub async fn execute_install_step(
             let home = dirs::home_dir().ok_or("Cannot find home directory")?;
             let openclaw_dir = preferred_openclaw_config_dir(&home);
             let mut hardened: Vec<String> = Vec::new();
+            let mut targets: Vec<PathBuf> = Vec::new();
 
             if openclaw_dir.exists() {
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    // Harden all config files in .openclaw
-                    if let Ok(entries) = std::fs::read_dir(&openclaw_dir) {
+                // Harden all config files in the OpenClaw directory.
+                if let Ok(entries) = std::fs::read_dir(&openclaw_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            targets.push(path);
+                        }
+                    }
+                }
+                // Also harden channels subdir.
+                let channels_dir = openclaw_dir.join("channels");
+                if channels_dir.exists() {
+                    if let Ok(entries) = std::fs::read_dir(&channels_dir) {
                         for entry in entries.flatten() {
                             let path = entry.path();
                             if path.is_file() {
-                                let _ = std::fs::set_permissions(
-                                    &path,
-                                    std::fs::Permissions::from_mode(0o600),
-                                );
-                                hardened.push(path.to_string_lossy().to_string());
-                            }
-                        }
-                    }
-                    // Also harden channels subdir
-                    let channels_dir = openclaw_dir.join("channels");
-                    if channels_dir.exists() {
-                        if let Ok(entries) = std::fs::read_dir(&channels_dir) {
-                            for entry in entries.flatten() {
-                                let path = entry.path();
-                                if path.is_file() {
-                                    let _ = std::fs::set_permissions(
-                                        &path,
-                                        std::fs::Permissions::from_mode(0o600),
-                                    );
-                                    hardened.push(path.to_string_lossy().to_string());
-                                }
+                                targets.push(path);
                             }
                         }
                     }
                 }
+            }
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                for path in &targets {
+                    if std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).is_ok() {
+                        hardened.push(path.to_string_lossy().to_string());
+                    }
+                }
+            }
+
+            #[cfg(windows)]
+            {
+                let mut windows_targets = targets.clone();
+                if openclaw_dir.exists() {
+                    windows_targets.push(openclaw_dir.clone());
+                }
+                harden_windows_paths(&windows_targets)?;
+                hardened.extend(
+                    windows_targets
+                        .iter()
+                        .filter(|path| path.exists())
+                        .map(|path| path.to_string_lossy().to_string()),
+                );
             }
 
             Ok(StepResult {
@@ -701,9 +815,10 @@ pub async fn execute_install_step(
         "verify_install" => {
             let openclaw_ok = which::which("openclaw").is_ok();
             let version = if openclaw_ok {
-                Command::new(openclaw_command())
-                    .arg("--version")
-                    .output()
+                let mut version_command = Command::new(openclaw_command());
+                version_command.arg("--version");
+                command_output_async(version_command)
+                    .await
                     .ok()
                     .and_then(|o| String::from_utf8(o.stdout).ok())
                     .map(|v| v.trim().to_string())

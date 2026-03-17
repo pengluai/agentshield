@@ -19,6 +19,7 @@ const TRIAL_LOCK_KEY_ID: &str = "trial-lock-v1";
 const LICENSE_ONLINE_CHECK_INTERVAL_HOURS: i64 = 6;
 const LICENSE_ONLINE_REQUEST_TIMEOUT_SECS: u64 = 8;
 const LICENSE_ONLINE_CONNECT_TIMEOUT_SECS: u64 = 5;
+const LICENSE_ONLINE_USER_AGENT: &str = concat!("AgentShield/", env!("CARGO_PKG_VERSION"));
 #[cfg(not(test))]
 const DEFAULT_LICENSE_PUBLIC_KEY_BASE64URL: &str = "p-p1nNJB9CTwlvedV2If0h2A2_yHAbb7thMkVHRh620";
 
@@ -120,7 +121,7 @@ fn parse_signed_license_internal(
 }
 
 fn get_license_path() -> PathBuf {
-    let home = dirs::home_dir().expect("cannot resolve home directory");
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     home.join(".agentshield").join("license.json")
 }
 
@@ -224,16 +225,33 @@ fn mark_trial_as_used(at: &str) -> Result<(), String> {
 
 #[cfg(not(test))]
 fn public_key_bytes() -> [u8; 32] {
-    let public_key = env::var("AGENTSHIELD_LICENSE_PUBLIC_KEY")
-        .ok()
-        .or_else(|| option_env!("AGENTSHIELD_LICENSE_PUBLIC_KEY").map(str::to_string))
+    let compiled_key = option_env!("AGENTSHIELD_LICENSE_PUBLIC_KEY")
+        .map(str::to_string)
         .unwrap_or_else(|| DEFAULT_LICENSE_PUBLIC_KEY_BASE64URL.to_string());
+    let selected_key = if cfg!(debug_assertions) {
+        env::var("AGENTSHIELD_LICENSE_PUBLIC_KEY")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(compiled_key)
+    } else {
+        compiled_key
+    };
+
     let decoded = URL_SAFE_NO_PAD
-        .decode(public_key.trim())
-        .expect("invalid embedded license public key");
-    decoded
-        .try_into()
-        .expect("embedded license public key must be 32 bytes")
+        .decode(selected_key.trim())
+        .ok()
+        .filter(|bytes| bytes.len() == 32)
+        .or_else(|| {
+            URL_SAFE_NO_PAD
+                .decode(DEFAULT_LICENSE_PUBLIC_KEY_BASE64URL.trim())
+                .ok()
+                .filter(|bytes| bytes.len() == 32)
+        })
+        .unwrap_or_else(|| vec![0u8; 32]);
+
+    let mut key_bytes = [0u8; 32];
+    key_bytes.copy_from_slice(&decoded[..32]);
+    key_bytes
 }
 
 #[cfg(test)]
@@ -308,6 +326,7 @@ async fn maybe_refresh_paid_license_status(data: &mut LicenseData) {
     let request_body = LicenseVerifyRequest { activation_code };
 
     let client = match Client::builder()
+        .user_agent(LICENSE_ONLINE_USER_AGENT)
         .timeout(StdDuration::from_secs(LICENSE_ONLINE_REQUEST_TIMEOUT_SECS))
         .connect_timeout(StdDuration::from_secs(LICENSE_ONLINE_CONNECT_TIMEOUT_SECS))
         .build()
@@ -359,7 +378,21 @@ async fn maybe_refresh_paid_license_status(data: &mut LicenseData) {
         data.expires_at = Some(remote_expiry);
     }
 
-    if license.status != "active" {
+    if license.status == "active" {
+        if let Some(expiry) = data
+            .expires_at
+            .as_ref()
+            .and_then(|value| value.parse::<DateTime<Utc>>().ok())
+        {
+            data.status = if now >= expiry {
+                "expired".to_string()
+            } else {
+                "active".to_string()
+            };
+        } else {
+            data.status = "active".to_string();
+        }
+    } else {
         data.status = "suspended".to_string();
     }
 

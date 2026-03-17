@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { tauriInvoke as invoke } from '@/services/tauri';
 import { motion } from 'framer-motion';
 import {
   ChevronRight, CheckCircle, XCircle, Loader2,

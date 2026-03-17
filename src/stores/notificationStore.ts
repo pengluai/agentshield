@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { invoke } from '@tauri-apps/api/core';
+import { tauriInvoke as invoke } from '@/services/tauri';
 import type { Notification } from '@/types/domain';
 import { isEnglishLocale } from '@/constants/i18n';
 import { useAppStore } from './appStore';
@@ -29,17 +29,58 @@ interface NotificationState {
 const NOTIFICATION_SOUND_COOLDOWN_MS = 4000;
 let lastNotificationCueAt = 0;
 
+/**
+ * Bidirectional notification translation table.
+ * Each entry is [Chinese, English]. The function picks the right direction based on locale.
+ * Entries with `{n}` are dynamic-number patterns handled separately below.
+ */
+const NOTIFICATION_BILINGUAL: Array<[string, string]> = [
+  // Scan results
+  ['安全扫描已完成，请立即查看并处理高风险项目。', 'Security scan completed. Please review and handle critical issues now.'],
+  ['建议运行首次安全扫描', 'Run your first security scan'],
+  ['请前往安全扫描页面，运行首次 MCP 安全检查。', 'Go to Security Scan to run your first MCP security check.'],
+  // Runtime guard
+  ['已拦下未允许的联网地址', 'Blocked unauthorized network address'],
+  ['发现未允许的联网地址，但未能自动暂停', 'Unauthorized network address detected, but auto-suspend failed'],
+  // Generic
+  ['安全通知', 'Security notification'],
+  ['发现安全事件，请查看详情。', 'A security event was detected. Please review details.'],
+  ['发现高风险安全事件，请立即查看。', 'A critical security event requires your review.'],
+];
+
 function localizeNotificationText(text: string, fallback: string): string {
-  if (!isEnglishLocale || !containsCjk(text)) {
+  // --- Chinese locale: translate English → Chinese ---
+  if (!isEnglishLocale) {
+    // Dynamic pattern: "N critical security issues detected"
+    const critMatch = text.match(/^(\d+) critical security issues? detected$/);
+    if (critMatch) {
+      return `发现 ${critMatch[1]} 个高风险安全问题`;
+    }
+    // Static bilingual lookup (EN→CN)
+    for (const [cn, en] of NOTIFICATION_BILINGUAL) {
+      if (text === en) return cn;
+    }
+    // If text is already Chinese, return as-is
+    if (containsCjk(text)) return text;
+    // English text with no mapping — return fallback
+    return fallback;
+  }
+
+  // --- English locale: translate Chinese → English ---
+  if (!containsCjk(text)) {
     return text;
   }
 
-  if (text.includes('建议运行首次安全扫描')) {
-    return 'Run your first security scan';
+  // Dynamic pattern: "发现 N 个高风险安全问题"
+  const critMatchCn = text.match(/发现 (\d+) 个高风险安全问题/);
+  if (critMatchCn) {
+    return `${critMatchCn[1]} critical security issues detected`;
   }
-  if (text.includes('请前往安全扫描页面')) {
-    return 'Go to Security Scan to run your first MCP security check.';
+  // Static bilingual lookup (CN→EN)
+  for (const [cn, en] of NOTIFICATION_BILINGUAL) {
+    if (text === cn || text.includes(cn)) return en;
   }
+  // Legacy patterns
   if (text.includes('免费版规则同步频率为每 7 天一次')) {
     return text.replace(
       /免费版规则同步频率为每 7 天一次，请在 (.+) 后重试。?/,
@@ -57,19 +98,19 @@ function localizeNotificationText(text: string, fallback: string): string {
 }
 
 function localizeNotification(notification: Notification): Notification {
-  if (!isEnglishLocale) {
-    return notification;
-  }
+  const titleFallback = isEnglishLocale ? 'Security notification' : '安全通知';
+  const bodyFallback = isEnglishLocale
+    ? (notification.priority === 'critical'
+        ? 'A critical security event requires your review.'
+        : 'A security event was detected. Please review details.')
+    : (notification.priority === 'critical'
+        ? '发现高风险安全事件，请立即查看。'
+        : '发现安全事件，请查看详情。');
 
   return {
     ...notification,
-    title: localizeNotificationText(notification.title, 'Security notification'),
-    body: localizeNotificationText(
-      notification.body,
-      notification.priority === 'critical'
-        ? 'A critical security event requires your review.'
-        : 'A security event was detected. Please review details.',
-    ),
+    title: localizeNotificationText(notification.title, titleFallback),
+    body: localizeNotificationText(notification.body, bodyFallback),
   };
 }
 

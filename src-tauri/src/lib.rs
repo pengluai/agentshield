@@ -36,6 +36,13 @@ fn restore_main_window<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+fn prefers_chinese_locale() -> bool {
+    std::env::var("LANG")
+        .map(|value| value.to_ascii_lowercase())
+        .map(|value| value.starts_with("zh") || value.contains("zh_"))
+        .unwrap_or(false)
+}
+
 #[tauri::command]
 fn force_quit_app<R: Runtime>(app: AppHandle<R>) {
     app.exit(0);
@@ -43,8 +50,13 @@ fn force_quit_app<R: Runtime>(app: AppHandle<R>) {
 
 #[cfg(desktop)]
 fn setup_system_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    let show_item = MenuItem::with_id(app, "tray_show", "显示 AgentShield", true, None::<&str>)?;
-    let quit_item = MenuItem::with_id(app, "tray_quit", "退出", true, None::<&str>)?;
+    let (show_label, quit_label) = if prefers_chinese_locale() {
+        ("显示 AgentShield", "退出")
+    } else {
+        ("Show AgentShield", "Quit")
+    };
+    let show_item = MenuItem::with_id(app, "tray_show", show_label, true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "tray_quit", quit_label, true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(app, &[&show_item, &separator, &quit_item])?;
 
@@ -85,6 +97,7 @@ pub fn run() {
         .manage(protection_service.clone())
         .manage(runtime_guard_service.clone())
         // Keep launch path stable first; autostart is configured by user after first-run.
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
@@ -126,6 +139,7 @@ pub fn run() {
             store::update_installed_item,
             store::batch_update_items,
             store::refresh_catalog,
+            store::generate_manual_fix_guide,
             notification::get_notifications,
             notification::mark_notification_read,
             notification::create_notification,
@@ -171,9 +185,8 @@ pub fn run() {
         .on_window_event(|window, event| {
             #[cfg(target_os = "macos")]
             if window.label() == "main" {
-                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if let tauri::WindowEvent::CloseRequested { .. } = event {
                     append_startup_log("[window] mac close requested -> force exit");
-                    api.prevent_close();
                     window.app_handle().exit(0);
                 }
             }
@@ -195,6 +208,13 @@ pub fn run() {
                     append_startup_log(&format!("[startup] tray setup failed: {error}"));
                 }
                 append_startup_log("[startup] setup: tray init done");
+            }
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::TitleBarStyle;
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_title_bar_style(TitleBarStyle::Overlay);
+                }
             }
             append_startup_log("[startup] setup: protection init begin");
             if let Err(error) = protection::initialize(app.handle(), protection_service.clone()) {

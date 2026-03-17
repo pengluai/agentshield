@@ -1,5 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { tauriInvoke as invoke } from '@/services/tauri';
 
 export interface RuntimeGuardComponent {
   component_id: string;
@@ -44,6 +44,7 @@ export interface RuntimeApprovalRequest {
   created_at: string;
   updated_at: string;
   status: string;
+  expires_at?: string | null;
   component_id: string;
   component_name: string;
   platform_id: string;
@@ -292,29 +293,58 @@ export async function runRuntimeGuardPollNow(): Promise<RuntimeGuardStatus | nul
 }
 
 export async function updateRuntimeGuardPolicy(policy: RuntimeGuardPolicy) {
-  return invoke<RuntimeGuardPolicy>('update_runtime_guard_policy', { policy });
+  try {
+    return await invoke<RuntimeGuardPolicy>('update_runtime_guard_policy', { policy });
+  } catch (error) {
+    console.error('Failed to update runtime guard policy:', error);
+    throw Object.assign(new Error(`Failed to update runtime guard policy: ${String(error)}`), {
+      cause: error,
+    });
+  }
 }
 
 export async function resolveRuntimeGuardApprovalRequest(requestId: string, decision: 'approve' | 'deny') {
-  return invoke<RuntimeApprovalRequest>('resolve_runtime_guard_approval_request', {
-    requestId,
-    request_id: requestId,
-    decision,
-  });
+  try {
+    return await invoke<RuntimeApprovalRequest>('resolve_runtime_guard_approval_request', {
+      requestId,
+      request_id: requestId,
+      decision,
+    });
+  } catch (error) {
+    console.error('Failed to resolve runtime approval request:', error);
+    throw Object.assign(
+      new Error(`Failed to resolve runtime approval request: ${String(error)}`),
+      { cause: error }
+    );
+  }
 }
 
 export async function requestRuntimeGuardActionApproval(input: RuntimeActionApprovalInput) {
-  return invoke<RuntimeActionApprovalResult>('request_runtime_guard_action_approval', {
-    input,
-  });
+  try {
+    return await invoke<RuntimeActionApprovalResult>('request_runtime_guard_action_approval', {
+      input,
+    });
+  } catch (error) {
+    console.error('Failed to request runtime action approval:', error);
+    throw Object.assign(new Error(`Failed to request runtime action approval: ${String(error)}`), {
+      cause: error,
+    });
+  }
 }
 
 export async function updateComponentTrustState(componentId: string, trustState: string, reason?: string) {
-  return invoke<RuntimeGuardComponent>('update_component_trust_state', {
-    componentId,
-    trustState,
-    reason: reason ?? null,
-  });
+  try {
+    return await invoke<RuntimeGuardComponent>('update_component_trust_state', {
+      componentId,
+      trustState,
+      reason: reason ?? null,
+    });
+  } catch (error) {
+    console.error('Failed to update component trust state:', error);
+    throw Object.assign(new Error(`Failed to update component trust state: ${String(error)}`), {
+      cause: error,
+    });
+  }
 }
 
 export async function updateComponentNetworkPolicy(
@@ -322,21 +352,42 @@ export async function updateComponentNetworkPolicy(
   allowedDomains: string[],
   networkMode?: string,
 ) {
-  return invoke<RuntimeGuardComponent>('update_component_network_policy', {
-    componentId,
-    allowedDomains,
-    networkMode: networkMode ?? null,
-  });
+  try {
+    return await invoke<RuntimeGuardComponent>('update_component_network_policy', {
+      componentId,
+      allowedDomains,
+      networkMode: networkMode ?? null,
+    });
+  } catch (error) {
+    console.error('Failed to update component network policy:', error);
+    throw Object.assign(new Error(`Failed to update component network policy: ${String(error)}`), {
+      cause: error,
+    });
+  }
 }
 
 export async function launchRuntimeGuardComponent(componentId: string) {
-  return invoke<RuntimeGuardSession>('launch_runtime_guard_component', {
-    componentId,
-  });
+  try {
+    return await invoke<RuntimeGuardSession>('launch_runtime_guard_component', {
+      componentId,
+    });
+  } catch (error) {
+    console.error('Failed to launch runtime guard component:', error);
+    throw Object.assign(new Error(`Failed to launch runtime guard component: ${String(error)}`), {
+      cause: error,
+    });
+  }
 }
 
 export async function terminateRuntimeGuardSession(sessionId: string) {
-  return invoke<boolean>('terminate_runtime_guard_session', {
-    sessionId,
-  });
+  try {
+    return await invoke<boolean>('terminate_runtime_guard_session', {
+      sessionId,
+    });
+  } catch (error) {
+    console.error('Failed to terminate runtime guard session:', error);
+    throw Object.assign(new Error(`Failed to terminate runtime guard session: ${String(error)}`), {
+      cause: error,
+    });
+  }
 }

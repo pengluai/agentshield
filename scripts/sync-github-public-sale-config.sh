@@ -4,6 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# shellcheck source=./lib/load-dotenv-literal.sh
+source "$ROOT_DIR/scripts/lib/load-dotenv-literal.sh"
+
 ENV_FILE=".env.public-sale.local"
 REPO=""
 APPLY=0
@@ -107,6 +110,19 @@ check_https_url() {
   fi
 }
 
+check_json_object() {
+  local var_name="$1"
+  local value="${!var_name:-}"
+  if [[ -z "$value" ]]; then
+    echo "[sync-public-sale-config] missing required value: $var_name"
+    return 1
+  fi
+  if ! V="$value" node -e "const v=process.env.V;const parsed=JSON.parse(v);if(!parsed||typeof parsed!=='object'||Array.isArray(parsed)) process.exit(1);" >/dev/null 2>&1; then
+    echo "[sync-public-sale-config] $var_name must be a valid JSON object string"
+    return 1
+  fi
+}
+
 check_checkout_url() {
   local var_name="$1"
   local value="${!var_name:-}"
@@ -135,10 +151,7 @@ check_gateway_url() {
   fi
 }
 
-set -a
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-set +a
+load_dotenv_literal "$ENV_FILE"
 
 if [[ -z "$REPO" ]]; then
   REPO="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
@@ -152,10 +165,11 @@ VARIABLE_NAMES=(
   AGENTSHIELD_LICENSE_PUBLIC_KEY
   LICENSE_DELIVERY_FROM_EMAIL
   LICENSE_DELIVERY_REPLY_TO
+  CREEM_SKU_BILLING_MAP_JSON
 )
 
 SECRET_NAMES=(
-  LEMONSQUEEZY_WEBHOOK_SECRET
+  CREEM_WEBHOOK_SECRET
   LICENSE_GATEWAY_ADMIN_PASSWORD
   AGENTSHIELD_LICENSE_SIGNING_SEED
   RESEND_API_KEY
@@ -190,10 +204,18 @@ check_checkout_url "VITE_CHECKOUT_LIFETIME_URL" || failed=1
 check_gateway_url "AGENTSHIELD_LICENSE_GATEWAY_URL" || failed=1
 check_nonempty "AGENTSHIELD_LICENSE_PUBLIC_KEY" || failed=1
 check_nonempty "LICENSE_DELIVERY_FROM_EMAIL" || failed=1
-check_nonempty "LEMONSQUEEZY_WEBHOOK_SECRET" || failed=1
+check_json_object "CREEM_SKU_BILLING_MAP_JSON" || failed=1
+check_nonempty "CREEM_WEBHOOK_SECRET" || failed=1
 check_nonempty "LICENSE_GATEWAY_ADMIN_PASSWORD" || failed=1
 check_nonempty "AGENTSHIELD_LICENSE_SIGNING_SEED" || failed=1
 check_nonempty "RESEND_API_KEY" || failed=1
+
+if [[ -n "${CREEM_PRODUCT_BILLING_MAP_JSON:-}" ]]; then
+  VARIABLE_NAMES+=(
+    CREEM_PRODUCT_BILLING_MAP_JSON
+  )
+  check_json_object "CREEM_PRODUCT_BILLING_MAP_JSON" || failed=1
+fi
 
 if [[ "$PROFILE" == "public" ]]; then
   check_https_url "TAURI_UPDATER_ENDPOINT" || failed=1

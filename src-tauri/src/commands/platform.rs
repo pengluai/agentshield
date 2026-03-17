@@ -1,7 +1,12 @@
 use std::path::{Path, PathBuf};
 
 pub(crate) fn normalize_path_string(raw: &str) -> String {
-    raw.replace('\\', "/").to_lowercase()
+    let normalized = raw.replace('\\', "/");
+    if cfg!(any(target_os = "windows", target_os = "macos")) {
+        normalized.to_lowercase()
+    } else {
+        normalized
+    }
 }
 
 pub(crate) fn normalize_path(path: &Path) -> String {

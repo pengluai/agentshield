@@ -49,6 +49,8 @@ pub struct RuntimeApprovalRequest {
     pub created_at: String,
     pub updated_at: String,
     pub status: String,
+    #[serde(default)]
+    pub expires_at: Option<String>,
     pub component_id: String,
     pub component_name: String,
     pub platform_id: String,

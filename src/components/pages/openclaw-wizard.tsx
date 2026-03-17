@@ -1364,22 +1364,37 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
                 <p className="mt-1 text-xs text-white/45">
                   {tr('填入 token 后会自动写入 OpenClaw 渠道配置目录。', 'After filling the token, configuration will be written to OpenClaw channel directory.')}
                 </p>
-                <div className="mt-2.5 grid gap-1.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                  {getChannelOptions().map((channel) => (
-                    <button
-                      key={channel.id}
-                      type="button"
-                      onClick={() => setSelectedChannelId(channel.id)}
-                      className={cn(
-                        'rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
-                        selectedChannelId === channel.id
-                          ? 'border-teal-300/40 bg-teal-400/15 text-teal-100'
-                          : 'border-white/15 bg-white/5 text-white/70 hover:bg-white/10'
-                      )}
-                    >
-                      {channel.name}
-                    </button>
-                  ))}
+                <div className="mt-2.5 space-y-2">
+                  {([
+                    { label: tr('国际', 'International'), ids: ['telegram', 'slack', 'discord'] as const },
+                    { label: tr('国内', 'China'), ids: ['feishu', 'wework', 'dingtalk'] as const },
+                    { label: tr('通用', 'Universal'), ids: ['email', 'webhook', 'ntfy'] as const },
+                  ] as const).map((group) => {
+                    const channels = getChannelOptions().filter((c) => (group.ids as readonly string[]).includes(c.id));
+                    if (channels.length === 0) return null;
+                    return (
+                      <div key={group.label}>
+                        <p className="text-[10px] uppercase tracking-wider text-white/35 mb-1">{group.label}</p>
+                        <div className="grid gap-1.5 sm:grid-cols-3">
+                          {channels.map((channel) => (
+                            <button
+                              key={channel.id}
+                              type="button"
+                              onClick={() => setSelectedChannelId(channel.id)}
+                              className={cn(
+                                'rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
+                                selectedChannelId === channel.id
+                                  ? 'border-teal-300/40 bg-teal-400/15 text-teal-100'
+                                  : 'border-white/15 bg-white/5 text-white/70 hover:bg-white/10'
+                              )}
+                            >
+                              {channel.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
                 <div className="mt-2.5 space-y-2">
                   <label className="block text-xs text-white/60">{selectedChannel.tokenLabel}</label>

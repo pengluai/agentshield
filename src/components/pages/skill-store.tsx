@@ -12,6 +12,7 @@ import { PlatformIcon } from '@/components/platform-badge';
 import { ManualModeGateDialog } from '@/components/manual-mode-gate-dialog';
 import { openExternalUrl } from '@/services/runtime-settings';
 import { isTauriEnvironment } from '@/services/tauri';
+import { translateBackendText } from '@/lib/locale-text';
 import type { StoreCatalogItem, Platform } from '@/types/domain';
 import { useProGate } from '@/hooks/useProGate';
 import { useAppStore } from '@/stores/appStore';
@@ -306,7 +307,7 @@ function StoreItemCard({ item, oneClickInstallUnlocked, onInstall, onOpenOpenCla
             </div>
             <p className="text-sm text-white/60 line-clamp-2">{item.description}</p>
             {item.review_notes && (
-              <p className="mt-1 text-xs text-white/40 line-clamp-2">{item.review_notes}</p>
+              <p className="mt-1 text-xs text-white/40 line-clamp-2">{translateBackendText(item.review_notes)}</p>
             )}
             <p className="mt-1 text-[11px] text-cyan-100/70 truncate">{sourceLabel}</p>
           </div>

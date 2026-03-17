@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { tauriInvoke as invoke } from '@/services/tauri';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 // Types matching Rust backend
@@ -170,6 +170,31 @@ export async function runFullScanWithProgress(
   } finally {
     unlisten();
   }
+}
+
+// Manual fix guide for free users
+export interface ManualFixStep {
+  step_type: string;
+  title: string;
+  description: string;
+  commands: string[];
+  target_path: string;
+  severity: string;
+}
+
+export async function getManualFixGuide(
+  issueType: string,
+  targetPath: string,
+  detail?: string,
+): Promise<ManualFixStep[]> {
+  if (!isTauriEnvironment()) {
+    return [];
+  }
+  return invoke<ManualFixStep[]>('generate_manual_fix_guide', {
+    issueType,
+    targetPath,
+    detail: detail ?? null,
+  });
 }
 
 export async function cancelScan(): Promise<boolean> {

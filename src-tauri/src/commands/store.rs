@@ -1262,7 +1262,9 @@ fn read_json_config(path: &Path) -> Result<Value, String> {
         return Ok(Value::Object(serde_json::Map::new()));
     }
 
-    serde_json::from_str(&content).map_err(|error| format!("Failed to parse JSON config: {error}"))
+    let normalized = content.trim_start_matches('\u{feff}');
+    serde_json::from_str(normalized)
+        .map_err(|error| format!("Failed to parse JSON config: {error}"))
 }
 
 fn write_json_config(path: &Path, value: &Value) -> Result<(), String> {
@@ -1323,8 +1325,9 @@ fn write_toml_config(path: &Path, value: &toml::Value) -> Result<(), String> {
 }
 
 fn build_npm_server_entry(package_spec: &str) -> Value {
+    let npm_launcher = if cfg!(windows) { "npx.cmd" } else { "npx" };
     serde_json::json!({
-        "command": "npx",
+        "command": npm_launcher,
         "args": ["-y", package_spec]
     })
 }
@@ -3368,6 +3371,115 @@ pub async fn get_global_cleanup_report() -> Result<Option<GlobalCleanupReport>, 
         }
     }
     Ok(load_global_cleanup_report())
+}
+
+// ---------------------------------------------------------------------------
+// Manual fix guide — generates terminal commands for free users
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Clone)]
+pub struct ManualFixStep {
+    pub step_type: String,     // "permission", "remove_key", "remove_mcp", "remove_skill"
+    pub title: String,
+    pub description: String,
+    pub commands: Vec<String>,  // Terminal commands to copy-paste
+    pub target_path: String,
+    pub severity: String,       // "critical", "high", "medium"
+}
+
+#[tauri::command]
+pub async fn generate_manual_fix_guide(
+    issue_type: String,
+    target_path: String,
+    detail: Option<String>,
+) -> Result<Vec<ManualFixStep>, String> {
+    let mut steps = Vec::new();
+
+    match issue_type.as_str() {
+        "permission" => {
+            steps.push(ManualFixStep {
+                step_type: "permission".to_string(),
+                title: "Fix file permissions".to_string(),
+                description: "Restrict config file to current user only".to_string(),
+                commands: if cfg!(unix) {
+                    vec![format!("chmod 600 \"{}\"", target_path)]
+                } else {
+                    vec![format!(
+                        "icacls \"{}\" /inheritance:r /grant:r \"%USERNAME%:F\"",
+                        target_path
+                    )]
+                },
+                target_path: target_path.clone(),
+                severity: "high".to_string(),
+            });
+        }
+        "exposed_key" => {
+            let key_hint = detail.as_deref().unwrap_or("API key");
+            steps.push(ManualFixStep {
+                step_type: "remove_key".to_string(),
+                title: format!("Remove exposed {}", key_hint),
+                description: "Open the config file and remove the plaintext API key".to_string(),
+                commands: if cfg!(target_os = "macos") {
+                    vec![format!("open -e \"{}\"", target_path)]
+                } else if cfg!(target_os = "windows") {
+                    vec![format!("notepad \"{}\"", target_path)]
+                } else {
+                    vec![format!("xdg-open \"{}\"", target_path)]
+                },
+                target_path: target_path.clone(),
+                severity: "critical".to_string(),
+            });
+        }
+        "remove_mcp" => {
+            let server_name = detail.as_deref().unwrap_or("server");
+            steps.push(ManualFixStep {
+                step_type: "remove_mcp".to_string(),
+                title: format!("Remove MCP server: {}", server_name),
+                description: "Open the config file and delete the server entry".to_string(),
+                commands: if cfg!(target_os = "macos") {
+                    vec![format!("open -e \"{}\"", target_path)]
+                } else if cfg!(target_os = "windows") {
+                    vec![format!("notepad \"{}\"", target_path)]
+                } else {
+                    vec![format!("xdg-open \"{}\"", target_path)]
+                },
+                target_path: target_path.clone(),
+                severity: "medium".to_string(),
+            });
+        }
+        "remove_skill" => {
+            steps.push(ManualFixStep {
+                step_type: "remove_skill".to_string(),
+                title: "Remove suspicious skill".to_string(),
+                description: "Delete the entire skill directory".to_string(),
+                commands: if cfg!(unix) {
+                    vec![format!("rm -rf \"{}\"", target_path)]
+                } else {
+                    vec![format!("rmdir /s /q \"{}\"", target_path)]
+                },
+                target_path: target_path.clone(),
+                severity: "high".to_string(),
+            });
+        }
+        _ => {
+            steps.push(ManualFixStep {
+                step_type: issue_type.clone(),
+                title: "Manual review required".to_string(),
+                description: "Open the file and review the flagged content".to_string(),
+                commands: if cfg!(target_os = "macos") {
+                    vec![format!("open -e \"{}\"", target_path)]
+                } else if cfg!(target_os = "windows") {
+                    vec![format!("notepad \"{}\"", target_path)]
+                } else {
+                    vec![format!("xdg-open \"{}\"", target_path)]
+                },
+                target_path: target_path.clone(),
+                severity: "medium".to_string(),
+            });
+        }
+    }
+
+    Ok(steps)
 }
 
 #[cfg(test)]

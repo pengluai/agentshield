@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 use reqwest::Url;
+use serde::{de::DeserializeOwned, Serialize};
 use sha2::{Digest, Sha256};
 use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
 use tauri::{AppHandle, Emitter, Runtime, State};
@@ -35,6 +36,7 @@ const MAX_EVENTS: usize = 500;
 const MAX_APPROVAL_REQUESTS: usize = 200;
 const APPROVAL_GRANT_TTL_SECS: i64 = 300;
 const APPROVAL_TICKET_TTL_SECS: i64 = 300;
+const APPROVAL_REQUEST_TTL_SECS: i64 = 300;
 const MAX_HASH_BYTES: usize = 512 * 1024;
 const MAX_HASH_FILES: usize = 64;
 const MIN_RUNTIME_GUARD_POLL_INTERVAL_SECS: u64 = 2;
@@ -248,43 +250,75 @@ fn ensure_data_dir() -> Result<(), String> {
     Ok(())
 }
 
-fn load_policy() -> RuntimeGuardPolicy {
-    let Ok(content) = fs::read_to_string(policy_path()) else {
-        return RuntimeGuardPolicy::default();
+fn write_file_atomic(path: &Path, content: &str, label: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("Failed to resolve parent directory for {label}"))?;
+    let temp_path = parent.join(format!(
+        ".{}-{}.tmp",
+        path.file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("runtime-guard"),
+        uuid::Uuid::new_v4()
+    ));
+
+    fs::write(&temp_path, content)
+        .map_err(|error| format!("Failed to write temporary {label} file: {error}"))?;
+    fs::rename(&temp_path, path)
+        .map_err(|error| format!("Failed to replace {label} file atomically: {error}"))?;
+    Ok(())
+}
+
+fn load_json_file<T>(path: &Path) -> T
+where
+    T: DeserializeOwned + Default,
+{
+    let Ok(content) = fs::read_to_string(path) else {
+        return T::default();
     };
-    serde_json::from_str(&content).unwrap_or_default()
+    let normalized = content.trim_start_matches('\u{feff}');
+    if normalized.trim().is_empty() {
+        return T::default();
+    }
+    serde_json::from_str(normalized).unwrap_or_default()
+}
+
+fn save_json_file<T>(path: &Path, value: &T, label: &str) -> Result<(), String>
+where
+    T: Serialize,
+{
+    ensure_data_dir()?;
+    let serialized = serde_json::to_string_pretty(value)
+        .map_err(|error| format!("Failed to serialize {label}: {error}"))?;
+    write_file_atomic(path, &serialized, label)
+}
+
+fn load_policy() -> RuntimeGuardPolicy {
+    load_json_file(&policy_path())
 }
 
 fn save_policy(policy: &RuntimeGuardPolicy) -> Result<(), String> {
-    ensure_data_dir()?;
-    let serialized = serde_json::to_string_pretty(policy)
-        .map_err(|error| format!("Failed to serialize runtime guard policy: {error}"))?;
-    fs::write(policy_path(), serialized)
-        .map_err(|error| format!("Failed to write runtime guard policy: {error}"))?;
-    Ok(())
+    save_json_file(
+        &policy_path(),
+        policy,
+        "runtime guard policy",
+    )
 }
 
 fn load_components() -> Vec<RuntimeGuardComponent> {
-    let Ok(content) = fs::read_to_string(components_path()) else {
-        return vec![];
-    };
-    serde_json::from_str(&content).unwrap_or_default()
+    load_json_file(&components_path())
 }
 
 fn save_components(components: &[RuntimeGuardComponent]) -> Result<(), String> {
-    ensure_data_dir()?;
-    let serialized = serde_json::to_string_pretty(components)
-        .map_err(|error| format!("Failed to serialize runtime guard components: {error}"))?;
-    fs::write(components_path(), serialized)
-        .map_err(|error| format!("Failed to write runtime guard components: {error}"))?;
-    Ok(())
+    save_json_file(
+        &components_path(),
+        &components,
+        "runtime guard components",
+    )
 }
 
 fn load_events() -> Vec<RuntimeGuardEvent> {
-    let Ok(content) = fs::read_to_string(events_path()) else {
-        return vec![];
-    };
-    let mut events: Vec<RuntimeGuardEvent> = serde_json::from_str(&content).unwrap_or_default();
+    let mut events: Vec<RuntimeGuardEvent> = load_json_file(&events_path());
     let original_len = events.len();
     events.retain(|event| is_actionable_runtime_event(&event.event_type));
     if events.len() != original_len {
@@ -293,77 +327,104 @@ fn load_events() -> Vec<RuntimeGuardEvent> {
     events
 }
 
+fn parse_rfc3339_utc(value: &str) -> Option<chrono::DateTime<Utc>> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|timestamp| timestamp.with_timezone(&Utc))
+}
+
+fn refresh_pending_approval_expiry(requests: &mut [RuntimeApprovalRequest]) -> bool {
+    let now = Utc::now();
+    let mut changed = false;
+    for request in requests {
+        if request.status != "pending" {
+            continue;
+        }
+
+        let expires_at = request
+            .expires_at
+            .as_deref()
+            .and_then(parse_rfc3339_utc)
+            .or_else(|| {
+                parse_rfc3339_utc(&request.created_at)
+                    .map(|created| created + chrono::Duration::seconds(APPROVAL_REQUEST_TTL_SECS))
+            });
+
+        if request.expires_at.is_none() {
+            request.expires_at = expires_at.map(|timestamp| timestamp.to_rfc3339());
+            changed = true;
+        }
+
+        if let Some(expiry) = expires_at {
+            if now >= expiry {
+                request.status = "expired".to_string();
+                request.updated_at = now.to_rfc3339();
+                changed = true;
+            }
+        }
+    }
+    changed
+}
+
 fn load_approval_requests() -> Vec<RuntimeApprovalRequest> {
-    let Ok(content) = fs::read_to_string(approval_requests_path()) else {
-        return vec![];
-    };
-    serde_json::from_str(&content).unwrap_or_default()
+    let path = approval_requests_path();
+    let mut requests: Vec<RuntimeApprovalRequest> = load_json_file(&path);
+    if refresh_pending_approval_expiry(&mut requests) {
+        let _ = save_approval_requests(&requests);
+    }
+    requests
 }
 
 fn save_approval_requests(requests: &[RuntimeApprovalRequest]) -> Result<(), String> {
-    ensure_data_dir()?;
-    let serialized = serde_json::to_string_pretty(requests)
-        .map_err(|error| format!("Failed to serialize runtime guard approvals: {error}"))?;
-    fs::write(approval_requests_path(), serialized)
-        .map_err(|error| format!("Failed to write runtime guard approvals: {error}"))?;
-    Ok(())
+    save_json_file(
+        &approval_requests_path(),
+        &requests,
+        "runtime guard approvals",
+    )
 }
 
 fn load_approval_grants() -> Vec<RuntimeApprovalGrant> {
-    let Ok(content) = fs::read_to_string(approval_grants_path()) else {
-        return vec![];
-    };
-    serde_json::from_str(&content).unwrap_or_default()
+    load_json_file(&approval_grants_path())
 }
 
 fn load_approval_tickets() -> Vec<RuntimeApprovalExecutionTicket> {
-    let Ok(content) = fs::read_to_string(approval_tickets_path()) else {
-        return vec![];
-    };
-    serde_json::from_str(&content).unwrap_or_default()
+    load_json_file(&approval_tickets_path())
 }
 
 fn save_approval_grants(grants: &[RuntimeApprovalGrant]) -> Result<(), String> {
-    ensure_data_dir()?;
-    let serialized = serde_json::to_string_pretty(grants)
-        .map_err(|error| format!("Failed to serialize runtime guard approval grants: {error}"))?;
-    fs::write(approval_grants_path(), serialized)
-        .map_err(|error| format!("Failed to write runtime guard approval grants: {error}"))?;
-    Ok(())
+    save_json_file(
+        &approval_grants_path(),
+        &grants,
+        "runtime guard approval grants",
+    )
 }
 
 fn save_approval_tickets(tickets: &[RuntimeApprovalExecutionTicket]) -> Result<(), String> {
-    ensure_data_dir()?;
-    let serialized = serde_json::to_string_pretty(tickets)
-        .map_err(|error| format!("Failed to serialize runtime guard approval tickets: {error}"))?;
-    fs::write(approval_tickets_path(), serialized)
-        .map_err(|error| format!("Failed to write runtime guard approval tickets: {error}"))?;
-    Ok(())
+    save_json_file(
+        &approval_tickets_path(),
+        &tickets,
+        "runtime guard approval tickets",
+    )
 }
 
 fn save_events(events: &[RuntimeGuardEvent]) -> Result<(), String> {
-    ensure_data_dir()?;
-    let serialized = serde_json::to_string_pretty(events)
-        .map_err(|error| format!("Failed to serialize runtime guard events: {error}"))?;
-    fs::write(events_path(), serialized)
-        .map_err(|error| format!("Failed to write runtime guard events: {error}"))?;
-    Ok(())
+    save_json_file(
+        &events_path(),
+        &events,
+        "runtime guard events",
+    )
 }
 
 fn load_sessions() -> Vec<RuntimeGuardSession> {
-    let Ok(content) = fs::read_to_string(sessions_path()) else {
-        return vec![];
-    };
-    serde_json::from_str(&content).unwrap_or_default()
+    load_json_file(&sessions_path())
 }
 
 fn save_sessions(sessions: &[RuntimeGuardSession]) -> Result<(), String> {
-    ensure_data_dir()?;
-    let serialized = serde_json::to_string_pretty(sessions)
-        .map_err(|error| format!("Failed to serialize runtime guard sessions: {error}"))?;
-    fs::write(sessions_path(), serialized)
-        .map_err(|error| format!("Failed to write runtime guard sessions: {error}"))?;
-    Ok(())
+    save_json_file(
+        &sessions_path(),
+        &sessions,
+        "runtime guard sessions",
+    )
 }
 
 fn refresh_status<R: Runtime>(
@@ -875,6 +936,7 @@ fn create_approval_request<R: Runtime>(
     }
 
     let now = Utc::now().to_rfc3339();
+    let expires_at = (Utc::now() + chrono::Duration::seconds(APPROVAL_REQUEST_TTL_SECS)).to_rfc3339();
     let action = approval_action_metadata(
         component,
         context.request_kind,
@@ -886,6 +948,7 @@ fn create_approval_request<R: Runtime>(
         created_at: now.clone(),
         updated_at: now,
         status: "pending".to_string(),
+        expires_at: Some(expires_at),
         component_id: component.component_id.clone(),
         component_name: component.name.clone(),
         platform_id: component.platform_id.clone(),
@@ -1090,11 +1153,13 @@ fn create_custom_action_approval_request<R: Runtime>(
     }
 
     let now = Utc::now().to_rfc3339();
+    let expires_at = (Utc::now() + chrono::Duration::seconds(APPROVAL_REQUEST_TTL_SECS)).to_rfc3339();
     let request = RuntimeApprovalRequest {
         id: uuid::Uuid::new_v4().to_string(),
         created_at: now.clone(),
         updated_at: now,
         status: "pending".to_string(),
+        expires_at: Some(expires_at),
         component_id,
         component_name: input.component_name.clone(),
         platform_id: input.platform_id.clone(),
@@ -1369,6 +1434,7 @@ fn infer_sensitive_capabilities_from_server(server: &InstalledMcpServer) -> Vec<
             "square",
             "adyen",
             "lemonsqueezy",
+            "creem",
         ],
     ) {
         push_capability(&mut capabilities, "支付或转账");
@@ -2486,6 +2552,7 @@ fn commandline_signals_payment_submit(commandline: &str) -> bool {
             "alipay",
             "wechatpay",
             "lemonsqueezy",
+            "creem",
             "square",
             "adyen",
             "invoice-pay",
@@ -2531,6 +2598,7 @@ fn host_signals_payment(host: &str) -> bool {
         "alipay",
         "wechatpay",
         "lemonsqueezy",
+        "creem",
         "square",
         "adyen",
         "pay.",
@@ -3219,6 +3287,46 @@ fn supervised_environment() -> HashMap<String, String> {
     env
 }
 
+/// Generate a macOS sandbox-exec profile string based on trust state and network mode.
+/// Returns `None` if no sandboxing is needed (trusted + non-blocked network).
+#[cfg(target_os = "macos")]
+fn generate_sandbox_profile(trust_state: &str, network_mode: &str) -> Option<String> {
+    let need_network_block = network_mode == "blocked";
+    let need_fs_restrict = matches!(trust_state, "unknown" | "restricted");
+    let need_exec_restrict = trust_state == "restricted";
+
+    if !need_network_block && !need_fs_restrict && !need_exec_restrict {
+        return None;
+    }
+
+    let mut rules = vec![
+        "(version 1)".to_string(),
+        "(allow default)".to_string(),
+    ];
+
+    if need_network_block {
+        rules.push("(deny network*)".to_string());
+    }
+
+    if need_fs_restrict {
+        rules.push("(deny file-write*)".to_string());
+        rules.push("(allow file-write* (subpath \"/tmp\"))".to_string());
+        rules.push("(allow file-write* (subpath \"/var/folders\"))".to_string());
+        // Allow writing to the component's own directory
+        rules.push("(allow file-write* (subpath \"/dev\"))".to_string());
+    }
+
+    if need_exec_restrict {
+        rules.push("(deny process-exec*)".to_string());
+        rules.push("(allow process-exec* (literal \"/bin/sh\"))".to_string());
+        rules.push("(allow process-exec* (literal \"/usr/bin/env\"))".to_string());
+        rules.push("(allow process-exec* (literal \"/bin/bash\"))".to_string());
+        rules.push("(allow process-exec* (literal \"/bin/zsh\"))".to_string());
+    }
+
+    Some(rules.join(""))
+}
+
 fn spawn_supervised_component<R: Runtime>(
     app: &AppHandle<R>,
     service: &RuntimeGuardService,
@@ -3230,8 +3338,37 @@ fn spawn_supervised_component<R: Runtime>(
 
     let launch = resolve_component_launch_spec(component)?;
     let session_id = uuid::Uuid::new_v4().to_string();
-    let mut command = StdCommand::new(&launch.command);
-    command.args(&launch.args);
+
+    // On macOS, wrap the command with sandbox-exec if sandboxing is needed
+    #[cfg(target_os = "macos")]
+    let (mut command, sandboxed) = {
+        let sandbox_available = std::path::Path::new("/usr/bin/sandbox-exec").exists();
+        let profile = if sandbox_available {
+            generate_sandbox_profile(&component.trust_state, &component.network_mode)
+        } else {
+            None
+        };
+        if let Some(ref profile) = profile {
+            let mut cmd = StdCommand::new("/usr/bin/sandbox-exec");
+            cmd.arg("-p").arg(profile);
+            cmd.arg(&launch.command);
+            cmd.args(&launch.args);
+            (cmd, true)
+        } else {
+            let mut cmd = StdCommand::new(&launch.command);
+            cmd.args(&launch.args);
+            (cmd, false)
+        }
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    let (mut command, sandboxed) = {
+        let mut cmd = StdCommand::new(&launch.command);
+        cmd.args(&launch.args);
+        (cmd, false)
+    };
+
+    let _ = sandboxed; // suppress unused warning on non-macos
     command.env_clear();
     for (key, value) in supervised_environment() {
         command.env(key, value);
@@ -3293,6 +3430,14 @@ fn spawn_supervised_component<R: Runtime>(
         status.active_sessions = status.active_sessions.saturating_add(1);
     });
     let _ = app.emit(RUNTIME_GUARD_SESSION_EVENT, session.clone());
+    let launch_description = if sandboxed {
+        format!(
+            "{} 已在 AgentShield 沙箱隔离模式下启动（trust={}, network={}）",
+            component.name, component.trust_state, component.network_mode
+        )
+    } else {
+        format!("{} 已在 AgentShield 受控模式下启动", component.name)
+    };
     append_event(
         app,
         Some(service),
@@ -3300,8 +3445,12 @@ fn spawn_supervised_component<R: Runtime>(
             event_type: "session_started",
             component_id: &component.component_id,
             severity: "warning",
-            title: "已通过受控方式启动",
-            description: &format!("{} 已在 AgentShield 受控模式下启动", component.name),
+            title: if sandboxed {
+                "已通过沙箱隔离方式启动"
+            } else {
+                "已通过受控方式启动"
+            },
+            description: &launch_description,
             action: "supervised_launch",
         },
     )?;
@@ -3788,8 +3937,19 @@ pub fn initialize<R: Runtime>(
     app: AppHandle<R>,
     service: RuntimeGuardService,
 ) -> Result<(), String> {
-    let servers = tauri::async_runtime::block_on(crate::commands::scan::scan_installed_mcps())?;
-    let _ = rebuild_from_scan(&app, &servers)?;
+    let app_for_bootstrap = app.clone();
+    tauri::async_runtime::spawn(async move {
+        match crate::commands::scan::scan_installed_mcps().await {
+            Ok(servers) => {
+                if let Err(error) = rebuild_from_scan(&app_for_bootstrap, &servers) {
+                    eprintln!("[AgentShield] runtime guard bootstrap scan failed: {error}");
+                }
+            }
+            Err(error) => {
+                eprintln!("[AgentShield] runtime guard bootstrap scan error: {error}");
+            }
+        }
+    });
     start_poll_loop(app, service);
     Ok(())
 }
@@ -3854,6 +4014,7 @@ pub async fn request_runtime_guard_action_approval(
                 created_at: now.clone(),
                 updated_at: now,
                 status: "approved".to_string(),
+                expires_at: None,
                 component_id,
                 component_name: input.component_name,
                 platform_id: input.platform_id,

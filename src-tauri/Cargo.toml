@@ -37,9 +37,7 @@ ed25519-dalek = "2"
 sysinfo = "0.38.3"
 walkdir = "2.5.0"
 sha2 = "0.10"
+zeroize = "1.8"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
-
-[patch.crates-io]
-mac-notification-sys = { path = "vendor/mac-notification-sys" }

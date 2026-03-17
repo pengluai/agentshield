@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "gateway:dev": "node ./scripts/license-gateway.mjs",
+    "gateway:dev": "bash ./scripts/gateway-dev.sh",
     "icon:generate": "swift ./scripts/generate-brand-icon.swift ./src-tauri/icons/icon.png && pnpm tauri icon ./src-tauri/icons/icon.png",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
@@ -15,6 +15,7 @@
     "release:github:ready": "bash ./scripts/release-github-ready.sh",
     "release:github:bundle": "bash ./scripts/github-release-build.sh",
     "release:pilot:curate": "bash ./scripts/curate-pilot-release-assets.sh",
+    "release:storefront:deploy": "bash ./scripts/deploy-storefront-downloads.sh",
     "release:render-config": "node ./scripts/render-tauri-release-config.mjs",
     "release:public:ready": "bash ./scripts/public-sale-gate.sh",
     "release:public:bundle": "bash ./scripts/public-release-build.sh",
@@ -24,6 +25,7 @@
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",
     "license:issue:public": "bash ./scripts/issue-public-license.sh",
+    "license:ops:console": "node ./scripts/license-ops-console.mjs",
     "license:issue": "cargo run --manifest-path src-tauri/Cargo.toml --bin issue_activation_code -- issue",
     "license:public-key": "cargo run --manifest-path src-tauri/Cargo.toml --bin issue_activation_code -- print-public-key"
   },
@@ -86,6 +88,7 @@
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^25.5.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",

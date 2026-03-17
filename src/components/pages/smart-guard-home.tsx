@@ -628,8 +628,8 @@ function IdleState({ onStartScan, protectionStatus }: IdleStateProps) {
         className="mb-8 max-w-3xl text-center text-sm leading-6 text-white/40"
       >
         {tr(
-          '扫描免费 · 修复需要 Pro',
-          'Scan free · Fixing requires Pro'
+          '扫描免费 · 手动修复免费 · 一键修复需要 Pro',
+          'Scan free · Manual fix free · One-click fix requires Pro'
         )}
       </motion.p>
 
@@ -953,7 +953,7 @@ function CompletedState({
                 onClick={onManualFix}
                 className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white/80 text-sm"
               >
-                {tr('手动处理（耗时）', 'Fix Manually (slow)')}
+                {tr('查看手动修复步骤（免费）', 'Manual Fix Steps (free)')}
               </button>
               <button
                 type="button"

@@ -6,6 +6,9 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
 env_file="${AGENTSHIELD_PUBLIC_SALE_ENV:-$repo_root/.env.public-sale.local}"
 
+# shellcheck source=./lib/load-dotenv-literal.sh
+source "$repo_root/scripts/lib/load-dotenv-literal.sh"
+
 usage() {
   cat <<'EOF'
 Issue an AgentShield activation code using the local public-sale signing seed.
@@ -36,10 +39,7 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || $# -eq 0 ]]; then
 fi
 
 if [[ -f "$env_file" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$env_file"
-  set +a
+  load_dotenv_literal "$env_file"
 else
   echo "[issue-public-license] env file not found: $env_file" >&2
   exit 1

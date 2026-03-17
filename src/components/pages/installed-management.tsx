@@ -1,13 +1,15 @@
 import { useState, useCallback, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { tauriInvoke as invoke } from '@/services/tauri';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, RefreshCw, Trash2, ExternalLink, CheckCircle, Play, ShieldAlert, ShieldCheck, ShieldBan, Activity } from 'lucide-react';
+import { ChevronRight, RefreshCw, Trash2, ExternalLink, CheckCircle, Play, ShieldAlert, ShieldCheck, ShieldBan, Activity, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MODULE_THEMES, PLATFORM_CONFIG } from '@/constants/colors';
 import { isEnglishLocale, t } from '@/constants/i18n';
 import { ThreeColumnLayout } from '@/components/three-column-layout';
 import { SafetyBadge } from '@/components/safety-badge';
 import { localizedDynamicText } from '@/lib/locale-text';
+import { ManualFixGuide } from '@/components/manual-fix-guide';
+import { getManualFixGuide, type ManualFixStep } from '@/services/scanner';
 
 import { openExternalUrl } from '@/services/runtime-settings';
 import {
@@ -244,6 +246,11 @@ function isUnknownAiToolId(platformId: string): boolean {
   return platformId.startsWith('unknown_ai_tool');
 }
 
+/** Check if the suffix looks like a hex hash (no meaningful name). */
+function isHashSuffix(suffix: string): boolean {
+  return /^[0-9a-f]{6,}$/i.test(suffix.replace(/_/g, ''));
+}
+
 function formatUnknownAiToolLabel(platformId: string): string {
   if (platformId === 'unknown_ai_tool') {
     return tr('未知工具', 'Unknown tool');
@@ -252,6 +259,12 @@ function formatUnknownAiToolLabel(platformId: string): string {
   const suffix = platformId.replace(/^unknown_ai_tool_/, '');
   if (!suffix) {
     return tr('未知工具', 'Unknown tool');
+  }
+
+  // Hash-based IDs: show short hash only (e.g., "发现的工具 #a3f2")
+  if (isHashSuffix(suffix)) {
+    const shortId = suffix.slice(0, 4);
+    return tr(`发现的工具 #${shortId}`, `Discovered #${shortId}`);
   }
 
   const pretty = suffix
@@ -334,6 +347,19 @@ function formatHostCapability(value: HostCapability): string {
       return tr('需要手动处理', 'Manual steps');
     case 'detect_only':
       return tr('需要留意', 'Needs review');
+    default:
+      return value;
+  }
+}
+
+function formatHostCapabilityShort(value: HostCapability): string {
+  switch (value) {
+    case 'one_click':
+      return tr('一键', 'Auto');
+    case 'manual':
+      return tr('手动', 'Manual');
+    case 'detect_only':
+      return tr('留意', 'Review');
     default:
       return value;
   }
@@ -651,16 +677,31 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
     };
   });
 
-  const riskyHostEntries = hostEntries.filter((entry) => hasRiskSurface(entry));
-  const visibleHostEntries = showRiskOnlyHosts ? riskyHostEntries : hostEntries;
+  // Filter out hash-based unknown tools that have zero components and no real risk signals.
+  // These are noise from the dynamic scanner (random config dirs mistaken as AI tools).
+  const meaningfulHostEntries = hostEntries.filter((entry) => {
+    // Always keep known tools
+    if (!isUnknownAiToolId(entry.id)) return true;
+    // Keep unknown tools that have real components
+    if (entry.componentCount > 0) return true;
+    // Keep unknown tools that have real risk signals
+    if (entry.riskSurface.has_secret_signal || entry.riskSurface.has_exec_signal) return true;
+    // Keep unknown tools with meaningful evidence (MCP/Skill)
+    if (entry.riskSurface.has_mcp || entry.riskSurface.has_skill) return true;
+    // Drop the rest — likely noise
+    return false;
+  });
+
+  const riskyHostEntries = meaningfulHostEntries.filter((entry) => hasRiskSurface(entry));
+  const visibleHostEntries = showRiskOnlyHosts ? riskyHostEntries : meaningfulHostEntries;
   const selectedHost = visibleHostEntries.find((entry) => entry.id === selectedHostId)
-    || hostEntries.find((entry) => entry.id === selectedHostId)
+    || meaningfulHostEntries.find((entry) => entry.id === selectedHostId)
     || visibleHostEntries[0]
     || null;
 
   const subtitle = tr(
-    `发现 ${hostEntries.length} 个工具，其中 ${riskyHostEntries.length} 个需要处理`,
-    `${hostEntries.length} tools found, ${riskyHostEntries.length} need attention`,
+    `发现 ${meaningfulHostEntries.length} 个工具，其中 ${riskyHostEntries.length} 个需要处理`,
+    `${meaningfulHostEntries.length} tools found, ${riskyHostEntries.length} need attention`,
   );
 
   useEffect(() => {
@@ -913,7 +954,7 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
     }
   }, [loadInstalledData]);
 
-  const handleNetworkPolicySave = useCallback(async (item: GuardedInstalledMcp, allowedDomains: string[]) => {
+  const handleNetworkPolicySave = useCallback(async (item: GuardedInstalledMcp, allowedDomains: string[], networkMode?: string) => {
     if (!item.runtimeComponentId) {
       return;
     }
@@ -921,7 +962,7 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
       await updateComponentNetworkPolicy(
         item.runtimeComponentId,
         allowedDomains,
-        allowedDomains.length > 0 ? 'allowlist' : undefined,
+        networkMode ?? (allowedDomains.length > 0 ? 'allowlist' : 'observe_only'),
       );
       await loadInstalledData();
       setUpdateStatus(tr('已保存联网地址白名单。', 'Allowed network domains saved.'));
@@ -977,13 +1018,17 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
     return preview;
   }, []);
 
+  const [cleanupPreviewData, setCleanupPreviewData] = useState<GlobalCleanupPreview | null>(null);
+
   const handlePreviewGlobalCleanup = useCallback(async (scopePlatforms?: Platform[] | null) => {
     try {
       const preview = await requestCleanupPreview(scopePlatforms);
       if (preview.component_count === 0 && !preview.include_openclaw_deep_cleanup) {
         setUpdateStatus(tr('当前没有可清理的 AI 组件。', 'No AI components are currently available for cleanup.'));
+        setCleanupPreviewData(null);
         return;
       }
+      setCleanupPreviewData(preview);
       const scopeLabel = preview.scope_platforms.length === 0
         ? tr('全部工具', 'all tools')
         : preview.scope_platforms.join(', ');
@@ -995,6 +1040,7 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
       );
     } catch (error) {
       setUpdateStatus(getErrorMessage(error));
+      setCleanupPreviewData(null);
     }
   }, [requestCleanupPreview]);
 
@@ -1168,10 +1214,6 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
             item={selectedItem}
             oneClickOpsUnlocked={oneClickOpsUnlocked}
             onUninstall={() => {
-              if (!oneClickOpsUnlocked) {
-                void openManualPathForItem(selectedItem);
-                return;
-              }
               void handleUninstall(selectedItem.item_id, selectedItem.platform_id);
             }}
             onCheckUpdate={handleCheckUpdates}
@@ -1191,7 +1233,7 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
             runtimePolicy={runtimePolicy}
             runtimeStatus={runtimeStatus}
             onTrustChange={(trustState) => handleTrustChange(selectedItem, trustState)}
-            onNetworkPolicySave={(allowedDomains) => handleNetworkPolicySave(selectedItem, allowedDomains)}
+            onNetworkPolicySave={(allowedDomains, networkMode) => handleNetworkPolicySave(selectedItem, allowedDomains, networkMode)}
             onGuardedLaunch={() => handleGuardedLaunch(selectedItem)}
             onTerminateSession={handleTerminateSession}
             onClearEvents={handleClearEvents}
@@ -1213,7 +1255,63 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
         )
       }
       bottomBar={
-        <div className="flex items-center gap-3">
+        <div className="space-y-2">
+          {/* Cleanup preview for free users */}
+          {cleanupPreviewData && !oneClickOpsUnlocked && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 max-h-40 overflow-y-auto">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-medium text-amber-800">
+                  {tr('手动清理命令（复制到终端执行）', 'Manual cleanup commands (copy to terminal)')}
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setCleanupPreviewData(null)}
+                  className="text-xs text-amber-600 hover:text-amber-800"
+                >
+                  {tr('收起', 'Close')}
+                </button>
+              </div>
+              <div className="space-y-1.5">
+                {cleanupPreviewData.components
+                  .filter((comp) => !comp.auto_cleanup_supported)
+                  .map((comp, idx) => (
+                    <div key={`comp-${idx}`} className="flex items-start gap-2">
+                      <code className="flex-1 text-xs bg-slate-900 text-green-400 rounded px-2 py-1 font-mono break-all">
+                        {comp.command} {comp.args.join(' ')}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => void navigator.clipboard.writeText(`${comp.command} ${comp.args.join(' ')}`)}
+                        className="shrink-0 text-[10px] text-amber-700 hover:text-amber-900 px-1.5 py-0.5 rounded bg-amber-100"
+                      >
+                        {tr('复制', 'Copy')}
+                      </button>
+                    </div>
+                  ))}
+                {cleanupPreviewData.dependency_tasks.map((task, idx) => (
+                  <div key={`dep-${idx}`} className="flex items-start gap-2">
+                    <code className="flex-1 text-xs bg-slate-900 text-green-400 rounded px-2 py-1 font-mono break-all">
+                      {task.command_preview}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => void navigator.clipboard.writeText(task.command_preview)}
+                      className="shrink-0 text-[10px] text-amber-700 hover:text-amber-900 px-1.5 py-0.5 rounded bg-amber-100"
+                    >
+                      {tr('复制', 'Copy')}
+                    </button>
+                  </div>
+                ))}
+                {cleanupPreviewData.components.filter((c) => !c.auto_cleanup_supported).length === 0 &&
+                  cleanupPreviewData.dependency_tasks.length === 0 && (
+                  <p className="text-xs text-amber-700">
+                    {tr('所有组件均支持自动清理（需要 Pro）', 'All components support auto-cleanup (requires Pro)')}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+          <div className="flex items-center gap-3">
           {/* Status message */}
           <div className="flex-1 min-w-0">
             {updateStatus ? (
@@ -1357,7 +1455,7 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
             </>
           )}
 
-          {!selectedItem && hostEntries.length > 0 && (
+          {!selectedItem && meaningfulHostEntries.length > 0 && (
             <>
               <button
                 onClick={() => {
@@ -1397,6 +1495,7 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
             {syncingGuard ? t.refreshing : tr('刷新状态', 'Refresh status')}
           </button>
         </div>
+        </div>
       }
       />
     </>
@@ -1414,19 +1513,19 @@ function HostFilterItem({ host, active, onClick }: HostFilterItemProps) {
     <button
       onClick={onClick}
       className={cn(
-        'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors border',
+        'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors border',
         active
           ? 'bg-slate-100 text-slate-900 border-slate-200'
           : 'text-slate-600 border-transparent hover:bg-slate-50'
       )}
     >
-      <span className="text-base">{host.icon}</span>
-      <span className="flex-1 text-left">{host.name}</span>
+      <span className="text-base shrink-0">{host.icon}</span>
+      <span className="flex-1 text-left truncate min-w-0">{host.name}</span>
       <span className={cn(
-        'text-xs px-2.5 py-1 rounded-full border whitespace-nowrap',
+        'text-[11px] px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0',
         hostCapabilityClassName(host.managementCapability)
       )}>
-        {formatHostCapability(host.managementCapability)}
+        {formatHostCapabilityShort(host.managementCapability)}
       </span>
     </button>
   );
@@ -1500,17 +1599,17 @@ function HostOverviewRow({ host, selected, onClick }: HostOverviewRowProps) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-medium text-slate-900">{host.name}</span>
+            <span className="font-medium text-slate-900 truncate">{host.name}</span>
           </div>
           <div className="mt-1 flex items-center gap-3 text-xs text-slate-500">
-            <span>{tr(`${host.componentCount} 个扩展`, `${host.componentCount} extensions`)}</span>
-            <span className={cn('inline-flex items-center gap-1', riskTextColor)}>
+            <span className="shrink-0">{tr(`${host.componentCount} 个扩展`, `${host.componentCount} extensions`)}</span>
+            <span className={cn('inline-flex items-center gap-1 shrink-0', riskTextColor)}>
               <span className={cn('w-1.5 h-1.5 rounded-full', riskDotColor)} />
               {riskLabel}
             </span>
           </div>
         </div>
-        <ChevronRight className="w-4 h-4 text-slate-400" />
+        <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
       </div>
     </motion.button>
   );
@@ -1574,6 +1673,38 @@ function HostOverviewDetail({
   selectedItemKey,
   onSelectItem,
 }: HostOverviewDetailProps) {
+  const [manualFixSteps, setManualFixSteps] = useState<ManualFixStep[]>([]);
+  const [manualFixLoading, setManualFixLoading] = useState(false);
+  const [showManualFix, setShowManualFix] = useState(false);
+
+  const handleShowManualFix = useCallback(async () => {
+    if (showManualFix) {
+      setShowManualFix(false);
+      return;
+    }
+    setManualFixLoading(true);
+    setShowManualFix(true);
+    try {
+      const issueTypes: string[] = [];
+      if (host.riskSurface.has_secret_signal) issueTypes.push('exposed_key');
+      if (host.riskSurface.has_exec_signal) issueTypes.push('permission');
+      if (host.riskSurface.has_mcp) issueTypes.push('remove_mcp');
+      if (host.riskSurface.has_skill) issueTypes.push('remove_skill');
+      if (issueTypes.length === 0) issueTypes.push('permission');
+
+      const targetPath = host.evidenceItems[0]?.path ?? '';
+      const allSteps: ManualFixStep[] = [];
+      for (const issueType of issueTypes) {
+        const steps = await getManualFixGuide(issueType, targetPath);
+        allSteps.push(...steps);
+      }
+      setManualFixSteps(allSteps);
+    } catch {
+      setManualFixSteps([]);
+    } finally {
+      setManualFixLoading(false);
+    }
+  }, [host, showManualFix]);
   const riskItems: Array<{ icon: string; label: string; level: 'danger' | 'warn' | 'info' }> = [];
   if (host.riskSurface.has_secret_signal) {
     riskItems.push({ icon: '🔑', label: tr('可能接触你的密码和密钥', 'May access your passwords and keys'), level: 'danger' });
@@ -1702,6 +1833,56 @@ function HostOverviewDetail({
         </div>
       )}
 
+      {/* Manual fix guide for free users */}
+      {hasRiskSurface(host) && !oneClickUnlocked && (
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={() => void handleShowManualFix()}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium transition-colors bg-amber-100 text-amber-800 hover:bg-amber-200"
+          >
+            <Wrench className="w-4 h-4" />
+            {showManualFix
+              ? tr('收起手动修复步骤', 'Hide manual fix steps')
+              : tr('查看手动修复步骤（免费）', 'View manual fix steps (free)')}
+          </button>
+          {showManualFix && (
+            <div className="mt-3">
+              <ManualFixGuide
+                steps={manualFixSteps}
+                loading={manualFixLoading}
+                onDismiss={() => setShowManualFix(false)}
+                onMarkFixed={() => setShowManualFix(false)}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Also show for Pro users but as a secondary option */}
+      {hasRiskSurface(host) && oneClickUnlocked && (
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={() => void handleShowManualFix()}
+            className="text-xs text-slate-500 hover:text-slate-700 underline"
+          >
+            {showManualFix
+              ? tr('收起手动修复步骤', 'Hide manual fix steps')
+              : tr('也可以查看手动修复步骤', 'You can also view manual fix steps')}
+          </button>
+          {showManualFix && (
+            <div className="mt-3">
+              <ManualFixGuide
+                steps={manualFixSteps}
+                loading={manualFixLoading}
+                onDismiss={() => setShowManualFix(false)}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Installed extensions list */}
       {hostComponents.length > 0 && (
         <div className="flex-1 min-h-0">
@@ -1769,7 +1950,7 @@ interface InstalledItemDetailProps {
   runtimePolicy: RuntimeGuardPolicy | null;
   runtimeStatus: RuntimeGuardStatus | null;
   onTrustChange: (trustState: string) => void;
-  onNetworkPolicySave: (allowedDomains: string[]) => void;
+  onNetworkPolicySave: (allowedDomains: string[], networkMode?: string) => void;
   onGuardedLaunch: () => void;
   onTerminateSession: (sessionId: string) => void;
   onClearEvents: () => void;
@@ -1800,6 +1981,28 @@ function InstalledItemDetail({
 }: InstalledItemDetailProps) {
   const [confirmUninstall, setConfirmUninstall] = useState(false);
   const [allowedDomainsInput, setAllowedDomainsInput] = useState('');
+  const [itemManualFixSteps, setItemManualFixSteps] = useState<ManualFixStep[]>([]);
+  const [itemManualFixLoading, setItemManualFixLoading] = useState(false);
+  const [showItemManualFix, setShowItemManualFix] = useState(false);
+
+  const handleItemManualFix = useCallback(async () => {
+    if (showItemManualFix) {
+      setShowItemManualFix(false);
+      return;
+    }
+    setItemManualFixLoading(true);
+    setShowItemManualFix(true);
+    try {
+      const issueType = item.componentType === 'skill' ? 'remove_skill' : 'remove_mcp';
+      const targetPath = item.sourceUrl ?? '';
+      const steps = await getManualFixGuide(issueType, targetPath, item.name);
+      setItemManualFixSteps(steps);
+    } catch {
+      setItemManualFixSteps([]);
+    } finally {
+      setItemManualFixLoading(false);
+    }
+  }, [item, showItemManualFix]);
   const platformConfig = getPlatformVisual(item.platform_id);
   const isRemoteSource = Boolean(item.sourceUrl && /^https?:\/\//.test(item.sourceUrl));
   const guardedLaunchBlocked = ['unknown', 'blocked', 'quarantined'].includes(item.runtimeTrustState || '');
@@ -1815,8 +2018,11 @@ function InstalledItemDetail({
     : updateStatus;
 
   const handleUninstall = () => {
+    // Free users: show manual fix guide with uninstall steps
     if (!oneClickOpsUnlocked) {
-      onUninstall();
+      if (!showItemManualFix) {
+        void handleItemManualFix();
+      }
       return;
     }
 
@@ -1950,7 +2156,41 @@ function InstalledItemDetail({
             </div>
 
             <div>
-              <h3 className="text-sm font-medium text-slate-500 mb-2">{tr('允许联网的地址', 'Allowed network domains')}</h3>
+              <h3 className="text-sm font-medium text-slate-500 mb-2">{tr('网络策略', 'Network policy')}</h3>
+              <div className="flex flex-wrap gap-2 mb-3">
+                <button
+                  onClick={() => onNetworkPolicySave([], 'observe_only')}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm',
+                    item.runtimeNetworkMode !== 'blocked'
+                      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                  )}
+                >
+                  {tr('允许联网', 'Allow network')}
+                </button>
+                <button
+                  onClick={() => onNetworkPolicySave([], 'blocked')}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm',
+                    item.runtimeNetworkMode === 'blocked'
+                      ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                  )}
+                >
+                  <ShieldBan className="w-3.5 h-3.5" />
+                  {tr('禁止联网（沙箱）', 'Block network (sandbox)')}
+                </button>
+              </div>
+              {item.runtimeNetworkMode === 'blocked' && (
+                <p className="mb-3 text-xs text-rose-600">
+                  {tr(
+                    '下次受控启动时，将使用 macOS sandbox-exec 完全阻断该组件的网络访问。',
+                    'On next supervised launch, macOS sandbox-exec will fully block this component\'s network access.',
+                  )}
+                </p>
+              )}
+              <h4 className="text-xs font-medium text-slate-500 mb-1">{tr('允许联网的地址', 'Allowed network domains')}</h4>
               <div className="flex gap-2">
                 <input
                   value={allowedDomainsInput}
@@ -2113,6 +2353,32 @@ function InstalledItemDetail({
         )}
       </div>
 
+      {/* Manual fix guide for individual item */}
+      {!oneClickOpsUnlocked && (
+        <div className="mt-6">
+          <button
+            type="button"
+            onClick={() => void handleItemManualFix()}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium transition-colors bg-amber-100 text-amber-800 hover:bg-amber-200"
+          >
+            <Wrench className="w-4 h-4" />
+            {showItemManualFix
+              ? tr('收起手动处理步骤', 'Hide manual steps')
+              : tr('查看手动处理步骤（免费）', 'View manual steps (free)')}
+          </button>
+          {showItemManualFix && (
+            <div className="mt-3">
+              <ManualFixGuide
+                steps={itemManualFixSteps}
+                loading={itemManualFixLoading}
+                onDismiss={() => setShowItemManualFix(false)}
+                onMarkFixed={() => setShowItemManualFix(false)}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="mt-8 space-y-3">
         {updateStatus && (
           <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
@@ -2165,7 +2431,9 @@ function InstalledItemDetail({
             ? t.confirmUninstallAgain
             : oneClickOpsUnlocked
               ? t.uninstall
-              : tr('手动卸载指引', 'Manual uninstall guide')}
+              : showItemManualFix
+                ? tr('收起卸载步骤', 'Hide uninstall steps')
+                : tr('查看卸载步骤（免费）', 'View uninstall steps (free)')}
         </button>
       </div>
     </div>
@@ -2277,6 +2545,8 @@ function formatRuntimeNetworkMode(value?: string) {
       return tr('仅允许指定地址', 'Only allowed domains');
     case 'observe_only':
       return tr('联网时提醒你', 'Ask before new network access');
+    case 'blocked':
+      return tr('禁止联网（沙箱隔离）', 'Network blocked (sandboxed)');
     default:
       return value || '';
   }

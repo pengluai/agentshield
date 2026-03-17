@@ -18,6 +18,7 @@ import {
   getNotificationPermissionGranted,
   getMacPermissionManualGuide,
   type MacPermissionPane,
+  openExternalUrl,
   openMacPermissionSettings,
 } from '@/services/runtime-settings';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -39,6 +40,10 @@ export function OnboardingWizard({ onComplete }: { onComplete?: () => void }) {
   const [activePermissionAction, setActivePermissionAction] = useState<string | null>(null);
   const setNotificationsEnabled = useSettingsStore((state) => state.setNotificationsEnabled);
   const isEnglish = currentLang === 'en-US';
+  const tr = (zh: string, en: string) => (isEnglish ? en : zh);
+  const [isMacPlatform] = useState(
+    () => typeof navigator !== 'undefined' && /macintosh|mac os x|darwin/i.test(navigator.userAgent),
+  );
 
   const copy = isEnglish
     ? {
@@ -186,38 +191,66 @@ export function OnboardingWizard({ onComplete }: { onComplete?: () => void }) {
       color: "from-amber-500 to-orange-500",
       content: (
         <div className="space-y-4">
-          <PermissionCard
-            title={t.permFullDisk}
-            description={t.permFullDiskDesc}
-            required
-            statusLabel={copy.manualStatus}
-            helperText={copy.manualPermissionHint}
-            actionLabel={copy.openSettings}
-            actionBusy={activePermissionAction === 'fullDiskAccess'}
-            onAction={() => handleOpenPermissionSettings('fullDiskAccess')}
-            tone="manual"
-          />
-          <PermissionCard
-            title={t.permAccessibility}
-            description={t.permAccessibilityDesc}
-            required
-            statusLabel={copy.manualStatus}
-            helperText={copy.manualPermissionHint}
-            actionLabel={copy.openSettings}
-            actionBusy={activePermissionAction === 'accessibility'}
-            onAction={() => handleOpenPermissionSettings('accessibility')}
-            tone="manual"
-          />
-          <PermissionCard
-            title={t.permAutomation}
-            description={t.permAutomationDesc}
-            statusLabel={copy.manualStatus}
-            helperText={copy.manualPermissionHint}
-            actionLabel={copy.openSettings}
-            actionBusy={activePermissionAction === 'automation'}
-            onAction={() => handleOpenPermissionSettings('automation')}
-            tone="manual"
-          />
+          {isMacPlatform ? (
+            <>
+              <PermissionCard
+                title={t.permFullDisk}
+                description={t.permFullDiskDesc}
+                required
+                statusLabel={copy.manualStatus}
+                helperText={copy.manualPermissionHint}
+                actionLabel={copy.openSettings}
+                actionBusy={activePermissionAction === 'fullDiskAccess'}
+                onAction={() => handleOpenPermissionSettings('fullDiskAccess')}
+                tone="manual"
+              />
+              <PermissionCard
+                title={t.permAccessibility}
+                description={t.permAccessibilityDesc}
+                required
+                statusLabel={copy.manualStatus}
+                helperText={copy.manualPermissionHint}
+                actionLabel={copy.openSettings}
+                actionBusy={activePermissionAction === 'accessibility'}
+                onAction={() => handleOpenPermissionSettings('accessibility')}
+                tone="manual"
+              />
+              <PermissionCard
+                title={t.permAutomation}
+                description={t.permAutomationDesc}
+                statusLabel={copy.manualStatus}
+                helperText={copy.manualPermissionHint}
+                actionLabel={copy.openSettings}
+                actionBusy={activePermissionAction === 'automation'}
+                onAction={() => handleOpenPermissionSettings('automation')}
+                tone="manual"
+              />
+            </>
+          ) : (
+            <PermissionCard
+              title={tr('Windows 安全中心配置', 'Windows Security setup')}
+              description={tr(
+                'Windows 不需要 macOS 的完全磁盘访问/辅助功能/自动化权限。建议在 Windows 安全中心将 AgentShield 加入允许名单。',
+                'Windows does not require macOS Full Disk Access / Accessibility / Automation permissions. Add AgentShield to Windows Security allowlist.'
+              )}
+              statusLabel={tr('按需配置', 'Recommended')}
+              helperText={tr(
+                '点击按钮可直接打开 Windows Defender 设置页。',
+                'Click to open Windows Defender settings directly.'
+              )}
+              actionLabel={tr('打开 Windows 安全中心', 'Open Windows Security')}
+              actionBusy={activePermissionAction === 'windows-defender'}
+              onAction={async () => {
+                setActivePermissionAction('windows-defender');
+                try {
+                  await openExternalUrl('ms-settings:windowsdefender');
+                } finally {
+                  setActivePermissionAction(null);
+                }
+              }}
+              tone="manual"
+            />
+          )}
           <PermissionCard
             title={t.permNotification}
             description={t.permNotificationDesc}

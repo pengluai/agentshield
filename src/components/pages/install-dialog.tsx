@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { tauriInvoke as invoke } from '@/services/tauri';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, FileText, Globe, Zap, Check, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';

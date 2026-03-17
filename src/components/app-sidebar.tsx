@@ -94,35 +94,77 @@ export function AppSidebar({ className }: AppSidebarProps) {
       {/* Keep the same visual top breathing room as the previous build, without duplicating traffic lights. */}
       <div className="h-[62px] shrink-0" />
 
-      {/* Navigation Items */}
-      <nav className="flex-1 py-2 px-3 overflow-y-auto">
-        <div className="space-y-2">
-          {navGroups.map((group) => (
-            <section key={group.items.join('-')} className="space-y-1">
-              {group.items.map((moduleId) => {
-                const Icon = ICONS[moduleId];
-                const theme = MODULE_THEMES[NAV_ITEM_THEME[moduleId]];
-                const isActive = currentModule === moduleId;
-                const hasNotification = moduleId === 'notifications' && unreadCount > 0;
-                return (
-                  <NavItem
-                    key={moduleId}
-                    icon={Icon}
-                    label={theme.label}
-                    accent={theme.accent}
-                    isActive={isActive}
-                    isExpanded={isExpanded}
-                    badge={hasNotification ? unreadCount : undefined}
-                    onClick={() => setCurrentModule(moduleId)}
-                  />
-                );
-              })}
-              {isExpanded && group.dividerAfter ? (
-                <div className="mx-2 mt-1 h-px bg-white/12" />
-              ) : null}
-            </section>
-          ))}
-        </div>
+      {/* Navigation Items — distributed vertically like CleanMyMac */}
+      <nav className="flex-1 py-4 px-3 overflow-y-auto flex flex-col">
+        {/* Primary group — top, generous spacing */}
+        <section className="space-y-3">
+          {navGroups[0].items.map((moduleId) => {
+            const Icon = ICONS[moduleId];
+            const theme = MODULE_THEMES[NAV_ITEM_THEME[moduleId]];
+            const isActive = currentModule === moduleId;
+            const hasNotification = moduleId === 'notifications' && unreadCount > 0;
+            return (
+              <NavItem
+                key={moduleId}
+                icon={Icon}
+                label={theme.label}
+                accent={theme.accent}
+                isActive={isActive}
+                isExpanded={isExpanded}
+                badge={hasNotification ? unreadCount : undefined}
+                onClick={() => setCurrentModule(moduleId)}
+              />
+            );
+          })}
+        </section>
+
+        {/* Spacer pushes secondary + tertiary groups toward the bottom */}
+        <div className="flex-1 min-h-6" />
+
+        {/* Secondary group */}
+        <section className="space-y-3">
+          {navGroups[1].items.map((moduleId) => {
+            const Icon = ICONS[moduleId];
+            const theme = MODULE_THEMES[NAV_ITEM_THEME[moduleId]];
+            const isActive = currentModule === moduleId;
+            const hasNotification = moduleId === 'notifications' && unreadCount > 0;
+            return (
+              <NavItem
+                key={moduleId}
+                icon={Icon}
+                label={theme.label}
+                accent={theme.accent}
+                isActive={isActive}
+                isExpanded={isExpanded}
+                badge={hasNotification ? unreadCount : undefined}
+                onClick={() => setCurrentModule(moduleId)}
+              />
+            );
+          })}
+        </section>
+
+        {/* Divider between secondary and settings */}
+        {isExpanded && <div className="mx-2 my-2 h-px bg-white/12" />}
+
+        {/* Settings — pinned near bottom */}
+        <section className="mt-2">
+          {navGroups[2].items.map((moduleId) => {
+            const Icon = ICONS[moduleId];
+            const theme = MODULE_THEMES[NAV_ITEM_THEME[moduleId]];
+            const isActive = currentModule === moduleId;
+            return (
+              <NavItem
+                key={moduleId}
+                icon={Icon}
+                label={theme.label}
+                accent={theme.accent}
+                isActive={isActive}
+                isExpanded={isExpanded}
+                onClick={() => setCurrentModule(moduleId)}
+              />
+            );
+          })}
+        </section>
       </nav>
 
       {/* Language Toggle */}

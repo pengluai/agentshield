@@ -100,6 +100,7 @@ const TOOL_DEFS: &[ToolDef] = &[
         mcp_config_files: &[
             ".cursor/mcp.json",
             "Library/Application Support/Cursor/User/settings.json",
+            "AppData/Roaming/Cursor/User/settings.json",
         ],
     },
     ToolDef {
@@ -118,6 +119,7 @@ const TOOL_DEFS: &[ToolDef] = &[
         mcp_config_files: &[
             ".kiro/settings/mcp.json",
             "Library/Application Support/Kiro/User/settings.json",
+            "AppData/Roaming/Kiro/User/settings.json",
         ],
     },
     ToolDef {
@@ -139,6 +141,7 @@ const TOOL_DEFS: &[ToolDef] = &[
         mcp_config_files: &[
             ".vscode/mcp.json",
             "Library/Application Support/Code/User/settings.json",
+            "AppData/Roaming/Code/User/settings.json",
         ],
     },
     ToolDef {
@@ -156,6 +159,7 @@ const TOOL_DEFS: &[ToolDef] = &[
         }),
         mcp_config_files: &[
             "Library/Application Support/Claude/claude_desktop_config.json",
+            "AppData/Roaming/Claude/claude_desktop_config.json",
         ],
     },
     ToolDef {
@@ -221,6 +225,7 @@ const TOOL_DEFS: &[ToolDef] = &[
             ".codex/config.toml",
             "Library/Application Support/Codex/config.toml",
             "Library/Application Support/com.openai.atlas/config.toml",
+            "AppData/Roaming/Codex/config.toml",
         ],
     },
     ToolDef {
@@ -307,6 +312,7 @@ const TOOL_DEFS: &[ToolDef] = &[
         mcp_config_files: &[
             ".trae/mcp.json",
             "Library/Application Support/Trae/User/settings.json",
+            "AppData/Roaming/Trae/User/settings.json",
         ],
     },
     ToolDef {
@@ -568,10 +574,27 @@ fn merge_install_evidence(mut evidence: Vec<InstallEvidence>) -> MergedDetection
 }
 
 #[cfg(target_os = "macos")]
-fn spotlight_find_macos_apps(bundle_name: &str, limit: usize) -> Vec<PathBuf> {
-    if bundle_name.is_empty() {
-        return Vec::new();
+fn sanitize_spotlight_query_term(value: &str) -> Option<String> {
+    let sanitized = value
+        .chars()
+        .filter(|char| {
+            char.is_ascii_alphanumeric() || matches!(char, '.' | '_' | '-' | ' ' | '+')
+        })
+        .collect::<String>()
+        .trim()
+        .to_string();
+    if sanitized.is_empty() {
+        None
+    } else {
+        Some(sanitized)
     }
+}
+
+#[cfg(target_os = "macos")]
+fn spotlight_find_macos_apps(bundle_name: &str, limit: usize) -> Vec<PathBuf> {
+    let Some(bundle_name) = sanitize_spotlight_query_term(bundle_name) else {
+        return Vec::new();
+    };
     let query = format!(
         "kMDItemFSName == '{bundle_name}' && kMDItemContentType == 'com.apple.application-bundle'"
     );
@@ -672,6 +695,14 @@ fn default_cli_search_dirs() -> Vec<PathBuf> {
         PathBuf::from("/Applications/Claude.app/Contents/Resources"),
     ];
 
+    #[cfg(windows)]
+    {
+        dirs.push(PathBuf::from(r"C:\Program Files\nodejs"));
+        dirs.push(PathBuf::from(r"C:\Program Files\OpenClaw"));
+        dirs.push(PathBuf::from(r"C:\Program Files\Git\bin"));
+        dirs.push(PathBuf::from(r"C:\Windows\System32"));
+    }
+
     if let Some(home) = home_dir() {
         let home_dirs = [
             ".local/bin",
@@ -680,9 +711,22 @@ fn default_cli_search_dirs() -> Vec<PathBuf> {
             ".bun/bin",
             "Library/pnpm",
             ".yarn/bin",
+            "AppData/Roaming/npm",
+            "AppData/Local/Microsoft/WindowsApps",
         ];
         for relative in home_dirs {
             dirs.push(home.join(relative));
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            dirs.push(PathBuf::from(appdata).join("npm"));
+        }
+        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+            dirs.push(PathBuf::from(local_app_data).join("Microsoft/WindowsApps"));
+            dirs.push(PathBuf::from(local_app_data).join("Programs"));
         }
     }
 
@@ -748,9 +792,9 @@ fn collect_cli_search_dirs() -> &'static Vec<PathBuf> {
 
 #[cfg(target_os = "macos")]
 fn spotlight_find_cli_binaries(cli_name: &str, limit: usize) -> Vec<PathBuf> {
-    if cli_name.is_empty() {
+    let Some(cli_name) = sanitize_spotlight_query_term(cli_name) else {
         return Vec::new();
-    }
+    };
 
     let query = format!("kMDItemFSName == '{cli_name}'");
     let output = match Command::new("mdfind").arg(query).output() {
@@ -1209,10 +1253,10 @@ fn license_allows_batch_fix(plan: &str, status: &str) -> bool {
 
 #[cfg(windows)]
 #[derive(serde::Deserialize)]
-struct WindowsPermissionFixResult {
-    path: String,
-    success: bool,
-    error: Option<String>,
+pub(crate) struct WindowsPermissionFixResult {
+    pub path: String,
+    pub success: bool,
+    pub error: Option<String>,
 }
 
 #[cfg(windows)]
@@ -1264,7 +1308,7 @@ fn windows_acl_has_broad_access(file_path: &PathBuf) -> bool {
 }
 
 #[cfg(windows)]
-fn run_windows_permission_fix(
+pub(crate) fn run_windows_permission_fix(
     paths: &[String],
     elevate: bool,
 ) -> Result<Vec<WindowsPermissionFixResult>, String> {
@@ -1552,7 +1596,17 @@ fn infer_management_capability(
     has_mcp_surface: bool,
     has_skill_surface: bool,
 ) -> ManagementCapability {
-    if tool.install_target_ready && is_supported_tool_id(&tool.id) {
+    // OneClick is available for any tool with a writable MCP config in a supported format,
+    // not limited to TOOL_DEFS. This enables dynamic discovery tools to be managed too.
+    let has_writable_config = tool.mcp_config_paths.iter().any(|p| {
+        let path = std::path::Path::new(p);
+        let format_ok = matches!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("json" | "yaml" | "yml" | "toml")
+        );
+        format_ok && path.exists() && !path.metadata().map(|m| m.permissions().readonly()).unwrap_or(true)
+    });
+    if tool.install_target_ready && has_writable_config {
         ManagementCapability::OneClick
     } else if has_mcp_surface || has_skill_surface {
         ManagementCapability::Manual
@@ -1800,9 +1854,7 @@ fn collect_snapshot_risk_signals(
             continue;
         }
         let (tool_id, _tool_name, _icon) = identify_tool_from_path(config_file);
-        if !is_supported_or_discovered_tool_id(&tool_id) {
-            continue;
-        }
+        // Accept any tool ID — dynamic discovery collects risk signals for all tools.
 
         let signal = signals.entry(tool_id).or_default();
         signal.has_mcp = true;
@@ -1818,9 +1870,7 @@ fn collect_snapshot_risk_signals(
         let identity_path = resolve_discovery_identity_path(&path, "deep_discovery_skill", false);
         let (tool_id, _tool_name, _icon) =
             identify_tool_from_path(&identity_path.to_string_lossy());
-        if !is_supported_or_discovered_tool_id(&tool_id) {
-            continue;
-        }
+        // Accept any tool ID — dynamic discovery collects risk signals for all tools.
         let signal = signals.entry(tool_id).or_default();
         signal.has_skill = true;
         add_signal_evidence(signal, "skill_root", skill_root.clone(), None);
@@ -1979,9 +2029,7 @@ fn merge_discovery_snapshot_tools(
             continue;
         }
         let discovered = build_discovered_tool_from_path(&path, "deep_discovery_config", true);
-        if !is_supported_or_discovered_tool_id(&discovered.id) {
-            continue;
-        }
+        // Accept any tool ID — dynamic discovery should find ALL tools with MCP/Skill.
         if let Some(index) = index_by_id.get(&discovered.id).copied() {
             merge_detected_tool_entry(&mut tools[index], discovered);
         } else {
@@ -1996,9 +2044,6 @@ fn merge_discovery_snapshot_tools(
             continue;
         }
         let discovered = build_discovered_tool_from_path(&path, "deep_discovery_skill", false);
-        if !is_supported_or_discovered_tool_id(&discovered.id) {
-            continue;
-        }
         if let Some(index) = index_by_id.get(&discovered.id).copied() {
             merge_detected_tool_entry(&mut tools[index], discovered);
         } else {
@@ -2167,14 +2212,6 @@ fn is_supported_tool_id(tool_id: &str) -> bool {
     TOOL_DEFS.iter().any(|def| def.id == tool_id)
 }
 
-fn is_discovered_custom_tool_id(tool_id: &str) -> bool {
-    tool_id.starts_with("unknown_ai_tool_")
-}
-
-fn is_supported_or_discovered_tool_id(tool_id: &str) -> bool {
-    is_supported_tool_id(tool_id) || is_discovered_custom_tool_id(tool_id)
-}
-
 fn is_sensitive_host_tool_id(tool_id: &str) -> bool {
     matches!(
         tool_id,
@@ -2267,7 +2304,7 @@ fn process_matches_runtime_tool(
 }
 
 fn running_host_tool_ids() -> std::collections::HashSet<String> {
-    let mut system = System::new_all();
+    let mut system = System::new();
     system.refresh_processes(ProcessesToUpdate::All, true);
 
     let mut active = std::collections::HashSet::new();
@@ -2329,12 +2366,21 @@ fn is_deferred_scan_path(
 }
 
 fn mask_value(val: &str) -> String {
-    if val.len() <= 8 {
-        return "*".repeat(val.len());
+    let chars: Vec<char> = val.chars().collect();
+    if chars.len() <= 8 {
+        return "*".repeat(chars.len());
     }
-    let prefix = &val[..4];
-    let suffix = &val[val.len() - 4..];
-    format!("{}...{}", prefix, suffix)
+    let prefix: String = chars.iter().take(4).collect();
+    let suffix: String = chars
+        .iter()
+        .rev()
+        .take(4)
+        .copied()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("{prefix}...{suffix}")
 }
 
 pub fn scan_file_for_keys(file_path: &PathBuf, platform: &str) -> Vec<ExposedKey> {
@@ -4667,9 +4713,7 @@ fn register_skill_root(
     servers: &mut Vec<InstalledMcpServer>,
     seen_ids: &mut std::collections::HashSet<String>,
 ) {
-    if !is_supported_or_discovered_tool_id(tool_id) {
-        return;
-    }
+    // Accept any tool ID — dynamic discovery should register skills from all tools.
 
     let name = skill_root
         .file_name()
@@ -4839,10 +4883,10 @@ fn derive_unknown_tool_identity(path: &str) -> (String, String, String) {
     }
 
     let hash = short_path_hash(&normalized);
-    let short_hash = &hash[..10];
+    let short_hash = &hash[..8.min(hash.len())];
     (
         format!("unknown_ai_tool_{short_hash}"),
-        "Discovered AI Tool".to_string(),
+        format!("Discovered #{}", &short_hash[..4.min(short_hash.len())]),
         "🧩".to_string(),
     )
 }
@@ -4946,9 +4990,8 @@ fn try_extract_from_file(
     }
 
     let (tool_id, tool_name, _icon) = identify_tool_from_path(&path_str);
-    if !is_supported_or_discovered_tool_id(&tool_id) {
-        return false;
-    }
+    // Accept any tool ID — dynamic discovery should not be limited to TOOL_DEFS.
+    // Unknown tools get an auto-generated ID from identify_tool_from_path().
     let mut found = false;
 
     // TOML files
@@ -5085,9 +5128,7 @@ fn scan_skills_in_dir(
     }
 
     let (tool_id, tool_name, _) = identify_tool_from_path(&path_str);
-    if !is_supported_or_discovered_tool_id(&tool_id) {
-        return;
-    }
+    // Accept any tool ID — dynamic discovery includes unknown AI tools.
     scan_skills_dir(&tool_id, &tool_name, &skills_dir, servers, seen_ids);
 }
 
@@ -5194,6 +5235,17 @@ fn scan_installed_mcps_internal(
         home.join("AppData/Local"),               // Windows
     ];
 
+    // Directories to skip entirely (system/cache/media — never contain MCP configs)
+    const APP_SUPPORT_SKIP: &[&str] = &[
+        "caches", "cache", "logs", "crashreporter", "webkit", "safari",
+        "diagnostics", "group containers", "containers", "keychains",
+        "addressbook", "calendars", "mail", "messages", "photos",
+        "callhistory", "siri", "spotlight", "assistantservices",
+        "knowledge", "apple", "icloud", "mobilesync",
+        "google chrome", "firefox", "microsoft", "adobe",
+        "dock", "com.apple", "systemextensions",
+    ];
+
     for app_dir in &app_support_dirs {
         if !path_exists(app_dir) {
             continue;
@@ -5204,34 +5256,20 @@ fn scan_installed_mcps_internal(
                 if path.is_dir() {
                     let name = entry.file_name().to_string_lossy().to_string();
                     let lower = name.to_lowercase();
-                    // Only scan dirs that might be AI tools
-                    if lower.contains("claude")
-                        || lower.contains("cursor")
-                        || lower.contains("kiro")
-                        || lower.contains("code")
-                        || lower.contains("windsurf")
-                        || lower.contains("continue")
-                        || lower.contains("copilot")
-                        || lower.contains("trae")
-                        || lower.contains("cline")
-                        || lower.contains("roo")
-                        || lower.contains("zed")
-                        || lower.contains("antigravity")
-                        || lower.contains("gemini")
-                        || lower.contains("codex")
-                        || lower.contains("openclaw")
-                        || lower.contains("aider")
-                    {
-                        scan_dir_for_mcp_configs(
-                            &path,
-                            &mut servers,
-                            &mut seen_ids,
-                            &mut seen_paths,
-                            1,
-                            deferred_paths,
-                        );
-                        scan_skills_in_dir(&path, &mut servers, &mut seen_ids);
+                    // Skip known non-AI system directories for performance
+                    if APP_SUPPORT_SKIP.iter().any(|skip| lower.starts_with(skip)) {
+                        continue;
                     }
+                    // Scan ALL remaining directories — any app could have MCP/Skill configs
+                    scan_dir_for_mcp_configs(
+                        &path,
+                        &mut servers,
+                        &mut seen_ids,
+                        &mut seen_paths,
+                        1,
+                        deferred_paths,
+                    );
+                    scan_skills_in_dir(&path, &mut servers, &mut seen_ids);
                 }
             }
         }

@@ -4,11 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# shellcheck source=./lib/load-dotenv-literal.sh
+source "$ROOT_DIR/scripts/lib/load-dotenv-literal.sh"
+
 if [[ -f ".env.public-sale.local" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source ".env.public-sale.local"
-  set +a
+  load_dotenv_literal ".env.public-sale.local"
 fi
 
 echo "[github-release-build] running sale gate in GitHub direct mode"

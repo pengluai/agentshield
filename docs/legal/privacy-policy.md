@@ -1,5 +1,5 @@
 # AgentShield Privacy Policy
-Last Updated: 2026-03-13
+Last Updated: 2026-03-16
 
 This Privacy Policy explains how AgentShield handles personal data when you use the desktop application, website, checkout flow, and support channels.
 
@@ -33,7 +33,7 @@ Replace these placeholders with your real contacts before launch.
 - Consent (optional marketing emails, if enabled).
 
 ## 6. Processors and Third Parties
-- Payment and Merchant of Record: Lemon Squeezy.
+- Payment and Merchant of Record: Creem.
 - Transactional email delivery: Resend.
 - Hosting/logging providers used by the license gateway and release infrastructure.
 

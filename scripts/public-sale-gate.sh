@@ -4,12 +4,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# shellcheck source=./lib/load-dotenv-literal.sh
+source "$ROOT_DIR/scripts/lib/load-dotenv-literal.sh"
+
 # Optional local env bootstrap for readiness checks.
 if [[ -f ".env.public-sale.local" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source ".env.public-sale.local"
-  set +a
+  load_dotenv_literal ".env.public-sale.local"
 fi
 
 release_profile="${PUBLIC_RELEASE_PROFILE:-public}"
@@ -72,6 +72,20 @@ check_env_required_if_public() {
     return
   fi
   check_env_required "$var_name"
+}
+
+check_env_json_object() {
+  local var_name="$1"
+  local value="${!var_name:-}"
+  if [[ -z "$value" ]]; then
+    echo "[public-sale-gate] missing required env: $var_name"
+    missing=1
+    return
+  fi
+  if ! V="$value" node -e "const v=process.env.V;const parsed=JSON.parse(v);if(!parsed||typeof parsed!=='object'||Array.isArray(parsed)) process.exit(1);" >/dev/null 2>&1; then
+    echo "[public-sale-gate] $var_name must be a valid JSON object string"
+    missing=1
+  fi
 }
 
 check_env_https_url() {
@@ -164,11 +178,16 @@ check_env_gateway_url "AGENTSHIELD_LICENSE_GATEWAY_URL"
 check_env_required "AGENTSHIELD_LICENSE_PUBLIC_KEY"
 
 echo "[public-sale-gate] checking license gateway secrets"
-check_env_required "LEMONSQUEEZY_WEBHOOK_SECRET"
+check_env_required "CREEM_WEBHOOK_SECRET"
 check_env_required "LICENSE_GATEWAY_ADMIN_PASSWORD"
 check_env_required "AGENTSHIELD_LICENSE_SIGNING_SEED"
 check_env_required "RESEND_API_KEY"
 check_env_required "LICENSE_DELIVERY_FROM_EMAIL"
+check_env_json_object "CREEM_SKU_BILLING_MAP_JSON"
+
+if [[ -n "${CREEM_PRODUCT_BILLING_MAP_JSON:-}" ]]; then
+  check_env_json_object "CREEM_PRODUCT_BILLING_MAP_JSON"
+fi
 
 echo "[public-sale-gate] checking signing-related env for full public profile"
 check_env_required_if_public "APPLE_ID"

@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useNotificationStore, selectUnreadCount } from "@/stores/notificationStore";
 import type { Notification, NotificationType, NotificationPriority } from "@/types/domain";
 import { t } from '@/constants/i18n';
+import { translateBackendText } from '@/lib/locale-text';
 
 // Map domain types to visual config.
 // The original component used "success" | "warning" | "error" | "info" locally.
@@ -186,7 +187,7 @@ export function NotificationCenter() {
                           "font-medium",
                           notification.read ? "text-white/70" : "text-white"
                         )}>
-                          {notification.title}
+                          {translateBackendText(notification.title)}
                         </h3>
                         <span className="text-xs text-white/40 flex-shrink-0">
                           {formatTimeAgo(notification.timestamp)}
@@ -196,7 +197,7 @@ export function NotificationCenter() {
                         "text-sm mt-1",
                         notification.read ? "text-white/50" : "text-white/70"
                       )}>
-                        {notification.body}
+                        {translateBackendText(notification.body)}
                       </p>
                     </div>
                     <button

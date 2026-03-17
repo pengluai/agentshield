@@ -1,0 +1,20 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "agentshield-storefront",
+  "main": "./src/index.mjs",
+  "compatibility_date": "2026-03-16",
+  "vars": {
+    "DOWNLOAD_RELEASE_REPO": "pengluai/agentshield-downloads",
+    "DOWNLOAD_RELEASE_TAG": "agentshield-pilot-v1.0.1",
+    "DOWNLOAD_ASSET_MACOS": "AgentShield-macos-arm64.dmg",
+    "DOWNLOAD_ASSET_WINDOWS": "AgentShield-windows-x64-setup.exe",
+    "DOWNLOAD_RELEASES_URL": "https://github.com/pengluai/agentshield-downloads/releases"
+  },
+  "assets": {
+    "directory": "./site",
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/download/*"
+    ]
+  }
+}

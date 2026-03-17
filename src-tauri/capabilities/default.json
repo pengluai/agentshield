@@ -10,7 +10,7 @@
       "identifier": "shell:allow-open",
       "allow": [
         {
-          "open": "^(https://.+|x-apple\\.systempreferences:.+)$"
+          "open": "^(https://.+|x-apple\\.systempreferences:.+|ms-settings:.+)$"
         }
       ]
     },

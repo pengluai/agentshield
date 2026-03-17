@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
 use crate::commands::license;
 use crate::commands::platform::{
@@ -35,26 +35,51 @@ fn normalize_openclaw_version(raw: String) -> String {
     }
 }
 
+#[cfg(windows)]
+fn apply_no_window_flag(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn apply_no_window_flag(_command: &mut Command) {}
+
+fn command_output(mut command: Command) -> std::io::Result<Output> {
+    apply_no_window_flag(&mut command);
+    command.output()
+}
+
+async fn command_output_async(command: Command) -> Result<Output, String> {
+    tokio::task::spawn_blocking(move || command_output(command))
+        .await
+        .map_err(|error| format!("Command execution task failed: {error}"))?
+        .map_err(|error| format!("Command execution failed: {error}"))
+}
+
 fn read_version_from_binary(binary: &Path) -> Option<String> {
-    let output = Command::new(binary).arg("--version").output().ok()?;
+    let mut command = Command::new(binary);
+    command.arg("--version");
+    let output = command_output(command).ok()?;
     parse_version_output(&String::from_utf8_lossy(&output.stdout)).map(normalize_openclaw_version)
 }
 
 fn read_version_from_default_openclaw_command() -> Option<String> {
-    let output = Command::new(openclaw_command())
-        .arg("--version")
-        .output()
-        .ok()?;
+    let mut command = Command::new(openclaw_command());
+    command.arg("--version");
+    let output = command_output(command).ok()?;
     parse_version_output(&String::from_utf8_lossy(&output.stdout)).map(normalize_openclaw_version)
 }
 
 #[cfg(target_os = "macos")]
 fn resolve_openclaw_from_login_shell() -> Option<PathBuf> {
     for shell in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
-        let output = Command::new(shell)
-            .args(["-lc", "command -v openclaw 2>/dev/null"])
-            .output()
-            .ok()?;
+        let mut command = Command::new(shell);
+        command.args(["-lc", "command -v openclaw 2>/dev/null"]);
+        let output = match command_output(command) {
+            Ok(output) => output,
+            Err(_) => continue,
+        };
         if !output.status.success() {
             continue;
         }
@@ -152,10 +177,9 @@ fn config_hints_openclaw_installed(home: &Path) -> bool {
 }
 
 fn npm_reports_openclaw_installed() -> Option<String> {
-    let output = Command::new(npm_command())
-        .args(["ls", "-g", "openclaw", "--depth=0", "--json"])
-        .output()
-        .ok()?;
+    let mut command = Command::new(npm_command());
+    command.args(["ls", "-g", "openclaw", "--depth=0", "--json"]);
+    let output = command_output(command).ok()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     if stdout.trim().is_empty() {
@@ -247,7 +271,10 @@ pub async fn get_openclaw_status() -> Result<OpenClawStatus, String> {
     let npm_installed = which::which("npm").is_ok();
 
     let home = dirs::home_dir().ok_or("Cannot find home directory")?;
-    let probe = probe_openclaw(&home);
+    let probe_home = home.clone();
+    let probe = tokio::task::spawn_blocking(move || probe_openclaw(&probe_home))
+        .await
+        .map_err(|error| format!("Failed to probe OpenClaw status: {error}"))?;
     let installed = probe.installed;
     let version = probe.version.clone();
     let config_dir = preferred_openclaw_config_dir(&home);
@@ -427,15 +454,17 @@ pub async fn install_openclaw_cmd(approval_ticket: Option<String>) -> Result<Str
         "user_requested_install",
     )?;
 
-    let output = Command::new(npm_command())
-        .args(["install", "-g", "openclaw@latest"])
-        .output()
-        .map_err(|e| format!("无法运行 npm: {}", e))?;
+    let mut install_command = Command::new(npm_command());
+    install_command.args(["install", "-g", "openclaw@latest"]);
+    let output = command_output_async(install_command)
+        .await
+        .map_err(|error| format!("无法运行 npm: {error}"))?;
 
     if output.status.success() {
-        let version = Command::new(openclaw_command())
-            .arg("--version")
-            .output()
+        let mut version_command = Command::new(openclaw_command());
+        version_command.arg("--version");
+        let version = command_output_async(version_command)
+            .await
             .ok()
             .and_then(|o| String::from_utf8(o.stdout).ok())
             .map(|v| v.trim().to_string())
@@ -671,16 +700,19 @@ async fn uninstall_openclaw_impl(
     // ── 1. Stop running OpenClaw processes ──
     #[cfg(unix)]
     {
-        let _ = Command::new("pkill").args(["-f", "openclaw"]).output();
+        let mut command = Command::new("pkill");
+        command.args(["-f", "openclaw"]);
+        let _ = command_output_async(command).await;
     }
     #[cfg(windows)]
     {
-        let _ = Command::new("taskkill")
-            .args(["/F", "/IM", "openclaw.exe"])
-            .output();
-        let _ = Command::new("taskkill")
-            .args(["/F", "/FI", "WINDOWTITLE eq openclaw*"])
-            .output();
+        let mut kill_image = Command::new("taskkill");
+        kill_image.args(["/F", "/IM", "openclaw.exe"]);
+        let _ = command_output_async(kill_image).await;
+
+        let mut kill_window = Command::new("taskkill");
+        kill_window.args(["/F", "/FI", "WINDOWTITLE eq openclaw*"]);
+        let _ = command_output_async(kill_window).await;
     }
     report.push("✓ 已停止 OpenClaw 进程".to_string());
 
@@ -712,9 +744,9 @@ async fn uninstall_openclaw_impl(
 
     // ── 3. npm uninstall global packages ──
     for pkg in &["openclaw", "openclaw-mcp", "@openclaw/cli"] {
-        let output = Command::new(npm_command())
-            .args(["uninstall", "-g", pkg])
-            .output();
+        let mut command = Command::new(npm_command());
+        command.args(["uninstall", "-g", pkg]);
+        let output = command_output_async(command).await;
         if let Ok(o) = output {
             if o.status.success() {
                 report.push(format!("✓ npm uninstall -g {} 完成", pkg));
@@ -743,9 +775,9 @@ async fn uninstall_openclaw_impl(
                     let name = entry.file_name().to_string_lossy().to_string();
                     if name.to_lowercase().contains("openclaw") {
                         let p = entry.path();
-                        let _ = Command::new("launchctl")
-                            .args(["unload", &p.to_string_lossy()])
-                            .output();
+                        let mut command = Command::new("launchctl");
+                        command.args(["unload", &p.to_string_lossy()]);
+                        let _ = command_output_async(command).await;
                         match std::fs::remove_file(&p) {
                             Ok(_) => report.push(format!("✓ 已删除服务 {}", name)),
                             Err(e) => report.push(format!("✗ 无法删除 {}: {}", name, e)),
@@ -759,10 +791,13 @@ async fn uninstall_openclaw_impl(
     #[cfg(target_os = "windows")]
     {
         // Remove Windows scheduled tasks / services
-        let _ = Command::new("schtasks")
-            .args(["/Delete", "/TN", "OpenClaw", "/F"])
-            .output();
-        let _ = Command::new("sc").args(["delete", "openclaw"]).output();
+        let mut delete_task = Command::new("schtasks");
+        delete_task.args(["/Delete", "/TN", "OpenClaw", "/F"]);
+        let _ = command_output_async(delete_task).await;
+
+        let mut delete_service = Command::new("sc");
+        delete_service.args(["delete", "openclaw"]);
+        let _ = command_output_async(delete_service).await;
     }
 
     #[cfg(target_os = "linux")]
@@ -774,12 +809,13 @@ async fn uninstall_openclaw_impl(
                 for entry in entries.flatten() {
                     let name = entry.file_name().to_string_lossy().to_string();
                     if name.to_lowercase().contains("openclaw") {
-                        let _ = Command::new("systemctl")
-                            .args(["--user", "stop", &name])
-                            .output();
-                        let _ = Command::new("systemctl")
-                            .args(["--user", "disable", &name])
-                            .output();
+                        let mut stop_command = Command::new("systemctl");
+                        stop_command.args(["--user", "stop", &name]);
+                        let _ = command_output_async(stop_command).await;
+
+                        let mut disable_command = Command::new("systemctl");
+                        disable_command.args(["--user", "disable", &name]);
+                        let _ = command_output_async(disable_command).await;
                         let _ = std::fs::remove_file(entry.path());
                         report.push(format!("✓ 已删除 systemd 服务 {}", name));
                     }
@@ -824,15 +860,17 @@ pub async fn update_openclaw_cmd(approval_ticket: Option<String>) -> Result<Stri
         "user_requested_update",
     )?;
 
-    let output = Command::new(npm_command())
-        .args(["install", "-g", "openclaw@latest"])
-        .output()
-        .map_err(|e| format!("无法运行 npm: {}", e))?;
+    let mut update_command = Command::new(npm_command());
+    update_command.args(["install", "-g", "openclaw@latest"]);
+    let output = command_output_async(update_command)
+        .await
+        .map_err(|error| format!("无法运行 npm: {error}"))?;
 
     if output.status.success() {
-        let version = Command::new(openclaw_command())
-            .arg("--version")
-            .output()
+        let mut version_command = Command::new(openclaw_command());
+        version_command.arg("--version");
+        let version = command_output_async(version_command)
+            .await
             .ok()
             .and_then(|o| String::from_utf8(o.stdout).ok())
             .map(|v| v.trim().to_string())
@@ -848,9 +886,9 @@ pub async fn update_openclaw_cmd(approval_ticket: Option<String>) -> Result<Stri
 #[tauri::command]
 pub async fn check_openclaw_latest_version() -> Result<String, String> {
     // Try `npm view openclaw version` to get latest from registry
-    let output = Command::new(npm_command())
-        .args(["view", "openclaw", "version"])
-        .output();
+    let mut view_command = Command::new(npm_command());
+    view_command.args(["view", "openclaw", "version"]);
+    let output = command_output_async(view_command).await;
 
     if let Ok(o) = output {
         if o.status.success() {
@@ -863,11 +901,17 @@ pub async fn check_openclaw_latest_version() -> Result<String, String> {
 
     // If npm check fails, return local installed version if available
     if let Some(home) = dirs::home_dir() {
-        let probe = probe_openclaw(&home);
+        let probe = tokio::task::spawn_blocking(move || probe_openclaw(&home))
+            .await
+            .map_err(|error| format!("Failed to probe local OpenClaw version: {error}"))?;
         if let Some(version) = probe.version {
             return Ok(version);
         }
-    } else if let Some(version) = read_version_from_default_openclaw_command() {
+    } else if let Some(version) = tokio::task::spawn_blocking(read_version_from_default_openclaw_command)
+        .await
+        .ok()
+        .flatten()
+    {
         return Ok(version);
     }
 
@@ -881,9 +925,10 @@ pub async fn check_openclaw_latest_version() -> Result<String, String> {
 pub async fn detect_system() -> Result<SystemReport, String> {
     let node_installed = which::which("node").is_ok();
     let node_version = if node_installed {
-        std::process::Command::new("node")
-            .arg("--version")
-            .output()
+        let mut command = Command::new("node");
+        command.arg("--version");
+        command_output_async(command)
+            .await
             .ok()
             .and_then(|o| String::from_utf8(o.stdout).ok())
             .map(|v| v.trim().to_string())
@@ -896,7 +941,9 @@ pub async fn detect_system() -> Result<SystemReport, String> {
     let git_installed = which::which("git").is_ok();
 
     let home = dirs::home_dir().ok_or("Cannot find home directory")?;
-    let probe = probe_openclaw(&home);
+    let probe = tokio::task::spawn_blocking(move || probe_openclaw(&home))
+        .await
+        .map_err(|error| format!("Failed to inspect OpenClaw installation: {error}"))?;
     let openclaw_installed = probe.installed;
     let openclaw_version = probe.version;
 

@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { tauriInvoke as invoke } from '@/services/tauri';
 
 export interface StepResult {
   success: boolean;
@@ -28,12 +28,17 @@ export async function testAiConnection(
   model?: string,
   baseUrl?: string,
 ): Promise<AiConnectionResult> {
-  return invoke<AiConnectionResult>('test_ai_connection', {
-    provider,
-    apiKey,
-    model: model || undefined,
-    baseUrl: baseUrl || undefined,
-  });
+  try {
+    return await invoke<AiConnectionResult>('test_ai_connection', {
+      provider,
+      apiKey,
+      model: model || undefined,
+      baseUrl: baseUrl || undefined,
+    });
+  } catch (error) {
+    console.error('Failed to test AI connection:', error);
+    throw Object.assign(new Error(`Failed to test AI connection: ${String(error)}`), { cause: error });
+  }
 }
 
 export async function executeInstallStep(
@@ -45,13 +50,18 @@ export async function executeInstallStep(
     approvalTicket?: string;
   },
 ): Promise<StepResult> {
-  return invoke<StepResult>('execute_install_step', {
-    stepId,
-    channelId: options?.channelId,
-    token: options?.token,
-    platformIds: options?.platformIds,
-    approvalTicket: options?.approvalTicket,
-  });
+  try {
+    return await invoke<StepResult>('execute_install_step', {
+      stepId,
+      channelId: options?.channelId,
+      token: options?.token,
+      platformIds: options?.platformIds,
+      approvalTicket: options?.approvalTicket,
+    });
+  } catch (error) {
+    console.error('Failed to execute install step:', error);
+    throw Object.assign(new Error(`Failed to execute install step: ${String(error)}`), { cause: error });
+  }
 }
 
 export async function aiDiagnoseError(
@@ -62,12 +72,17 @@ export async function aiDiagnoseError(
   model?: string,
   baseUrl?: string,
 ): Promise<AiDiagnosis> {
-  return invoke<AiDiagnosis>('ai_diagnose_error', {
-    provider,
-    apiKey,
-    model: model || undefined,
-    baseUrl: baseUrl || undefined,
-    errorContext,
-    stepName,
-  });
+  try {
+    return await invoke<AiDiagnosis>('ai_diagnose_error', {
+      provider,
+      apiKey,
+      model: model || undefined,
+      baseUrl: baseUrl || undefined,
+      errorContext,
+      stepName,
+    });
+  } catch (error) {
+    console.error('Failed to diagnose AI setup error:', error);
+    throw Object.assign(new Error(`Failed to diagnose AI setup error: ${String(error)}`), { cause: error });
+  }
 }

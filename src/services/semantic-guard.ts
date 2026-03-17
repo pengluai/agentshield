@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { tauriInvoke as invoke } from '@/services/tauri';
 
 export interface SemanticGuardStatus {
   licensed: boolean;
@@ -8,13 +8,34 @@ export interface SemanticGuardStatus {
 }
 
 export async function getSemanticGuardStatus(): Promise<SemanticGuardStatus> {
-  return invoke<SemanticGuardStatus>('get_semantic_guard_status');
+  try {
+    return await invoke<SemanticGuardStatus>('get_semantic_guard_status');
+  } catch (error) {
+    console.error('Failed to get semantic guard status:', error);
+    throw Object.assign(new Error(`Failed to get semantic guard status: ${String(error)}`), {
+      cause: error,
+    });
+  }
 }
 
 export async function configureSemanticGuard(accessKey: string): Promise<SemanticGuardStatus> {
-  return invoke<SemanticGuardStatus>('configure_semantic_guard', { accessKey });
+  try {
+    return await invoke<SemanticGuardStatus>('configure_semantic_guard', { accessKey });
+  } catch (error) {
+    console.error('Failed to configure semantic guard:', error);
+    throw Object.assign(new Error(`Failed to configure semantic guard: ${String(error)}`), {
+      cause: error,
+    });
+  }
 }
 
 export async function clearSemanticGuardKey(): Promise<boolean> {
-  return invoke<boolean>('clear_semantic_guard_key');
+  try {
+    return await invoke<boolean>('clear_semantic_guard_key');
+  } catch (error) {
+    console.error('Failed to clear semantic guard key:', error);
+    throw Object.assign(new Error(`Failed to clear semantic guard key: ${String(error)}`), {
+      cause: error,
+    });
+  }
 }
