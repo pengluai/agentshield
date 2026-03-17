@@ -1643,6 +1643,17 @@ function SetupStepRow({
       <div className="flex-1">
         <p className="text-sm font-medium">{step.title}</p>
         <p className="mt-0.5 text-xs opacity-85">{step.description}</p>
+        {step.id === 'check_node' && status === 'failed' ? (
+          <button
+            type="button"
+            onClick={() => openExternalUrl('https://nodejs.org')}
+            className="mt-1.5 inline-flex items-center gap-1.5 rounded-lg border border-rose-300/25 bg-rose-500/15 px-2.5 py-1 text-xs font-medium text-rose-100 hover:bg-rose-500/25"
+          >
+            <Download className="h-3 w-3" />
+            {tr('前往下载 Node.js (安装后重试)', 'Download Node.js (retry after install)')}
+            <ExternalLink className="h-3 w-3 opacity-60" />
+          </button>
+        ) : null}
       </div>
       <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[11px]">
         {statusLabel}
