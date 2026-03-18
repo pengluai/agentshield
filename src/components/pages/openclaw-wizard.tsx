@@ -20,7 +20,7 @@ import { MODULE_THEMES } from '@/constants/colors';
 import { isEnglishLocale, t } from '@/constants/i18n';
 import { GlassmorphicCard } from '@/components/glassmorphic-card';
 import { ManualModeGateDialog } from '@/components/manual-mode-gate-dialog';
-import { requestRuntimeGuardActionApproval } from '@/services/runtime-guard';
+import { requestRuntimeGuardActionApproval, listenRuntimeGuardApprovals, type RuntimeApprovalRequest } from '@/services/runtime-guard';
 import { aiDiagnoseError, executeInstallStep, type AiDiagnosis, type StepResult } from '@/services/ai-orchestrator';
 import { detectAiTools, type DetectedTool } from '@/services/scanner';
 import { openExternalUrl } from '@/services/runtime-settings';
@@ -310,6 +310,40 @@ function isNewerVersion(current: string, latest: string): boolean {
   return false;
 }
 
+/**
+ * Wait for a specific approval request to be resolved (approved or denied).
+ * Listens for Tauri runtime-guard-approval events and resolves once the
+ * matching request ID transitions out of 'pending' status.
+ * Times out after 120 seconds.
+ */
+function waitForApprovalResolution(requestId: string): Promise<'approved' | 'denied' | 'timeout'> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let unlistenFn: (() => void) | undefined;
+
+    const timer = window.setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        unlistenFn?.();
+        resolve('timeout');
+      }
+    }, 120_000);
+
+    listenRuntimeGuardApprovals((approval: RuntimeApprovalRequest) => {
+      if (settled) return;
+      if (approval.id === requestId && approval.status !== 'pending') {
+        settled = true;
+        window.clearTimeout(timer);
+        unlistenFn?.();
+        resolve(approval.status === 'approved' ? 'approved' : 'denied');
+      }
+    }).then((fn) => {
+      unlistenFn = fn;
+      if (settled) fn();
+    });
+  });
+}
+
 interface OpenClawWizardProps {
   onComplete: () => void;
   onSkip: () => void;
@@ -354,6 +388,7 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
     action: 'setup' | 'install' | 'update' | 'uninstall';
   }>({ open: false, action: 'setup' });
   const loadDataInFlightRef = useRef(false);
+  const initialLoadDoneRef = useRef(false);
   const focusRefreshTimerRef = useRef<number | null>(null);
 
   const selectedChannel = useMemo(
@@ -441,7 +476,9 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
       return;
     }
     loadDataInFlightRef.current = true;
-    setLoading(true);
+    if (!initialLoadDoneRef.current) {
+      setLoading(true);
+    }
 
     try {
       if (browserShell) {
@@ -540,6 +577,7 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
       setDetectedTools([]);
     } finally {
       loadDataInFlightRef.current = false;
+      initialLoadDoneRef.current = true;
       setLoading(false);
     }
   }, [browserShell]);
@@ -786,15 +824,81 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
     return null;
   };
 
+  /**
+   * Obtain an approved ticket for a runtime guard action.
+   * If the first request returns 'pending', waits for the user to approve in the
+   * modal, then re-requests to consume the grant and obtain the execution ticket.
+   */
+  const obtainApprovalTicket = async (
+    input: Parameters<typeof requestRuntimeGuardActionApproval>[0],
+    actionLabel: string,
+  ): Promise<{ ticket: string } | { cancelled: true; reason: string }> => {
+    const approval = await requestRuntimeGuardActionApproval(input);
+
+    if (approval.status === 'approved' && approval.approval_ticket) {
+      return { ticket: approval.approval_ticket };
+    }
+
+    // Approval is pending — wait for user to approve/deny in the modal
+    setActionMessage(
+      tr(
+        `请在弹出的审批窗口中确认${actionLabel}操作，等待你点头...`,
+        `Please confirm the ${actionLabel} action in the approval dialog. Waiting for your approval...`,
+      ),
+    );
+
+    const decision = await waitForApprovalResolution(approval.request.id);
+    setActionMessage(null);
+
+    if (decision !== 'approved') {
+      return {
+        cancelled: true,
+        reason: decision === 'timeout'
+          ? tr('审批等待超时，请重新操作。', 'Approval timed out. Please try again.')
+          : tr('你已拒绝此操作。', 'You denied this action.'),
+      };
+    }
+
+    // Grant has been stored — re-request to consume it and get the ticket
+    const retry = await requestRuntimeGuardActionApproval(input);
+    if (retry.status === 'approved' && retry.approval_ticket) {
+      return { ticket: retry.approval_ticket };
+    }
+
+    return { cancelled: true, reason: tr('审批已通过但未能获取执行票据，请重试。', 'Approval succeeded but failed to obtain execution ticket. Please retry.') };
+  };
+
   const runStep = async (step: SetupStepDefinition): Promise<boolean> => {
+    // Smart skip: detect already-completed steps so users don't repeat work
+    if (step.id === 'check_node' && status?.node_installed && status?.npm_installed) {
+      markStepStatus(step.id, 'success', tr('Node.js 和 npm 已就绪，跳过', 'Node.js and npm are ready, skipped'));
+      return true;
+    }
+    if (step.id === 'install_openclaw' && status?.installed && status?.version) {
+      markStepStatus(step.id, 'success', tr(`OpenClaw ${status.version} 已安装，跳过`, `OpenClaw ${status.version} already installed, skipped`));
+      return true;
+    }
+    if (step.id === 'run_onboard' && status?.config_dir) {
+      markStepStatus(step.id, 'success', tr('OpenClaw 已初始化，跳过', 'OpenClaw already initialized, skipped'));
+      return true;
+    }
+
     if (step.id === 'setup_mcp' && selectedPlatforms.length === 0) {
       markStepStatus(step.id, 'skipped', tr('未选择可接入宿主，已跳过', 'No install target selected, skipped'));
       return true;
     }
 
+    // Pause the wizard when channel token is not yet filled — let the user
+    // enter it in the channel config section below, then click "开始一键配置" to resume.
     if (step.id === 'configure_channel' && channelToken.trim().length === 0) {
-      markStepStatus(step.id, 'failed', tr('请先填写渠道 token', 'Please fill in a channel token first'));
-      setSetupError(tr('通知渠道 token 为空，无法完成渠道配置。', 'Channel token is empty, cannot complete channel setup.'));
+      markStepStatus(step.id, 'pending', tr(
+        '请在下方「通知渠道」区域选择渠道（如飞书/钉钉/Telegram），填入 Bot Token，然后再次点击「开始一键配置」继续。',
+        'Please select a channel below (e.g. Feishu/DingTalk/Telegram), enter a Bot Token, then click "Start one-click setup" to continue.',
+      ));
+      setSetupError(tr(
+        '请先在下方配置通知渠道后，再点击「开始一键配置」继续完成剩余步骤。',
+        'Please configure a notification channel below, then click "Start one-click setup" to complete the remaining steps.',
+      ));
       return false;
     }
 
@@ -807,32 +911,22 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
       }
 
       try {
-        const approval = await requestRuntimeGuardActionApproval({
-          component_id: 'agentshield:openclaw:setup',
-          component_name: 'OpenClaw Setup Wizard',
-          platform_id: 'openclaw',
-          platform_name: 'OpenClaw',
-          ...approvalInput,
-        });
-        if (approval.status === 'pending') {
-          const message = tr(
-            `已弹出「${step.title}」审批。请先确认，再重新执行一键配置。`,
-            `Approval was requested for "${step.title}". Confirm it first, then run one-click setup again.`
-          );
-          markStepStatus(step.id, 'pending', message);
-          setSetupError(message);
+        const ticketResult = await obtainApprovalTicket(
+          {
+            component_id: 'agentshield:openclaw:setup',
+            component_name: 'OpenClaw Setup Wizard',
+            platform_id: 'openclaw',
+            platform_name: 'OpenClaw',
+            ...approvalInput,
+          },
+          step.title,
+        );
+        if ('cancelled' in ticketResult) {
+          markStepStatus(step.id, 'failed', ticketResult.reason);
+          setSetupError(ticketResult.reason);
           return false;
         }
-        if (approval.status !== 'approved' || !approval.approval_ticket) {
-          const message = tr(
-            `「${step.title}」审批未通过，操作已停止。`,
-            `Approval for "${step.title}" was not granted. The operation has been stopped.`
-          );
-          markStepStatus(step.id, 'failed', message);
-          setSetupError(message);
-          return false;
-        }
-        approvalTicket = approval.approval_ticket;
+        approvalTicket = ticketResult.ticket;
       } catch (error) {
         const message = tr(
           `提交「${step.title}」审批失败：${String(error)}`,
@@ -900,17 +994,30 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
     setSetupBusy(true);
 
     try {
-      for (const step of getSetupSteps()) {
+      const steps = getSetupSteps();
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
         const ok = await runStep(step);
         if (!ok) {
           setSetupBusy(false);
           return;
         }
+        // Refresh status after install/onboard so subsequent steps can detect the new state
+        if (step.id === 'install_openclaw' || step.id === 'run_onboard') {
+          try {
+            const freshStatus = await invoke<OpenClawStatus>('get_openclaw_status');
+            setStatus(freshStatus);
+          } catch {
+            // Non-critical — continue with stale status
+          }
+        }
       }
 
-      setActionMessage(tr('OpenClaw 一键配置已完成，所有步骤均真实执行成功。', 'OpenClaw one-click setup completed. All steps were executed successfully.'));
+      setActionMessage(tr(
+        'OpenClaw 一键配置已完成！如需配置通知渠道，请在上方选择渠道并填入 Token，然后重新点击「开始一键配置」。',
+        'OpenClaw one-click setup completed! To configure a notification channel, select one above, enter a token, then click "Start one-click setup" again.',
+      ));
       await loadData();
-      onComplete();
     } catch (error) {
       setSetupError(tr(`一键配置中断：${String(error)}`, `One-click setup interrupted: ${String(error)}`));
     } finally {
@@ -939,117 +1046,128 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
       return;
     }
 
-    if (action === 'uninstall') {
-      const currentStatus = status;
-      try {
-        const approval = await requestRuntimeGuardActionApproval({
-          component_id: 'agentshield:openclaw',
-          component_name: 'OpenClaw',
-          platform_id: 'openclaw',
-          platform_name: 'OpenClaw',
-          request_kind: 'file_delete',
-          trigger_event: 'openclaw_uninstall_request',
-          action_kind: 'file_delete',
-          action_source: 'user_requested_uninstall',
-          action_targets: ['OpenClaw local installation'],
-          action_preview: [
-            tr('将卸载 OpenClaw 本地程序', 'Will uninstall local OpenClaw program'),
-            currentStatus?.config_dir
-              ? tr(`配置目录: ${currentStatus.config_dir}`, `Config directory: ${currentStatus.config_dir}`)
-              : tr('会移除 OpenClaw 相关本地配置', 'Will remove local OpenClaw-related config'),
-            tr('放行后会执行真实卸载命令', 'Approval will execute a real uninstall command'),
-          ],
-          sensitive_capabilities: [tr('读写本地文件', 'Read and write local files')],
-          is_destructive: true,
-          is_batch: true,
-        });
-        if (approval.status !== 'approved' || !approval.approval_ticket) {
-          setActionMessage(
-            tr(
-              '已弹出 OpenClaw 卸载审批。请先确认，再次点击卸载。',
-              'OpenClaw uninstall approval was requested. Confirm it first, then click Uninstall again.'
-            )
-          );
-          setActionInProgress(null);
-          return;
-        }
-        const result = await invoke<string>('uninstall_openclaw_cmd', {
-          approvalTicket: approval.approval_ticket,
-        });
-        setActionMessage(
-          localizeOpenClawBackendText(result, tr('卸载已完成', 'Uninstall completed')),
-        );
-        await loadData();
-        setActionInProgress(null);
-        return;
-      } catch (error) {
-        setActionError(
-          localizeOpenClawBackendText(
-            String(error),
-            tr('卸载失败，请稍后重试。', 'Uninstall failed. Please try again.'),
-          ),
-        );
-        setActionInProgress(null);
-        return;
-      }
-    }
+    const actionLabels: Record<string, string> = {
+      install: tr('安装', 'install'),
+      uninstall: tr('卸载', 'uninstall'),
+      update: tr('更新', 'update'),
+    };
 
     try {
-      const approval = await requestRuntimeGuardActionApproval({
-        component_id: 'agentshield:openclaw',
-        component_name: 'OpenClaw',
-        platform_id: 'openclaw',
-        platform_name: 'OpenClaw',
-        request_kind: 'shell_exec',
-        trigger_event: action === 'install' ? 'openclaw_install_request' : 'openclaw_update_request',
-        action_kind: 'shell_exec',
-        action_source: action === 'install' ? 'user_requested_install' : 'user_requested_update',
-        action_targets: ['npm install -g openclaw@latest'],
-        action_preview: [
-          action === 'install'
-            ? tr('将通过 npm 在本机真实安装 OpenClaw', 'Will install OpenClaw locally through npm')
-            : tr('将通过 npm 在本机真实更新 OpenClaw', 'Will update OpenClaw locally through npm'),
-          tr('命令: npm install -g openclaw@latest', 'Command: npm install -g openclaw@latest'),
-          tr('放行后会真实执行命令，不是模拟进度', 'Approval will execute a real command, not simulated progress'),
-        ],
-        sensitive_capabilities: [
-          tr('命令执行', 'Shell command execution'),
-          tr('读写本地文件', 'Read and write local files'),
-          tr('联网下载依赖', 'Download dependencies from network'),
-        ],
-        is_destructive: false,
-        is_batch: false,
-      });
-      if (approval.status !== 'approved' || !approval.approval_ticket) {
-        setActionMessage(
-          tr(
-            `已弹出 OpenClaw ${action === 'install' ? '安装' : '更新'}审批。请先确认，再次点击。`,
-            `OpenClaw ${action === 'install' ? 'install' : 'update'} approval was requested. Confirm it first, then click again.`
-          )
-        );
+      // Build the approval input based on action type
+      const approvalInput = action === 'uninstall'
+        ? {
+            component_id: 'agentshield:openclaw',
+            component_name: 'OpenClaw',
+            platform_id: 'openclaw',
+            platform_name: 'OpenClaw',
+            request_kind: 'file_delete' as const,
+            trigger_event: 'openclaw_uninstall_request',
+            action_kind: 'file_delete',
+            action_source: 'user_requested_uninstall',
+            action_targets: ['OpenClaw local installation'],
+            action_preview: [
+              tr('将卸载 OpenClaw 本地程序', 'Will uninstall local OpenClaw program'),
+              status?.config_dir
+                ? tr(`配置目录: ${status.config_dir}`, `Config directory: ${status.config_dir}`)
+                : tr('会移除 OpenClaw 相关本地配置', 'Will remove local OpenClaw-related config'),
+              tr('放行后会执行真实卸载命令', 'Approval will execute a real uninstall command'),
+            ],
+            sensitive_capabilities: [tr('读写本地文件', 'Read and write local files')],
+            is_destructive: true,
+            is_batch: true,
+          }
+        : {
+            component_id: 'agentshield:openclaw',
+            component_name: 'OpenClaw',
+            platform_id: 'openclaw',
+            platform_name: 'OpenClaw',
+            request_kind: 'shell_exec' as const,
+            trigger_event: action === 'install' ? 'openclaw_install_request' : 'openclaw_update_request',
+            action_kind: 'shell_exec',
+            action_source: action === 'install' ? 'user_requested_install' : 'user_requested_update',
+            action_targets: ['npm install -g openclaw@latest'],
+            action_preview: [
+              action === 'install'
+                ? tr('将通过 npm 在本机真实安装 OpenClaw', 'Will install OpenClaw locally through npm')
+                : tr('将通过 npm 在本机真实更新 OpenClaw', 'Will update OpenClaw locally through npm'),
+              tr('命令: npm install -g openclaw@latest', 'Command: npm install -g openclaw@latest'),
+              tr('放行后会真实执行命令，不是模拟进度', 'Approval will execute a real command, not simulated progress'),
+            ],
+            sensitive_capabilities: [
+              tr('命令执行', 'Shell command execution'),
+              tr('读写本地文件', 'Read and write local files'),
+              tr('联网下载依赖', 'Download dependencies from network'),
+            ],
+            is_destructive: false,
+            is_batch: false,
+          };
+
+      // Obtain approval ticket — waits for user to approve if pending
+      const ticketResult = await obtainApprovalTicket(approvalInput, actionLabels[action]);
+      if ('cancelled' in ticketResult) {
+        setActionError(ticketResult.reason);
         setActionInProgress(null);
         return;
       }
-      const result = await invoke<string>(
-        action === 'install' ? 'install_openclaw_cmd' : 'update_openclaw_cmd',
-        { approvalTicket: approval.approval_ticket },
-      );
+
+      // Execute the actual command with the approval ticket
+      const tauriCmd = action === 'uninstall'
+        ? 'uninstall_openclaw_cmd'
+        : action === 'install'
+          ? 'install_openclaw_cmd'
+          : 'update_openclaw_cmd';
+
+      const result = await invoke<string>(tauriCmd, {
+        approvalTicket: ticketResult.ticket,
+      });
+
       setActionMessage(
         localizeOpenClawBackendText(
           result,
-          action === 'install'
-            ? tr('安装已完成', 'Install completed')
-            : tr('更新已完成', 'Update completed'),
+          action === 'uninstall'
+            ? tr('卸载已完成', 'Uninstall completed')
+            : action === 'install'
+              ? tr('安装已完成', 'Install completed')
+              : tr('更新已完成', 'Update completed'),
         ),
       );
       await loadData();
     } catch (error) {
+      const errorStr = String(error);
+      const isLicenseError = errorStr.includes('试用已结束')
+        || errorStr.includes('免费版')
+        || errorStr.includes('许可证')
+        || errorStr.includes('激活码')
+        || errorStr.includes('license')
+        || errorStr.includes('trial');
+
       setActionError(
         localizeOpenClawBackendText(
-          String(error),
+          errorStr,
           tr('操作失败，请稍后重试。', 'Operation failed. Please try again.'),
         ),
       );
+
+      // Resync frontend license state when backend reports a license issue
+      if (isLicenseError) {
+        try {
+          const freshInfo = await invoke<{
+            plan: string;
+            status: string;
+            expires_at: string | null;
+            trial_days_left: number | null;
+          }>('check_license_status');
+          useLicenseStore.getState().setLicenseInfo({
+            plan: freshInfo.plan as any,
+            status: freshInfo.status as any,
+            expiresAt: freshInfo.expires_at ?? undefined,
+            trialDaysLeft: freshInfo.trial_days_left ?? undefined,
+            features: [],
+          });
+        } catch {
+          // Ignore — license resync is best-effort
+        }
+      }
     }
 
     setActionInProgress(null);
@@ -1083,7 +1201,12 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
   const openclawHostDetected = detectedTools.some((tool) => (
     tool.id === 'openclaw' && Boolean(tool.detected || tool.host_detected || tool.has_mcp_config)
   ));
-  const isInstalled = (status?.installed ?? false) || openclawHostDetected;
+  // The backend `get_openclaw_status` checks whether the OpenClaw binary
+  // actually exists. `openclawHostDetected` only indicates residual MCP
+  // config entries, which can linger after uninstall. Prefer the
+  // authoritative backend status; fall back to host detection only when the
+  // backend hasn't responded yet (status is null).
+  const isInstalled = status ? status.installed : openclawHostDetected;
   const currentVersion = status?.version ?? null;
   const hasUpdate = currentVersion && latestVersion ? isNewerVersion(currentVersion, latestVersion) : false;
 
@@ -1297,11 +1420,22 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
               <motion.div
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="mt-4 p-4 rounded-lg bg-teal-500/10 border border-teal-500/20"
+                className={cn(
+                  'mt-4 p-4 rounded-lg',
+                  actionInProgress
+                    ? 'bg-sky-500/10 border border-sky-500/20'
+                    : 'bg-teal-500/10 border border-teal-500/20',
+                )}
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <Check className="w-4 h-4 text-teal-400 flex-shrink-0" />
-                  <p className="text-sm font-medium text-teal-400">{t.operationComplete}</p>
+                  {actionInProgress ? (
+                    <Loader2 className="w-4 h-4 text-sky-400 flex-shrink-0 animate-spin" />
+                  ) : (
+                    <Check className="w-4 h-4 text-teal-400 flex-shrink-0" />
+                  )}
+                  <p className={cn('text-sm font-medium', actionInProgress ? 'text-sky-400' : 'text-teal-400')}>
+                    {actionInProgress ? tr('等待审批中...', 'Waiting for approval...') : t.operationComplete}
+                  </p>
                 </div>
                 <p className="text-xs text-white/65">{actionMessage}</p>
               </motion.div>
@@ -1356,71 +1490,6 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
               >
                 {tr('清空本次记录', 'Clear this run log')}
               </button>
-            </div>
-
-            <div className="mt-2.5 grid gap-2.5 lg:grid-cols-1">
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <p className="text-sm font-medium text-white">{tr('通知渠道', 'Notification channels')}</p>
-                <p className="mt-1 text-xs text-white/45">
-                  {tr('填入 token 后会自动写入 OpenClaw 渠道配置目录。', 'After filling the token, configuration will be written to OpenClaw channel directory.')}
-                </p>
-                <div className="mt-2.5 space-y-2">
-                  {([
-                    { label: tr('国际', 'International'), ids: ['telegram', 'slack', 'discord'] as const },
-                    { label: tr('国内', 'China'), ids: ['feishu', 'wework', 'dingtalk'] as const },
-                    { label: tr('通用', 'Universal'), ids: ['email', 'webhook', 'ntfy'] as const },
-                  ] as const).map((group) => {
-                    const channels = getChannelOptions().filter((c) => (group.ids as readonly string[]).includes(c.id));
-                    if (channels.length === 0) return null;
-                    return (
-                      <div key={group.label}>
-                        <p className="text-[10px] uppercase tracking-wider text-white/35 mb-1">{group.label}</p>
-                        <div className="grid gap-1.5 sm:grid-cols-3">
-                          {channels.map((channel) => (
-                            <button
-                              key={channel.id}
-                              type="button"
-                              onClick={() => setSelectedChannelId(channel.id)}
-                              className={cn(
-                                'rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
-                                selectedChannelId === channel.id
-                                  ? 'border-teal-300/40 bg-teal-400/15 text-teal-100'
-                                  : 'border-white/15 bg-white/5 text-white/70 hover:bg-white/10'
-                              )}
-                            >
-                              {channel.name}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="mt-2.5 space-y-2">
-                  <label className="block text-xs text-white/60">{selectedChannel.tokenLabel}</label>
-                  <input
-                    value={channelToken}
-                    onChange={(event) => setChannelToken(event.target.value)}
-                    placeholder={selectedChannel.tokenPlaceholder}
-                    className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-teal-300/45"
-                  />
-                  <ol className="list-decimal space-y-0.5 pl-5 text-[11px] text-white/55">
-                    {selectedChannel.setupGuide.map((line) => (
-                      <li key={line}>{line}</li>
-                    ))}
-                  </ol>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void openExternalUrl(selectedChannel.docsUrl);
-                    }}
-                    className="inline-flex items-center gap-1 text-xs text-sky-300 hover:text-sky-200"
-                  >
-                    {tr('查看官方教程', 'Open official guide')}
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
             </div>
 
             <div className="mt-3.5 flex flex-wrap items-center gap-2.5">
@@ -1535,6 +1604,71 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
                 ) : null}
               </motion.div>
             ) : null}
+
+            <div className="mt-4 grid gap-2.5 lg:grid-cols-1">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <p className="text-sm font-medium text-white">{tr('通知渠道', 'Notification channels')}</p>
+                <p className="mt-1 text-xs text-white/45">
+                  {tr('填入 token 后会自动写入 OpenClaw 渠道配置目录。', 'After filling the token, configuration will be written to OpenClaw channel directory.')}
+                </p>
+                <div className="mt-2.5 space-y-2">
+                  {([
+                    { label: tr('国际', 'International'), ids: ['telegram', 'slack', 'discord'] as const },
+                    { label: tr('国内', 'China'), ids: ['feishu', 'wework', 'dingtalk'] as const },
+                    { label: tr('通用', 'Universal'), ids: ['email', 'webhook', 'ntfy'] as const },
+                  ] as const).map((group) => {
+                    const channels = getChannelOptions().filter((c) => (group.ids as readonly string[]).includes(c.id));
+                    if (channels.length === 0) return null;
+                    return (
+                      <div key={group.label}>
+                        <p className="text-[10px] uppercase tracking-wider text-white/35 mb-1">{group.label}</p>
+                        <div className="grid gap-1.5 sm:grid-cols-3">
+                          {channels.map((channel) => (
+                            <button
+                              key={channel.id}
+                              type="button"
+                              onClick={() => setSelectedChannelId(channel.id)}
+                              className={cn(
+                                'rounded-lg border px-2.5 py-1.5 text-xs transition-colors',
+                                selectedChannelId === channel.id
+                                  ? 'border-teal-300/40 bg-teal-400/15 text-teal-100'
+                                  : 'border-white/15 bg-white/5 text-white/70 hover:bg-white/10'
+                              )}
+                            >
+                              {channel.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-2.5 space-y-2">
+                  <label className="block text-xs text-white/60">{selectedChannel.tokenLabel}</label>
+                  <input
+                    value={channelToken}
+                    onChange={(event) => setChannelToken(event.target.value)}
+                    placeholder={selectedChannel.tokenPlaceholder}
+                    className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-teal-300/45"
+                  />
+                  <ol className="list-decimal space-y-0.5 pl-5 text-[11px] text-white/55">
+                    {selectedChannel.setupGuide.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ol>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void openExternalUrl(selectedChannel.docsUrl);
+                    }}
+                    className="inline-flex items-center gap-1 text-xs text-sky-300 hover:text-sky-200"
+                  >
+                    {tr('查看官方教程', 'Open official guide')}
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </GlassmorphicCard>
 

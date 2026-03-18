@@ -196,18 +196,19 @@ static TEST_LICENSE_SECRET_STORE: LazyLock<Mutex<HashMap<String, String>>> =
 
 #[cfg(test)]
 fn store_license_secret(key_id: &str, value: &str) -> Result<(), String> {
-    TEST_LICENSE_SECRET_STORE
+    let mut guard = TEST_LICENSE_SECRET_STORE
         .lock()
-        .map_err(|error| format!("License secret store lock error: {error}"))?
-        .insert(key_id.to_string(), value.to_string());
+        .unwrap_or_else(|e| e.into_inner());
+    guard.insert(key_id.to_string(), value.to_string());
     Ok(())
 }
 
 #[cfg(test)]
 fn load_license_secret(key_id: &str) -> Result<String, String> {
-    TEST_LICENSE_SECRET_STORE
+    let guard = TEST_LICENSE_SECRET_STORE
         .lock()
-        .map_err(|error| format!("License secret store lock error: {error}"))?
+        .unwrap_or_else(|e| e.into_inner());
+    guard
         .get(key_id)
         .cloned()
         .ok_or_else(|| "License secret not found".to_string())
@@ -416,12 +417,35 @@ fn normalize_license_data(data: LicenseData, now: DateTime<Utc>) -> LicenseData 
             let Some(trial_start) = data.trial_start.as_ref() else {
                 return downgrade_to_free(data.activated_at);
             };
-            let Some(anchor) = trial_anchor.as_ref() else {
-                return downgrade_to_free(data.activated_at);
+
+            // Keychain anchor validation — if keychain is inaccessible, try to
+            // recover rather than permanently destroying the trial.
+            let anchor_ok = match trial_anchor.as_ref() {
+                Some(anchor) => anchor == trial_start,
+                None => {
+                    // Keychain read failed. If trial_start parses as a valid
+                    // timestamp within the expected range, trust the file and
+                    // attempt to re-create the keychain entry for next time.
+                    if let Ok(start) = trial_start.parse::<DateTime<Utc>>() {
+                        let earliest_plausible =
+                            now - Duration::days(TRIAL_DURATION_DAYS + 30);
+                        if start > earliest_plausible && start <= now {
+                            // Best-effort keychain recovery
+                            let _ = store_license_secret(TRIAL_LOCK_KEY_ID, trial_start);
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                }
             };
-            if anchor != trial_start {
+
+            if !anchor_ok {
                 return downgrade_to_free(data.activated_at);
             }
+
             let Ok(start) = trial_start.parse::<DateTime<Utc>>() else {
                 return downgrade_to_free(data.activated_at);
             };
@@ -573,12 +597,12 @@ mod tests {
     fn reset_trial_lock() {
         TEST_LICENSE_SECRET_STORE
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .remove(TRIAL_LOCK_KEY_ID);
     }
 
     fn with_trial_lock_guard<R>(f: impl FnOnce() -> R) -> R {
-        let _guard = TEST_TRIAL_LOCK_SERIAL.lock().unwrap();
+        let _guard = TEST_TRIAL_LOCK_SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         reset_trial_lock();
         let result = f();
         reset_trial_lock();
@@ -692,7 +716,7 @@ mod tests {
     }
 
     #[test]
-    fn normalize_license_data_rejects_trial_without_secret_lock() {
+    fn normalize_license_data_recovers_trial_when_keychain_missing_but_plausible() {
         with_trial_lock_guard(|| {
             let data = LicenseData {
                 key: None,
@@ -701,6 +725,31 @@ mod tests {
                 activated_at: None,
                 expires_at: None,
                 trial_start: Some("2026-03-11T00:00:00Z".to_string()),
+            };
+
+            let normalized = normalize_license_data(
+                data,
+                DateTime::parse_from_rfc3339("2026-03-12T00:00:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc),
+            );
+            // With keychain recovery, a plausible trial_start is trusted
+            assert_eq!(normalized.plan, "trial");
+            assert_eq!(normalized.status, "active");
+        });
+    }
+
+    #[test]
+    fn normalize_license_data_rejects_trial_with_implausible_start() {
+        with_trial_lock_guard(|| {
+            let data = LicenseData {
+                key: None,
+                plan: "trial".to_string(),
+                status: "active".to_string(),
+                activated_at: None,
+                expires_at: None,
+                // trial_start far in the future — implausible
+                trial_start: Some("2099-01-01T00:00:00Z".to_string()),
             };
 
             let normalized = normalize_license_data(

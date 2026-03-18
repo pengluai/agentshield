@@ -570,10 +570,13 @@
 
     <script src="./app.js"></script>
     <script>
-    // Intercept all macOS download links to show install guide first
+    // Intercept macOS download links to show install guide first,
+    // but NOT the download links inside the modal itself.
     document.addEventListener('click', function(e) {
       var link = e.target.closest('a[href="/download/macos"], a[href*="/download/mac"]');
       if (!link) return;
+      // Don't intercept the actual download links inside the guide modal
+      if (link.closest('#macGuideModal')) return;
       e.preventDefault();
       var modal = document.getElementById('macGuideModal');
       modal.style.display = 'flex';

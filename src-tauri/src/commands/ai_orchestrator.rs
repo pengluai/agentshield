@@ -510,7 +510,10 @@ pub async fn execute_install_step(
             return Ok(StepResult {
                 success: false,
                 step_id,
-                message: "14 天试用已结束，免费版仅支持手动处理".to_string(),
+                message: format!(
+                    "当前许可证状态（{}/{}）不支持一键处理。请前往「升级 Pro」激活许可证。",
+                    info.plan, info.status
+                ),
                 output: None,
                 error: Some(
                     "该步骤为一键自动化能力。免费版请按官方文档手动安装/更新/卸载，或升级完整版继续一键处理。"
