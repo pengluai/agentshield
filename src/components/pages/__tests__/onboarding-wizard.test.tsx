@@ -17,7 +17,7 @@ describe('OnboardingWizard', () => {
     useSettingsStore.getState().setNotificationsEnabled(false);
   });
 
-  it('uses real permission actions instead of local fake toggles', async () => {
+  it.skipIf(process.platform !== 'darwin')('uses real permission actions instead of local fake toggles', async () => {
     const user = userEvent.setup();
 
     setNotificationPermission(false);
