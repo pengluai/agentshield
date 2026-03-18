@@ -529,6 +529,55 @@
       </a>
     </div>
 
+    <!-- macOS install guide modal -->
+    <div id="macGuideModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.75);align-items:center;justify-content:center">
+      <div style="background:#141420;border:1px solid #2a2a3a;border-radius:16px;max-width:520px;width:90%;padding:28px 32px;position:relative;color:#e2e8f0">
+        <button onclick="document.getElementById('macGuideModal').style.display='none'" style="position:absolute;top:12px;right:16px;background:none;border:none;color:#888;font-size:22px;cursor:pointer">&times;</button>
+        <div class="lang-block zh">
+          <h3 style="font-size:18px;margin-bottom:16px">macOS 安装说明</h3>
+          <div style="font-size:14px;line-height:1.8;color:#ccc">
+            <p><strong>第 1 步：</strong>下载 .dmg 文件，双击打开，将 App 拖入「应用程序」文件夹</p>
+            <p style="margin-top:12px"><strong>第 2 步：</strong>首次打开如果提示"无法打开"或"已损坏"：</p>
+            <div style="background:#0a0a0f;border:1px solid #1e1e2e;border-radius:10px;padding:14px;margin:10px 0">
+              <p>① 在「应用程序」中找到 AgentShield</p>
+              <p>② <strong style="color:#34d399">右键点击</strong>（或 Control + 点击）→ 选择「打开」</p>
+              <p>③ 弹窗中点击「打开」即可</p>
+            </div>
+            <p style="font-size:12px;color:#888;margin-top:8px">* 仅首次需要此操作，之后双击即可正常打开。这是 macOS 对未签名应用的正常安全提示。</p>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:20px">
+            <a id="macDownloadLink" href="/download/macos" style="flex:1;text-align:center;padding:12px;background:#6366f1;color:#fff;border-radius:10px;font-weight:600;text-decoration:none;font-size:14px">我知道了，开始下载</a>
+          </div>
+        </div>
+        <div class="lang-block en">
+          <h3 style="font-size:18px;margin-bottom:16px">macOS Installation Guide</h3>
+          <div style="font-size:14px;line-height:1.8;color:#ccc">
+            <p><strong>Step 1:</strong> Download the .dmg file, open it, and drag the app to Applications.</p>
+            <p style="margin-top:12px"><strong>Step 2:</strong> If macOS says "can't be opened" or "is damaged":</p>
+            <div style="background:#0a0a0f;border:1px solid #1e1e2e;border-radius:10px;padding:14px;margin:10px 0">
+              <p>① Find AgentShield in Applications</p>
+              <p>② <strong style="color:#34d399">Right-click</strong> (or Control + click) → select "Open"</p>
+              <p>③ Click "Open" in the dialog</p>
+            </div>
+            <p style="font-size:12px;color:#888;margin-top:8px">* Only needed once. This is a standard macOS security prompt for unsigned apps.</p>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:20px">
+            <a id="macDownloadLinkEn" href="/download/macos" style="flex:1;text-align:center;padding:12px;background:#6366f1;color:#fff;border-radius:10px;font-weight:600;text-decoration:none;font-size:14px">Got it, start download</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="./app.js"></script>
+    <script>
+    // Intercept all macOS download links to show install guide first
+    document.addEventListener('click', function(e) {
+      var link = e.target.closest('a[href="/download/macos"], a[href*="/download/mac"]');
+      if (!link) return;
+      e.preventDefault();
+      var modal = document.getElementById('macGuideModal');
+      modal.style.display = 'flex';
+    });
+    </script>
   </body>
 </html>
