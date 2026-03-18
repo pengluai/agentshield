@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentShield - License Admin</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0f;color:#e2e8f0;min-height:100vh}
+.login-screen,.app{max-width:1100px;margin:0 auto;padding:24px}
+.login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh}
+.login-box{background:#14141f;border:1px solid #2a2a3a;border-radius:16px;padding:40px;width:380px;text-align:center}
+.login-box h1{font-size:24px;margin-bottom:8px}
+.login-box p{color:#888;font-size:14px;margin-bottom:24px}
+.login-box input{width:100%;padding:12px 16px;background:#0a0a0f;border:1px solid #2a2a3a;border-radius:10px;color:#fff;font-size:14px;margin-bottom:12px;outline:none}
+.login-box input:focus{border-color:#6366f1}
+.login-box button{width:100%;padding:12px;background:#6366f1;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer}
+.login-box button:hover{background:#5558e6}
+.login-error{color:#f87171;font-size:13px;margin-top:8px}
+
+.app{display:none}
+.app.active{display:block}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #1e1e2e}
+.header h1{font-size:22px;display:flex;align-items:center;gap:10px}
+.header h1 span{font-size:28px}
+.btn-logout{background:none;border:1px solid #333;color:#888;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px}
+
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+.stat-card{background:#14141f;border:1px solid #1e1e2e;border-radius:12px;padding:16px}
+.stat-card .label{font-size:12px;color:#888;margin-bottom:4px}
+.stat-card .value{font-size:28px;font-weight:700}
+.stat-card .value.green{color:#34d399}
+.stat-card .value.blue{color:#60a5fa}
+.stat-card .value.amber{color:#fbbf24}
+.stat-card .value.purple{color:#a78bfa}
+
+.section{background:#14141f;border:1px solid #1e1e2e;border-radius:14px;padding:20px;margin-bottom:20px}
+.section h2{font-size:16px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+
+.gen-form{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-group label{font-size:12px;color:#888}
+.form-group select,.form-group input{padding:10px 14px;background:#0a0a0f;border:1px solid #2a2a3a;border-radius:8px;color:#fff;font-size:14px;outline:none}
+.form-group select:focus,.form-group input:focus{border-color:#6366f1}
+.btn-gen{padding:10px 20px;background:#10b981;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+.btn-gen:hover{background:#059669}
+.btn-gen:disabled{opacity:0.5;cursor:wait}
+
+.result-box{margin-top:16px;background:#0a0a0f;border:1px solid #1e1e2e;border-radius:10px;padding:16px;display:none}
+.result-box.show{display:block}
+.result-box h3{font-size:14px;color:#34d399;margin-bottom:10px}
+.code-list{list-style:none}
+.code-list li{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #1a1a2a;font-family:'SF Mono',monospace;font-size:12px}
+.code-list li:last-child{border-bottom:none}
+.code-list li .code{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:500px;color:#a5b4fc}
+.code-list li .meta{color:#888;font-size:11px;margin-left:12px;white-space:nowrap}
+.btn-copy{background:#1e1e2e;border:1px solid #333;color:#ccc;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px;margin-left:8px}
+.btn-copy:hover{background:#2a2a3a}
+.btn-copy-all{margin-top:10px;padding:8px 16px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer}
+
+.license-table{width:100%;border-collapse:collapse;font-size:13px}
+.license-table th{text-align:left;padding:10px 12px;color:#888;font-weight:500;border-bottom:1px solid #1e1e2e;font-size:12px}
+.license-table td{padding:10px 12px;border-bottom:1px solid #111}
+.badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600}
+.badge.active{background:#10b98122;color:#34d399}
+.badge.revoked{background:#ef444422;color:#f87171}
+.badge.expired{background:#f59e0b22;color:#fbbf24}
+.badge.monthly{background:#3b82f622;color:#60a5fa}
+.badge.yearly{background:#8b5cf622;color:#a78bfa}
+.badge.lifetime{background:#10b98122;color:#34d399}
+.badge.creem{background:#6366f122;color:#a5b4fc}
+.badge.manual{background:#f59e0b22;color:#fbbf24}
+.btn-revoke{background:#ef4444;color:#fff;border:none;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px}
+.btn-revoke:hover{background:#dc2626}
+.btn-reissue{background:#3b82f6;color:#fff;border:none;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px;margin-right:4px}
+.empty-msg{text-align:center;color:#555;padding:30px;font-size:14px}
+.filter-row{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.filter-btn{padding:6px 12px;background:#0a0a0f;border:1px solid #2a2a3a;border-radius:8px;color:#888;cursor:pointer;font-size:12px}
+.filter-btn.active{border-color:#6366f1;color:#a5b4fc;background:#6366f115}
+.loading{text-align:center;color:#555;padding:20px}
+</style>
+</head>
+<body>
+
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <h1>AgentShield</h1>
+    <p>License Admin Panel</p>
+    <input type="text" id="loginUser" placeholder="Username" value="admin">
+    <input type="password" id="loginPass" placeholder="Password" autofocus>
+    <button onclick="doLogin()">Login</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<div class="app" id="app">
+  <div class="header">
+    <h1><span>🛡️</span> AgentShield License Admin</h1>
+    <button class="btn-logout" onclick="doLogout()">Logout</button>
+  </div>
+
+  <div class="stats-row" id="statsRow">
+    <div class="stat-card"><div class="label">Total Licenses</div><div class="value blue" id="statTotal">-</div></div>
+    <div class="stat-card"><div class="label">Active</div><div class="value green" id="statActive">-</div></div>
+    <div class="stat-card"><div class="label">From Creem</div><div class="value purple" id="statCreem">-</div></div>
+    <div class="stat-card"><div class="label">Manual Generated</div><div class="value amber" id="statManual">-</div></div>
+  </div>
+
+  <div class="section">
+    <h2>Generate Activation Codes</h2>
+    <div class="gen-form">
+      <div class="form-group">
+        <label>Type</label>
+        <select id="genCycle">
+          <option value="lifetime">Lifetime (forever)</option>
+          <option value="yearly">Yearly (365 days)</option>
+          <option value="monthly">Monthly (30 days)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Count</label>
+        <input type="number" id="genCount" value="5" min="1" max="100" style="width:80px">
+      </div>
+      <div class="form-group">
+        <label>Label</label>
+        <input type="text" id="genLabel" placeholder="e.g. blogger-promo" style="width:180px">
+      </div>
+      <button class="btn-gen" id="btnGen" onclick="doGenerate()">Generate</button>
+    </div>
+    <div class="result-box" id="resultBox">
+      <h3 id="resultTitle"></h3>
+      <ul class="code-list" id="codeList"></ul>
+      <button class="btn-copy-all" onclick="copyAllCodes()">Copy All Codes</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>All Licenses</h2>
+    <div class="filter-row">
+      <button class="filter-btn active" onclick="filterLicenses('all',this)">All</button>
+      <button class="filter-btn" onclick="filterLicenses('active',this)">Active</button>
+      <button class="filter-btn" onclick="filterLicenses('revoked',this)">Revoked</button>
+      <button class="filter-btn" onclick="filterLicenses('manual',this)">Manual</button>
+      <button class="filter-btn" onclick="filterLicenses('creem',this)">Creem</button>
+    </div>
+    <div id="licenseTableWrap"><div class="loading">Loading...</div></div>
+  </div>
+</div>
+
+<script>
+const API = location.origin;
+let authHeader = '';
+let allLicenses = [];
+let generatedCodes = [];
+
+function doLogin() {
+  const user = document.getElementById('loginUser').value;
+  const pass = document.getElementById('loginPass').value;
+  authHeader = 'Basic ' + btoa(user + ':' + pass);
+  fetch(API + '/admin/licenses/stats', { headers: { Authorization: authHeader } })
+    .then(r => { if (!r.ok) throw new Error('fail'); return r.json(); })
+    .then(d => {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('app').classList.add('active');
+      renderStats(d);
+      loadLicenses();
+    })
+    .catch(() => {
+      document.getElementById('loginError').textContent = 'Wrong password';
+    });
+}
+
+document.getElementById('loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+function doLogout() {
+  authHeader = '';
+  document.getElementById('app').classList.remove('active');
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginPass').value = '';
+}
+
+function renderStats(d) {
+  document.getElementById('statTotal').textContent = d.total;
+  document.getElementById('statActive').textContent = d.by_status?.active ?? 0;
+  document.getElementById('statCreem').textContent = d.by_source?.creem ?? 0;
+  document.getElementById('statManual').textContent = d.by_source?.manual ?? 0;
+}
+
+function loadLicenses() {
+  fetch(API + '/admin/licenses', { headers: { Authorization: authHeader } })
+    .then(r => r.json())
+    .then(d => {
+      allLicenses = (d.items || []).reverse();
+      renderLicenses(allLicenses);
+    });
+}
+
+function filterLicenses(filter, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  let filtered = allLicenses;
+  if (filter === 'active') filtered = allLicenses.filter(l => l.status === 'active' && (!l.expires_at || new Date(l.expires_at) > new Date()));
+  else if (filter === 'revoked') filtered = allLicenses.filter(l => l.status === 'revoked');
+  else if (filter === 'manual') filtered = allLicenses.filter(l => !l.provider_order_id);
+  else if (filter === 'creem') filtered = allLicenses.filter(l => !!l.provider_order_id);
+  renderLicenses(filtered);
+}
+
+function renderLicenses(list) {
+  if (!list.length) {
+    document.getElementById('licenseTableWrap').innerHTML = '<div class="empty-msg">No licenses found</div>';
+    return;
+  }
+  let html = '<table class="license-table"><thead><tr><th>License ID</th><th>Status</th><th>Type</th><th>Source</th><th>Email</th><th>Issued</th><th>Expires</th><th>Actions</th></tr></thead><tbody>';
+  for (const l of list) {
+    const isExpired = l.expires_at && new Date(l.expires_at) < new Date() && l.status !== 'revoked';
+    const statusClass = l.status === 'revoked' ? 'revoked' : isExpired ? 'expired' : 'active';
+    const statusText = l.status === 'revoked' ? 'Revoked' : isExpired ? 'Expired' : 'Active';
+    const source = l.provider_order_id ? 'creem' : 'manual';
+    const label = (l.notes || '').replace('manual:', '');
+    const email = l.customer_email || (label || '-');
+    const issued = l.issued_at ? new Date(l.issued_at).toLocaleDateString() : '-';
+    const expires = l.expires_at ? new Date(l.expires_at).toLocaleDateString() : 'Never';
+    html += '<tr>';
+    html += '<td style="font-family:monospace;font-size:11px;color:#888">' + esc(l.license_id) + '</td>';
+    html += '<td><span class="badge ' + statusClass + '">' + statusText + '</span></td>';
+    html += '<td><span class="badge ' + l.billing_cycle + '">' + l.billing_cycle + '</span></td>';
+    html += '<td><span class="badge ' + source + '">' + source + '</span></td>';
+    html += '<td style="font-size:12px">' + esc(email) + '</td>';
+    html += '<td style="font-size:12px;color:#888">' + issued + '</td>';
+    html += '<td style="font-size:12px;color:#888">' + expires + '</td>';
+    html += '<td>';
+    if (l.status === 'active') {
+      html += '<button class="btn-reissue" onclick="reissueLicense(\'' + l.license_id + '\')">Reissue</button>';
+      html += '<button class="btn-revoke" onclick="revokeLicense(\'' + l.license_id + '\')">Revoke</button>';
+    }
+    html += '</td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById('licenseTableWrap').innerHTML = html;
+}
+
+function doGenerate() {
+  const cycle = document.getElementById('genCycle').value;
+  const count = parseInt(document.getElementById('genCount').value) || 1;
+  const label = document.getElementById('genLabel').value || 'manual';
+  const btn = document.getElementById('btnGen');
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  fetch(API + '/admin/licenses/generate', {
+    method: 'POST',
+    headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ count, billing_cycle: cycle, label })
+  })
+    .then(r => r.json())
+    .then(d => {
+      btn.disabled = false;
+      btn.textContent = 'Generate';
+      if (!d.ok) { alert(d.error || 'Failed'); return; }
+      generatedCodes = d.codes;
+      const box = document.getElementById('resultBox');
+      box.classList.add('show');
+      document.getElementById('resultTitle').textContent = 'Generated ' + d.generated + ' ' + cycle + ' codes:';
+      const ul = document.getElementById('codeList');
+      ul.innerHTML = '';
+      for (const c of d.codes) {
+        const li = document.createElement('li');
+        li.innerHTML = '<span class="code">' + esc(c.activation_code) + '</span>'
+          + '<span class="meta">' + c.billing_cycle + (c.expires_at ? ' | exp ' + new Date(c.expires_at).toLocaleDateString() : ' | never expires') + '</span>'
+          + '<button class="btn-copy" onclick="copyOne(this,\'' + esc(c.activation_code) + '\')">Copy</button>';
+        ul.appendChild(li);
+      }
+      // Refresh stats and list
+      fetch(API + '/admin/licenses/stats', { headers: { Authorization: authHeader } })
+        .then(r => r.json()).then(renderStats);
+      loadLicenses();
+    })
+    .catch(e => { btn.disabled = false; btn.textContent = 'Generate'; alert('Error: ' + e.message); });
+}
+
+function copyOne(btn, code) {
+  navigator.clipboard.writeText(code);
+  btn.textContent = 'Copied!';
+  setTimeout(() => btn.textContent = 'Copy', 1500);
+}
+
+function copyAllCodes() {
+  const text = generatedCodes.map(c => c.activation_code).join('\n');
+  navigator.clipboard.writeText(text);
+  alert('All ' + generatedCodes.length + ' codes copied to clipboard!');
+}
+
+function revokeLicense(id) {
+  if (!confirm('Revoke license ' + id + '?')) return;
+  fetch(API + '/admin/licenses/' + id + '/revoke', {
+    method: 'POST',
+    headers: { Authorization: authHeader }
+  }).then(r => r.json()).then(d => {
+    if (d.ok) { loadLicenses(); fetch(API + '/admin/licenses/stats', { headers: { Authorization: authHeader } }).then(r => r.json()).then(renderStats); }
+    else alert(d.error || 'Failed');
+  });
+}
+
+function reissueLicense(id) {
+  if (!confirm('Reissue license ' + id + '? This will revoke the old code and create a new one.')) return;
+  fetch(API + '/admin/licenses/' + id + '/reissue', {
+    method: 'POST',
+    headers: { Authorization: authHeader }
+  }).then(r => r.json()).then(d => {
+    if (d.ok) {
+      alert('New activation code:\n\n' + d.activation_code + '\n\nCopied to clipboard!');
+      navigator.clipboard.writeText(d.activation_code);
+      loadLicenses();
+    }
+    else alert(d.error || 'Failed');
+  });
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+</script>
+</body>
+</html>

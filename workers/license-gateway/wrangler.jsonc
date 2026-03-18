@@ -18,6 +18,13 @@
       "new_sqlite_classes": ["LicenseGatewayDurableObject"]
     }
   ],
+  "rules": [
+    {
+      "type": "Text",
+      "globs": ["**/*.html"],
+      "fallthrough": false
+    }
+  ],
   "vars": {
     "LICENSE_GATEWAY_ADMIN_USERNAME": "admin",
     "CREEM_STRICT_BILLING_RESOLUTION": "1",

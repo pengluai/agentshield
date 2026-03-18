@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { Buffer } from 'node:buffer';
+import ADMIN_HTML from '../site/admin.html';
 
 const STATE_KEY = 'license-gateway-state';
 const SINGLETON_NAME = 'singleton';
@@ -69,6 +70,10 @@ export class LicenseGatewayDurableObject {
 
     if (request.method === 'OPTIONS') {
       return this.json(204, {});
+    }
+
+    if (request.method === 'GET' && (pathname === '/admin' || pathname === '/admin/')) {
+      return this.serveAdminPage();
     }
 
     if (request.method === 'GET' && pathname === '/health') {
@@ -1402,6 +1407,13 @@ export class LicenseGatewayDurableObject {
       .replaceAll('>', '&gt;')
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#39;');
+  }
+
+  serveAdminPage() {
+    return new Response(ADMIN_HTML, {
+      status: 200,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
   }
 
   json(status, payload) {
