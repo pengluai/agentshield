@@ -573,7 +573,7 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
     };
     const pollId = window.setInterval(() => {
       void loadData();
-    }, 20000);
+    }, 60000);
 
     window.addEventListener('focus', handleWindowFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
