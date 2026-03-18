@@ -1375,11 +1375,21 @@ fn build_remote_auth_server_entry(remote_url: &str, auth_headers: &[String]) -> 
     Value::Object(entry)
 }
 
-fn write_server_to_config_path(
+pub(crate) fn write_server_to_config_path(
     server_id: &str,
     config_path: &Path,
     server_entry: Value,
 ) -> Result<(), String> {
+    // Backup existing config before any modification
+    if config_path.exists() {
+        let ext = config_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("cfg");
+        let backup = config_path.with_extension(format!("{ext}.bak"));
+        let _ = fs::copy(config_path, &backup);
+    }
+
     if is_continue_mcp_server_file(config_path) {
         let mut value = server_entry;
         if value.get("name").is_none() {
@@ -1506,6 +1516,16 @@ pub(crate) fn remove_server_from_config_path(
 ) -> Result<bool, String> {
     if !config_path.exists() {
         return Ok(false);
+    }
+
+    // Backup existing config before any modification
+    {
+        let ext = config_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("cfg");
+        let backup = config_path.with_extension(format!("{ext}.bak"));
+        let _ = fs::copy(config_path, &backup);
     }
 
     if is_continue_mcp_server_file(config_path) {

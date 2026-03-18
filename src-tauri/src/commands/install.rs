@@ -490,23 +490,94 @@ pub async fn install_openclaw_cmd(approval_ticket: Option<String>) -> Result<Str
     }
 }
 
-/// Remove "openclaw" key from a JSON MCP config file's mcpServers object.
+/// Remove "openclaw" (and variants) from an MCP config file.
+/// Handles TOML, YAML, and JSON formats based on file extension.
 /// Returns the config file path if it was modified.
 fn clean_openclaw_from_mcp_config(config_path: &std::path::Path) -> Option<String> {
     if !config_path.exists() {
         return None;
     }
     let content = std::fs::read_to_string(config_path).ok()?;
-    let mut json: serde_json::Value = serde_json::from_str(&content).ok()?;
 
-    // Try both mcpServers and mcp_servers
+    let is_toml = config_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("toml"))
+        .unwrap_or(false);
+
+    let is_yaml = config_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| matches!(e.to_ascii_lowercase().as_str(), "yaml" | "yml"))
+        .unwrap_or(false);
+
+    // Backup before modification
+    let backup = config_path.with_extension(format!(
+        "{}.bak",
+        config_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("cfg")
+    ));
+    let _ = std::fs::copy(config_path, &backup);
+
+    if is_toml {
+        let mut doc: toml::Value = content.parse().ok()?;
+        let mut modified = false;
+        if let Some(table) = doc
+            .get_mut("mcp_servers")
+            .and_then(|v| v.as_table_mut())
+        {
+            let to_remove: Vec<String> = table
+                .keys()
+                .filter(|k| k.to_lowercase().contains("openclaw"))
+                .cloned()
+                .collect();
+            for k in &to_remove {
+                table.remove(k);
+                modified = true;
+            }
+        }
+        if modified {
+            let pretty = toml::to_string_pretty(&doc).ok()?;
+            std::fs::write(config_path, pretty).ok()?;
+            return Some(config_path.to_string_lossy().to_string());
+        }
+        return None;
+    }
+
+    if is_yaml {
+        let yaml: serde_yaml::Value = serde_yaml::from_str(&content).ok()?;
+        let mut json: serde_json::Value = serde_json::to_value(yaml).ok()?;
+        let modified = remove_openclaw_keys_from_json(&mut json);
+        if modified {
+            let yaml_out: serde_yaml::Value = serde_json::from_value(json).ok()?;
+            let pretty = serde_yaml::to_string(&yaml_out).ok()?;
+            std::fs::write(config_path, pretty).ok()?;
+            return Some(config_path.to_string_lossy().to_string());
+        }
+        return None;
+    }
+
+    // Default: JSON
+    let mut json: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let modified = remove_openclaw_keys_from_json(&mut json);
+    if modified {
+        let pretty = serde_json::to_string_pretty(&json).ok()?;
+        std::fs::write(config_path, pretty).ok()?;
+        return Some(config_path.to_string_lossy().to_string());
+    }
+    None
+}
+
+/// Remove all openclaw-related keys from JSON mcpServers / mcp_servers objects.
+fn remove_openclaw_keys_from_json(json: &mut serde_json::Value) -> bool {
     let mut modified = false;
     for key in &["mcpServers", "mcp_servers"] {
         if let Some(servers) = json.get_mut(*key).and_then(|v| v.as_object_mut()) {
             if servers.remove("openclaw").is_some() {
                 modified = true;
             }
-            // Also remove openclaw-mcp, openclaw-gateway, etc.
             let to_remove: Vec<String> = servers
                 .keys()
                 .filter(|k| k.to_lowercase().contains("openclaw"))
@@ -518,15 +589,7 @@ fn clean_openclaw_from_mcp_config(config_path: &std::path::Path) -> Option<Strin
             }
         }
     }
-
-    if modified {
-        if let Ok(pretty) = serde_json::to_string_pretty(&json) {
-            let _ = std::fs::write(config_path, pretty);
-        }
-        Some(config_path.to_string_lossy().to_string())
-    } else {
-        None
-    }
+    modified
 }
 
 /// Dynamically find all MCP config files on the system (cross-platform).

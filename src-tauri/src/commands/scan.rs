@@ -725,8 +725,9 @@ fn default_cli_search_dirs() -> Vec<PathBuf> {
             dirs.push(PathBuf::from(appdata).join("npm"));
         }
         if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-            dirs.push(PathBuf::from(local_app_data).join("Microsoft/WindowsApps"));
-            dirs.push(PathBuf::from(local_app_data).join("Programs"));
+            let local_app_path = PathBuf::from(local_app_data);
+            dirs.push(local_app_path.join("Microsoft/WindowsApps"));
+            dirs.push(local_app_path.join("Programs"));
         }
     }
 

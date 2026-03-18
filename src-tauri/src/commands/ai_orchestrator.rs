@@ -5,7 +5,7 @@ use std::process::{Command, Output};
 use crate::commands::license;
 use crate::commands::platform::{npm_command, openclaw_command, preferred_openclaw_config_dir};
 use crate::commands::runtime_guard;
-use crate::commands::store::get_mcp_config_for_platform;
+use crate::commands::store::{get_mcp_config_for_platform, write_server_to_config_path};
 
 const CHANNEL_KEYRING_SERVICE: &str = "com.agentshield.openclaw.channels";
 
@@ -883,35 +883,36 @@ fn get_mcp_config_path(platform: &str) -> Option<std::path::PathBuf> {
     get_mcp_config_for_platform(platform)
 }
 
-/// Inject OpenClaw MCP server config into a platform's MCP config file
+/// Inject OpenClaw MCP server config into a platform's MCP config file.
+///
+/// Delegates to the format-aware `write_server_to_config_path` from store.rs
+/// so that TOML files are written as TOML, YAML as YAML, and JSON as JSON.
+/// A backup of the original file is created before any modification.
 fn inject_openclaw_mcp(config_path: &std::path::Path) -> Result<(), String> {
-    // Read existing config or create new
-    let mut config: serde_json::Value = if config_path.exists() {
-        let content = std::fs::read_to_string(config_path).map_err(|e| e.to_string())?;
-        serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
-    } else {
-        // Create parent dirs
-        if let Some(parent) = config_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
-        serde_json::json!({})
-    };
-
-    // Ensure mcpServers object exists
-    if config.get("mcpServers").is_none() {
-        config["mcpServers"] = serde_json::json!({});
+    // Create parent dirs if necessary
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
 
-    // Add openclaw server entry
-    config["mcpServers"]["openclaw"] = serde_json::json!({
+    // Backup the original file before modification
+    if config_path.exists() {
+        let backup = config_path.with_extension(format!(
+            "{}.bak",
+            config_path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("cfg")
+        ));
+        let _ = std::fs::copy(config_path, &backup);
+    }
+
+    let server_entry = serde_json::json!({
         "command": "npx",
         "args": ["openclaw-mcp"],
         "env": {}
     });
 
-    // Write back
-    let json_str = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
-    std::fs::write(config_path, json_str).map_err(|e| e.to_string())?;
-
-    Ok(())
+    // write_server_to_config_path automatically detects format by extension
+    // (.toml → TOML, .yaml/.yml → YAML, everything else → JSON)
+    write_server_to_config_path("openclaw", config_path, server_entry)
 }
