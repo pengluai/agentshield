@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AgentShield - License Admin</title>
+<title>AgentShield 激活码管理后台</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0f;color:#e2e8f0;min-height:100vh}
+body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;background:#0a0a0f;color:#e2e8f0;min-height:100vh}
 .login-screen,.app{max-width:1100px;margin:0 auto;padding:24px}
 .login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh}
 .login-box{background:#14141f;border:1px solid #2a2a3a;border-radius:16px;padding:40px;width:380px;text-align:center}
@@ -21,8 +21,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .app{display:none}
 .app.active{display:block}
 .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #1e1e2e}
-.header h1{font-size:22px;display:flex;align-items:center;gap:10px}
-.header h1 span{font-size:28px}
+.header h1{font-size:20px;display:flex;align-items:center;gap:10px}
+.header h1 span{font-size:26px}
 .btn-logout{background:none;border:1px solid #333;color:#888;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px}
 
 .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
@@ -85,65 +85,66 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="login-screen" id="loginScreen">
   <div class="login-box">
     <h1>AgentShield</h1>
-    <p>License Admin Panel</p>
-    <input type="text" id="loginUser" placeholder="Username" value="admin">
-    <input type="password" id="loginPass" placeholder="Password" autofocus>
-    <button onclick="doLogin()">Login</button>
+    <p>激活码管理后台</p>
+    <input type="text" id="loginUser" placeholder="用户名" value="admin">
+    <input type="password" id="loginPass" placeholder="密码" autofocus>
+    <button onclick="doLogin()">登 录</button>
     <div class="login-error" id="loginError"></div>
   </div>
 </div>
 
 <div class="app" id="app">
   <div class="header">
-    <h1><span>🛡️</span> AgentShield License Admin</h1>
-    <button class="btn-logout" onclick="doLogout()">Logout</button>
+    <h1><span>🛡️</span> AgentShield 激活码管理后台</h1>
+    <button class="btn-logout" onclick="doLogout()">退出登录</button>
   </div>
 
   <div class="stats-row" id="statsRow">
-    <div class="stat-card"><div class="label">Total Licenses</div><div class="value blue" id="statTotal">-</div></div>
-    <div class="stat-card"><div class="label">Active</div><div class="value green" id="statActive">-</div></div>
-    <div class="stat-card"><div class="label">From Creem</div><div class="value purple" id="statCreem">-</div></div>
-    <div class="stat-card"><div class="label">Manual Generated</div><div class="value amber" id="statManual">-</div></div>
+    <div class="stat-card"><div class="label">激活码总数</div><div class="value blue" id="statTotal">-</div></div>
+    <div class="stat-card"><div class="label">使用中</div><div class="value green" id="statActive">-</div></div>
+    <div class="stat-card"><div class="label">Creem 购买</div><div class="value purple" id="statCreem">-</div></div>
+    <div class="stat-card"><div class="label">手动生成</div><div class="value amber" id="statManual">-</div></div>
   </div>
 
   <div class="section">
-    <h2>Generate Activation Codes</h2>
+    <h2>批量生成激活码</h2>
     <div class="gen-form">
       <div class="form-group">
-        <label>Type</label>
+        <label>有效期</label>
         <select id="genCycle">
-          <option value="lifetime">Lifetime (forever)</option>
-          <option value="yearly">Yearly (365 days)</option>
-          <option value="monthly">Monthly (30 days)</option>
+          <option value="lifetime">终身（永久有效）</option>
+          <option value="yearly">年付（365 天）</option>
+          <option value="monthly">月付（30 天）</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Count</label>
+        <label>数量</label>
         <input type="number" id="genCount" value="5" min="1" max="100" style="width:80px">
       </div>
       <div class="form-group">
-        <label>Label</label>
-        <input type="text" id="genLabel" placeholder="e.g. blogger-promo" style="width:180px">
+        <label>用途备注</label>
+        <input type="text" id="genLabel" placeholder="如：博主推广、赠送" style="width:180px">
       </div>
-      <button class="btn-gen" id="btnGen" onclick="doGenerate()">Generate</button>
+      <button class="btn-gen" id="btnGen" onclick="doGenerate()">生成激活码</button>
     </div>
     <div class="result-box" id="resultBox">
       <h3 id="resultTitle"></h3>
       <ul class="code-list" id="codeList"></ul>
-      <button class="btn-copy-all" onclick="copyAllCodes()">Copy All Codes</button>
+      <button class="btn-copy-all" onclick="copyAllCodes()">一键复制全部激活码</button>
     </div>
   </div>
 
   <div class="section">
-    <h2>All Licenses</h2>
+    <h2>全部激活码</h2>
     <div class="filter-row">
-      <button class="filter-btn active" onclick="filterLicenses('all',this)">All</button>
-      <button class="filter-btn" onclick="filterLicenses('active',this)">Active</button>
-      <button class="filter-btn" onclick="filterLicenses('revoked',this)">Revoked</button>
-      <button class="filter-btn" onclick="filterLicenses('manual',this)">Manual</button>
-      <button class="filter-btn" onclick="filterLicenses('creem',this)">Creem</button>
+      <button class="filter-btn active" onclick="filterLicenses('all',this)">全部</button>
+      <button class="filter-btn" onclick="filterLicenses('active',this)">使用中</button>
+      <button class="filter-btn" onclick="filterLicenses('expired',this)">已过期</button>
+      <button class="filter-btn" onclick="filterLicenses('revoked',this)">已停用</button>
+      <button class="filter-btn" onclick="filterLicenses('manual',this)">手动生成</button>
+      <button class="filter-btn" onclick="filterLicenses('creem',this)">Creem 购买</button>
     </div>
-    <div id="licenseTableWrap"><div class="loading">Loading...</div></div>
+    <div id="licenseTableWrap"><div class="loading">加载中...</div></div>
   </div>
 </div>
 
@@ -152,6 +153,9 @@ const API = location.origin;
 let authHeader = '';
 let allLicenses = [];
 let generatedCodes = [];
+
+const CYCLE_LABEL = { lifetime: '终身', yearly: '年付', monthly: '月付' };
+const STATUS_LABEL = { active: '使用中', revoked: '已停用', expired: '已过期' };
 
 function doLogin() {
   const user = document.getElementById('loginUser').value;
@@ -166,7 +170,7 @@ function doLogin() {
       loadLicenses();
     })
     .catch(() => {
-      document.getElementById('loginError').textContent = 'Wrong password';
+      document.getElementById('loginError').textContent = '密码错误';
     });
 }
 
@@ -198,8 +202,10 @@ function loadLicenses() {
 function filterLicenses(filter, btn) {
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  const now = new Date();
   let filtered = allLicenses;
-  if (filter === 'active') filtered = allLicenses.filter(l => l.status === 'active' && (!l.expires_at || new Date(l.expires_at) > new Date()));
+  if (filter === 'active') filtered = allLicenses.filter(l => l.status === 'active' && (!l.expires_at || new Date(l.expires_at) > now));
+  else if (filter === 'expired') filtered = allLicenses.filter(l => l.status !== 'revoked' && l.expires_at && new Date(l.expires_at) < now);
   else if (filter === 'revoked') filtered = allLicenses.filter(l => l.status === 'revoked');
   else if (filter === 'manual') filtered = allLicenses.filter(l => !l.provider_order_id);
   else if (filter === 'creem') filtered = allLicenses.filter(l => !!l.provider_order_id);
@@ -208,31 +214,38 @@ function filterLicenses(filter, btn) {
 
 function renderLicenses(list) {
   if (!list.length) {
-    document.getElementById('licenseTableWrap').innerHTML = '<div class="empty-msg">No licenses found</div>';
+    document.getElementById('licenseTableWrap').innerHTML = '<div class="empty-msg">暂无激活码</div>';
     return;
   }
-  let html = '<table class="license-table"><thead><tr><th>License ID</th><th>Status</th><th>Type</th><th>Source</th><th>Email</th><th>Issued</th><th>Expires</th><th>Actions</th></tr></thead><tbody>';
+  const now = new Date();
+  let html = '<table class="license-table"><thead><tr><th>激活码 ID</th><th>状态</th><th>有效期</th><th>来源</th><th>用户/备注</th><th>签发日期</th><th>到期日期</th><th>操作</th></tr></thead><tbody>';
   for (const l of list) {
-    const isExpired = l.expires_at && new Date(l.expires_at) < new Date() && l.status !== 'revoked';
+    const isExpired = l.expires_at && new Date(l.expires_at) < now && l.status !== 'revoked';
     const statusClass = l.status === 'revoked' ? 'revoked' : isExpired ? 'expired' : 'active';
-    const statusText = l.status === 'revoked' ? 'Revoked' : isExpired ? 'Expired' : 'Active';
+    const statusText = l.status === 'revoked' ? '已停用' : isExpired ? '已过期' : '使用中';
     const source = l.provider_order_id ? 'creem' : 'manual';
+    const sourceText = l.provider_order_id ? 'Creem 购买' : '手动生成';
     const label = (l.notes || '').replace('manual:', '');
     const email = l.customer_email || (label || '-');
-    const issued = l.issued_at ? new Date(l.issued_at).toLocaleDateString() : '-';
-    const expires = l.expires_at ? new Date(l.expires_at).toLocaleDateString() : 'Never';
+    const cycleText = CYCLE_LABEL[l.billing_cycle] || l.billing_cycle;
+    const issued = l.issued_at ? new Date(l.issued_at).toLocaleDateString('zh-CN') : '-';
+    const expires = l.expires_at ? new Date(l.expires_at).toLocaleDateString('zh-CN') : '永久';
     html += '<tr>';
     html += '<td style="font-family:monospace;font-size:11px;color:#888">' + esc(l.license_id) + '</td>';
     html += '<td><span class="badge ' + statusClass + '">' + statusText + '</span></td>';
-    html += '<td><span class="badge ' + l.billing_cycle + '">' + l.billing_cycle + '</span></td>';
-    html += '<td><span class="badge ' + source + '">' + source + '</span></td>';
+    html += '<td><span class="badge ' + l.billing_cycle + '">' + cycleText + '</span></td>';
+    html += '<td><span class="badge ' + source + '">' + sourceText + '</span></td>';
     html += '<td style="font-size:12px">' + esc(email) + '</td>';
     html += '<td style="font-size:12px;color:#888">' + issued + '</td>';
     html += '<td style="font-size:12px;color:#888">' + expires + '</td>';
     html += '<td>';
-    if (l.status === 'active') {
-      html += '<button class="btn-reissue" onclick="reissueLicense(\'' + l.license_id + '\')">Reissue</button>';
-      html += '<button class="btn-revoke" onclick="revokeLicense(\'' + l.license_id + '\')">Revoke</button>';
+    if (l.status === 'active' && !isExpired) {
+      html += '<button class="btn-reissue" onclick="reissueLicense(\'' + l.license_id + '\')">重签</button>';
+      html += '<button class="btn-revoke" onclick="revokeLicense(\'' + l.license_id + '\')">停用</button>';
+    } else if (l.status === 'revoked') {
+      html += '<span style="color:#555;font-size:11px">已停用</span>';
+    } else {
+      html += '<span style="color:#555;font-size:11px">已过期</span>';
     }
     html += '</td>';
     html += '</tr>';
@@ -244,10 +257,10 @@ function renderLicenses(list) {
 function doGenerate() {
   const cycle = document.getElementById('genCycle').value;
   const count = parseInt(document.getElementById('genCount').value) || 1;
-  const label = document.getElementById('genLabel').value || 'manual';
+  const label = document.getElementById('genLabel').value || '手动生成';
   const btn = document.getElementById('btnGen');
   btn.disabled = true;
-  btn.textContent = 'Generating...';
+  btn.textContent = '生成中...';
   fetch(API + '/admin/licenses/generate', {
     method: 'POST',
     headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
@@ -256,64 +269,65 @@ function doGenerate() {
     .then(r => r.json())
     .then(d => {
       btn.disabled = false;
-      btn.textContent = 'Generate';
-      if (!d.ok) { alert(d.error || 'Failed'); return; }
+      btn.textContent = '生成激活码';
+      if (!d.ok) { alert(d.error || '生成失败'); return; }
       generatedCodes = d.codes;
       const box = document.getElementById('resultBox');
       box.classList.add('show');
-      document.getElementById('resultTitle').textContent = 'Generated ' + d.generated + ' ' + cycle + ' codes:';
+      const cycleText = CYCLE_LABEL[cycle] || cycle;
+      document.getElementById('resultTitle').textContent = '已生成 ' + d.generated + ' 个' + cycleText + '激活码：';
       const ul = document.getElementById('codeList');
       ul.innerHTML = '';
       for (const c of d.codes) {
         const li = document.createElement('li');
+        const expText = c.expires_at ? '到期 ' + new Date(c.expires_at).toLocaleDateString('zh-CN') : '永久有效';
         li.innerHTML = '<span class="code">' + esc(c.activation_code) + '</span>'
-          + '<span class="meta">' + c.billing_cycle + (c.expires_at ? ' | exp ' + new Date(c.expires_at).toLocaleDateString() : ' | never expires') + '</span>'
-          + '<button class="btn-copy" onclick="copyOne(this,\'' + esc(c.activation_code) + '\')">Copy</button>';
+          + '<span class="meta">' + (CYCLE_LABEL[c.billing_cycle] || c.billing_cycle) + ' | ' + expText + '</span>'
+          + '<button class="btn-copy" onclick="copyOne(this,\'' + esc(c.activation_code) + '\')">复制</button>';
         ul.appendChild(li);
       }
-      // Refresh stats and list
       fetch(API + '/admin/licenses/stats', { headers: { Authorization: authHeader } })
         .then(r => r.json()).then(renderStats);
       loadLicenses();
     })
-    .catch(e => { btn.disabled = false; btn.textContent = 'Generate'; alert('Error: ' + e.message); });
+    .catch(e => { btn.disabled = false; btn.textContent = '生成激活码'; alert('错误: ' + e.message); });
 }
 
 function copyOne(btn, code) {
   navigator.clipboard.writeText(code);
-  btn.textContent = 'Copied!';
-  setTimeout(() => btn.textContent = 'Copy', 1500);
+  btn.textContent = '已复制';
+  setTimeout(() => btn.textContent = '复制', 1500);
 }
 
 function copyAllCodes() {
   const text = generatedCodes.map(c => c.activation_code).join('\n');
   navigator.clipboard.writeText(text);
-  alert('All ' + generatedCodes.length + ' codes copied to clipboard!');
+  alert('已复制全部 ' + generatedCodes.length + ' 个激活码到剪贴板！');
 }
 
 function revokeLicense(id) {
-  if (!confirm('Revoke license ' + id + '?')) return;
+  if (!confirm('确定要停用激活码 ' + id + ' 吗？停用后用户将无法使用。')) return;
   fetch(API + '/admin/licenses/' + id + '/revoke', {
     method: 'POST',
     headers: { Authorization: authHeader }
   }).then(r => r.json()).then(d => {
     if (d.ok) { loadLicenses(); fetch(API + '/admin/licenses/stats', { headers: { Authorization: authHeader } }).then(r => r.json()).then(renderStats); }
-    else alert(d.error || 'Failed');
+    else alert(d.error || '操作失败');
   });
 }
 
 function reissueLicense(id) {
-  if (!confirm('Reissue license ' + id + '? This will revoke the old code and create a new one.')) return;
+  if (!confirm('重新签发 ' + id + ' 的激活码？旧激活码将作废，生成新的激活码。')) return;
   fetch(API + '/admin/licenses/' + id + '/reissue', {
     method: 'POST',
     headers: { Authorization: authHeader }
   }).then(r => r.json()).then(d => {
     if (d.ok) {
-      alert('New activation code:\n\n' + d.activation_code + '\n\nCopied to clipboard!');
       navigator.clipboard.writeText(d.activation_code);
+      alert('新激活码已生成并复制到剪贴板：\n\n' + d.activation_code);
       loadLicenses();
     }
-    else alert(d.error || 'Failed');
+    else alert(d.error || '操作失败');
   });
 }
 
