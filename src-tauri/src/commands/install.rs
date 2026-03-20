@@ -67,8 +67,28 @@ fn read_version_from_binary(binary: &Path) -> Option<String> {
 fn read_version_from_default_openclaw_command() -> Option<String> {
     let mut command = Command::new(openclaw_command());
     command.arg("--version");
-    let output = command_output(command).ok()?;
-    parse_version_output(&String::from_utf8_lossy(&output.stdout)).map(normalize_openclaw_version)
+    if let Ok(output) = command_output(command) {
+        if let Some(version) = parse_version_output(&String::from_utf8_lossy(&output.stdout)) {
+            return Some(normalize_openclaw_version(version));
+        }
+    }
+
+    // Fallback: run through login shell to pick up user PATH (node, npm, etc.)
+    #[cfg(target_os = "macos")]
+    {
+        for shell in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
+            let mut command = Command::new(shell);
+            command.args(["-lc", "openclaw --version 2>/dev/null"]);
+            if let Ok(output) = command_output(command) {
+                if let Some(version) =
+                    parse_version_output(&String::from_utf8_lossy(&output.stdout))
+                {
+                    return Some(normalize_openclaw_version(version));
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(target_os = "macos")]
@@ -177,6 +197,10 @@ fn config_hints_openclaw_installed(home: &Path) -> bool {
 }
 
 fn npm_reports_openclaw_installed() -> Option<String> {
+    // Guard: skip if npm is not installed to avoid spawning cmd.exe windows on Windows
+    if which::which("npm").is_err() {
+        return None;
+    }
     let mut command = Command::new(npm_command());
     command.args(["ls", "-g", "openclaw", "--depth=0", "--json"]);
     let output = command_output(command).ok()?;
@@ -349,6 +373,10 @@ pub async fn get_openclaw_skills() -> Result<Vec<OpenClawSkillInfo>, String> {
         .into_iter()
         .map(|dir| dir.join("skills"))
         .collect();
+    let canonical_skill_roots: Vec<PathBuf> = skill_dirs
+        .iter()
+        .filter_map(|root| std::fs::canonicalize(root).ok())
+        .collect();
 
     for base_dir in &skill_dirs {
         if !base_dir.is_dir() {
@@ -363,24 +391,25 @@ pub async fn get_openclaw_skills() -> Result<Vec<OpenClawSkillInfo>, String> {
                     continue;
                 }
 
-                // For symlinks, resolve the target
-                let resolved = if path.is_symlink() {
-                    std::fs::read_link(&path).unwrap_or(path.clone())
-                } else {
-                    path.clone()
-                };
-
-                // Only include directories (skills are dirs)
-                if !resolved.is_dir() && !path.is_dir() {
+                // Resolve the final path and only keep OpenClaw-owned skill roots.
+                // This prevents unrelated host skills from leaking into OpenClaw UI.
+                let resolved = std::fs::canonicalize(&path).unwrap_or(path.clone());
+                let belongs_to_openclaw = canonical_skill_roots
+                    .iter()
+                    .any(|root| resolved.starts_with(root));
+                if !belongs_to_openclaw {
                     continue;
                 }
 
-                let has_skill_md = resolved.join("SKILL.md").exists()
-                    || resolved.join("skill.md").exists()
-                    || path.join("SKILL.md").exists()
-                    || path.join("skill.md").exists();
+                // Only include directories (skills are dirs)
+                if !resolved.is_dir() {
+                    continue;
+                }
 
-                let file_count = std::fs::read_dir(&path)
+                let has_skill_md =
+                    resolved.join("SKILL.md").exists() || resolved.join("skill.md").exists();
+
+                let file_count = std::fs::read_dir(&resolved)
                     .map(|e| e.flatten().count() as u32)
                     .unwrap_or(0);
 
@@ -963,10 +992,17 @@ pub async fn update_openclaw_cmd(approval_ticket: Option<String>) -> Result<Stri
 /// Returns the latest version string, or the current installed version if check fails.
 #[tauri::command]
 pub async fn check_openclaw_latest_version() -> Result<String, String> {
-    // Try `npm view openclaw version` to get latest from registry
-    let mut view_command = Command::new(npm_command());
-    view_command.args(["view", "openclaw", "version"]);
-    let output = command_output_async(view_command).await;
+    // Guard: skip npm call if npm is not installed to avoid spawning cmd.exe windows on Windows
+    let npm_available = which::which("npm").is_ok();
+
+    let output = if npm_available {
+        // Try `npm view openclaw version` to get latest from registry
+        let mut view_command = Command::new(npm_command());
+        view_command.args(["view", "openclaw", "version"]);
+        command_output_async(view_command).await
+    } else {
+        Err("npm not installed".to_string())
+    };
 
     if let Ok(o) = output {
         if o.status.success() {
