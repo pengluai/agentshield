@@ -62,8 +62,7 @@ describe('InstalledManagement', () => {
 
     render(<InstalledManagement onBack={() => {}} />);
 
-    await user.click(await screen.findByRole('button', { name: '已安装组件' }));
-    await user.click(await screen.findByText('playwright'));
+    await user.click(await screen.findByRole('button', { name: /playwright/i }));
     await user.click(await screen.findByRole('button', { name: /\/tmp\/playwright\.json/i }));
 
     await waitFor(() => {
@@ -138,8 +137,7 @@ describe('InstalledManagement', () => {
 
     render(<InstalledManagement onBack={() => {}} />);
 
-    await user.click(await screen.findByRole('button', { name: '已安装组件' }));
-    await user.click(await screen.findByText('storyboard-manager (skill)'));
+    await user.click(await screen.findByRole('button', { name: /storyboard-manager \(skill\)/i }));
     await user.click(await screen.findByRole('button', { name: '受控启动' }));
 
     await waitFor(() => {
@@ -246,8 +244,7 @@ describe('InstalledManagement', () => {
 
     render(<InstalledManagement onBack={() => {}} />);
 
-    await user.click(await screen.findByRole('button', { name: '已安装组件' }));
-    await user.click(await screen.findByText('playwright'));
+    await user.click(await screen.findByRole('button', { name: /playwright/i }));
     await user.click(screen.getByRole('button', { name: '检查更新' }));
     expect(await screen.findByRole('button', { name: '升级到 1.1.0' })).toBeInTheDocument();
 
@@ -462,8 +459,7 @@ describe('InstalledManagement', () => {
 
     render(<InstalledManagement onBack={() => {}} />);
 
-    await user.click(await screen.findByRole('button', { name: '已安装组件' }));
-    await user.click(await screen.findByText('playwright'));
+    await user.click(await screen.findByRole('button', { name: /playwright/i }));
     expect(await screen.findByText('已拦截未知外联并隔离组件')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '清空事件' }));
@@ -567,7 +563,7 @@ describe('InstalledManagement', () => {
 
     render(<InstalledManagement onBack={() => {}} />);
 
-    await user.click(await screen.findByRole('button', { name: '查看该宿主组件' }));
+    expect(await screen.findByText('选择组件')).toBeInTheDocument();
     expect(await screen.findAllByText('playwright')).not.toHaveLength(0);
   });
 });
