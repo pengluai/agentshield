@@ -1094,6 +1094,7 @@ export function SettingsPage() {
                     <option value="deepseek">DeepSeek · {t.aiProviderDeepseek}</option>
                     <option value="gemini">Gemini · {t.aiProviderGemini}</option>
                     <option value="openai">OpenAI · {t.aiProviderOpenai}</option>
+                    <option value="minimax">MiniMax · {t.aiProviderMinimax}</option>
                     <option value="custom">{t.aiProviderCustom}</option>
                   </select>
                 </div>
@@ -1117,7 +1118,7 @@ export function SettingsPage() {
                     value={settings.aiModel}
                     onChange={(event) => settings.setAiModel(event.target.value)}
                     disabled={!aiFeatureUnlocked}
-                    placeholder={settings.aiProvider === 'gemini' ? 'gemini-2.0-flash' : settings.aiProvider === 'openai' ? 'gpt-4o-mini' : 'deepseek-chat'}
+                    placeholder={settings.aiProvider === 'gemini' ? 'gemini-2.0-flash' : settings.aiProvider === 'openai' ? 'gpt-4o-mini' : settings.aiProvider === 'minimax' ? 'MiniMax-Text-01' : 'deepseek-chat'}
                     className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-white outline-none placeholder:text-white/35 focus:border-sky-400/40 disabled:opacity-60"
                   />
                 </div>

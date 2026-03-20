@@ -41,7 +41,7 @@ interface SettingsState {
   apiKey: string;
 
   // AI Model Configuration (Pro feature)
-  aiProvider: 'deepseek' | 'gemini' | 'openai' | 'custom';
+  aiProvider: 'deepseek' | 'gemini' | 'openai' | 'minimax' | 'custom';
   aiApiKey: string;
   aiModel: string;
   aiBaseUrl: string;

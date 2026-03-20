@@ -198,7 +198,7 @@ fn config_hints_openclaw_installed(home: &Path) -> bool {
 
 fn npm_reports_openclaw_installed() -> Option<String> {
     // Guard: skip if npm is not installed to avoid spawning cmd.exe windows on Windows
-    if which::which("npm").is_err() {
+    if which::which("npm").is_err() && !crate::commands::ai_orchestrator::win_fallback_which("npm") {
         return None;
     }
     let mut command = Command::new(npm_command());
@@ -306,8 +306,8 @@ pub struct OpenClawMcpInfo {
 
 #[tauri::command]
 pub async fn get_openclaw_status() -> Result<OpenClawStatus, String> {
-    let node_installed = which::which("node").is_ok();
-    let npm_installed = which::which("npm").is_ok();
+    let node_installed = which::which("node").is_ok() || crate::commands::ai_orchestrator::win_fallback_which("node");
+    let npm_installed = which::which("npm").is_ok() || crate::commands::ai_orchestrator::win_fallback_which("npm");
 
     let home = dirs::home_dir().ok_or("Cannot find home directory")?;
     let probe_home = home.clone();
@@ -484,8 +484,8 @@ pub async fn get_openclaw_mcps() -> Result<Vec<OpenClawMcpInfo>, String> {
 #[tauri::command]
 pub async fn install_openclaw_cmd(approval_ticket: Option<String>) -> Result<String, String> {
     require_one_click_automation("安装 OpenClaw").await?;
-    // Check Node.js first
-    if which::which("node").is_err() {
+    // Check Node.js first (with Windows fallback for stale PATH)
+    if which::which("node").is_err() && !crate::commands::ai_orchestrator::win_fallback_which("node") {
         return Err("请先安装 Node.js (https://nodejs.org)".to_string());
     }
 
@@ -993,7 +993,7 @@ pub async fn update_openclaw_cmd(approval_ticket: Option<String>) -> Result<Stri
 #[tauri::command]
 pub async fn check_openclaw_latest_version() -> Result<String, String> {
     // Guard: skip npm call if npm is not installed to avoid spawning cmd.exe windows on Windows
-    let npm_available = which::which("npm").is_ok();
+    let npm_available = which::which("npm").is_ok() || crate::commands::ai_orchestrator::win_fallback_which("npm");
 
     let output = if npm_available {
         // Try `npm view openclaw version` to get latest from registry

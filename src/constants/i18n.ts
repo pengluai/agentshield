@@ -366,6 +366,7 @@ interface Translations {
   aiProviderDeepseek: string;
   aiProviderGemini: string;
   aiProviderOpenai: string;
+  aiProviderMinimax: string;
   aiProviderCustom: string;
   apiEndpoint: string;
   apiKey: string;
@@ -907,6 +908,7 @@ const zhCN: Translations = {
   aiProviderDeepseek: '最佳性价比 · $0.28/MTok',
   aiProviderGemini: '免费额度 · $0.10/MTok',
   aiProviderOpenai: '通用 · $2.50/MTok',
+  aiProviderMinimax: 'MiniMax · 国产高性价比',
   aiProviderCustom: 'OpenAI 兼容端点',
   apiEndpoint: 'API 端点',
   apiKey: 'API 密钥',
@@ -1446,6 +1448,7 @@ const enUS: Translations = {
   aiProviderDeepseek: 'Best value · $0.28/MTok',
   aiProviderGemini: 'Free tier · $0.10/MTok',
   aiProviderOpenai: 'General · $2.50/MTok',
+  aiProviderMinimax: 'MiniMax · China-optimized',
   aiProviderCustom: 'OpenAI-compatible endpoint',
   apiEndpoint: 'API Endpoint',
   apiKey: 'API Key',

@@ -12,7 +12,7 @@ const CHANNEL_KEYRING_SERVICE: &str = "com.agentshield.openclaw.channels";
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone)]
 pub struct AiConfig {
-    pub provider: String, // "deepseek", "gemini", "openai", "custom"
+    pub provider: String, // "deepseek", "gemini", "openai", "minimax", "custom"
     pub api_key: String,
     pub model: String,
     pub base_url: Option<String>, // for custom endpoints
@@ -54,6 +54,7 @@ fn get_base_url(provider: &str, custom_url: &Option<String>) -> String {
         "deepseek" => "https://api.deepseek.com".to_string(),
         "gemini" => "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
         "openai" => "https://api.openai.com".to_string(),
+        "minimax" => "https://api.minimax.chat/v1".to_string(),
         "custom" => custom_url
             .clone()
             .unwrap_or_else(|| "https://api.openai.com".to_string()),
@@ -66,6 +67,7 @@ fn get_default_model(provider: &str) -> &str {
         "deepseek" => "deepseek-chat",
         "gemini" => "gemini-2.0-flash",
         "openai" => "gpt-4o-mini",
+        "minimax" => "MiniMax-Text-01",
         _ => "deepseek-chat",
     }
 }
@@ -538,8 +540,8 @@ pub async fn execute_install_step(
 
     match step_id.as_str() {
         "check_node" => {
-            let node_ok = which::which("node").is_ok();
-            let npm_ok = which::which("npm").is_ok();
+            let node_ok = which::which("node").is_ok() || win_fallback_which("node");
+            let npm_ok = which::which("npm").is_ok() || win_fallback_which("npm");
             if node_ok && npm_ok {
                 let mut version_command = Command::new("node");
                 version_command.arg("--version");
@@ -915,4 +917,62 @@ fn inject_openclaw_mcp(config_path: &std::path::Path) -> Result<(), String> {
     // write_server_to_config_path automatically detects format by extension
     // (.toml → TOML, .yaml/.yml → YAML, everything else → JSON)
     write_server_to_config_path("openclaw", config_path, server_entry)
+}
+
+/// Fallback detection for Windows: when `which::which` fails because the Tauri process
+/// inherited a stale PATH (e.g. user just installed Node.js), try `where.exe` and
+/// common install directories.
+pub fn win_fallback_which(cmd: &str) -> bool {
+    if !cfg!(windows) {
+        return false;
+    }
+
+    // Try `where.exe` which reads the *current* system PATH from the registry
+    let where_result = std::process::Command::new("where.exe")
+        .arg(cmd)
+        .output();
+    if let Ok(output) = where_result {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if !stdout.trim().is_empty() {
+                return true;
+            }
+        }
+    }
+
+    // Check common Windows install locations
+    let common_paths: Vec<std::path::PathBuf> = vec![
+        std::path::PathBuf::from(r"C:\Program Files\nodejs"),
+        std::path::PathBuf::from(r"C:\Program Files (x86)\nodejs"),
+    ];
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let nvm_path = std::path::PathBuf::from(&appdata).join("nvm");
+        if nvm_path.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&nvm_path) {
+                for entry in entries.flatten() {
+                    if entry.path().is_dir() {
+                        let candidate = if cmd == "npm" {
+                            entry.path().join("npm.cmd")
+                        } else {
+                            entry.path().join(format!("{cmd}.exe"))
+                        };
+                        if candidate.exists() {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for dir in &common_paths {
+        let candidate = if cmd == "npm" {
+            dir.join("npm.cmd")
+        } else {
+            dir.join(format!("{cmd}.exe"))
+        };
+        if candidate.exists() {
+            return true;
+        }
+    }
+    false
 }
