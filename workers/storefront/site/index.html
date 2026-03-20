@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AgentShield - Local AI Tool Security</title>
+    <title>AgentShield - Scan AI Skills Before They Run</title>
     <meta
       name="description"
-      content="AgentShield helps you review config risk, exposed secrets, and high-risk extensions across local AI tools like Cursor, Claude Desktop, and Windsurf."
+      content="AgentShield lets you review skills, MCPs, and key access before your AI tools act. You review, approve, and stay in control."
     />
     <link
       rel="icon"
@@ -35,8 +35,8 @@
           <div class="topbar-actions">
             <button type="button" class="lang-toggle single-lang-toggle" id="lang-toggle">EN</button>
             <a class="nav-cta btn-gradient" href="#download">
-              <span class="lang-block zh">免费下载</span>
-              <span class="lang-block en">Free Download</span>
+              <span class="lang-block zh">免费扫描</span>
+              <span class="lang-block en">Scan Free</span>
             </a>
             <button type="button" class="mobile-menu-toggle" aria-expanded="false" aria-controls="mobile-menu">
               <span></span><span></span><span></span>
@@ -50,8 +50,8 @@
           <a href="#download" class="mobile-link"><span class="lang-block zh">下载</span><span class="lang-block en">Download</span></a>
           <a href="#faq" class="mobile-link"><span class="lang-block zh">常见问题</span><span class="lang-block en">FAQ</span></a>
           <a class="mobile-cta btn-gradient" href="#download">
-            <span class="lang-block zh">免费下载</span>
-            <span class="lang-block en">Free Download</span>
+            <span class="lang-block zh">免费扫描</span>
+            <span class="lang-block en">Scan Free</span>
           </a>
         </div>
       </header>
@@ -64,31 +64,41 @@
           <div class="container hero-content">
             <div class="hero-copy centered">
               <div class="hero-badge">
-                <span class="lang-block zh">免费本地扫描 · 支持 16+ AI 工具</span>
-                <span class="lang-block en">Free local scanner for AI dev tools</span>
+                <span class="lang-block zh">本地运行 · 数据不出设备 · 免费开始</span>
+                <span class="lang-block en">Local-only · No data leaves your device · Start free</span>
               </div>
 
               <div class="lang-block zh">
-                <h1 class="hero-title hero-title-zh">你装的 AI 工具，谁在读你的密钥？</h1>
-                <p class="hero-subheadline">自动扫描 Cursor、Claude Code、Windsurf 等 16+ 工具的密钥泄露和高危配置。通过 OpenClaw 一键安装、卸载、更新 MCP 智能体，零基础也能管理。纯本地运行，数据不出设备。</p>
+                <h1 class="hero-title hero-title-zh">装了 OpenClaw？里面 5 个 Skill 可能有 1 个在读你的密钥</h1>
+                <p class="hero-subheadline">ClawHub 里约 20% 的 Skill 被发现有恶意行为，目标是你的 API 密钥、加密钱包和系统密码。AgentShield 在你安装前先帮你查，发现高风险就拦住，等你点头再继续。</p>
               </div>
               <div class="lang-block en">
-                <h1 class="hero-title hero-title-en">See What Your AI Tools Can Access</h1>
-                <p class="hero-subheadline">Scan Cursor, Claude Code, Windsurf, and 13 more tools for exposed keys and risky configs. Install, update, or remove MCP agents in one click with OpenClaw — no terminal needed. Local only, nothing leaves your laptop.</p>
+                <h1 class="hero-title hero-title-en">Your AI tools can act. The question is whether you're watching.</h1>
+                <p class="hero-subheadline">About 1 in 5 OpenClaw skills has been found malicious, targeting API keys, crypto wallets, and credentials. AgentShield shows you exactly what each skill or MCP wants to access before it runs. You review. You approve. You stay in control.</p>
               </div>
 
               <div class="hero-actions centered-actions">
-                <a class="btn-gradient btn-large" href="/download/macos">
-                  <span class="lang-block zh">免费下载 macOS 版</span>
-                  <span class="lang-block en">Free Download for macOS</span>
-                </a>
-                <a class="btn-secondary hero-mini-download" href="/download/windows">
-                  <span class="lang-block zh">Windows 版</span>
-                  <span class="lang-block en">Windows</span>
-                </a>
+                <div class="hero-cta-row">
+                  <a class="hero-btn hero-btn-primary lang-block zh" href="/download/macos">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                    免费下载 macOS 版
+                  </a>
+                  <a class="hero-btn hero-btn-primary lang-block en" href="/download/macos">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+                    Download for macOS
+                  </a>
+                  <a class="hero-btn hero-btn-ghost lang-block zh" href="/download/windows">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 12V6.75l8-1.25V12H3zm0 .5h8v6.5l-8-1.25V12.5zM11.5 5.34L21 3.5v8.5h-9.5V5.34zM11.5 12.5H21V21l-9.5-1.66V12.5z"/></svg>
+                    下载 Windows 版
+                  </a>
+                  <a class="hero-btn hero-btn-ghost lang-block en" href="/download/windows">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 12V6.75l8-1.25V12H3zm0 .5h8v6.5l-8-1.25V12.5zM11.5 5.34L21 3.5v8.5h-9.5V5.34zM11.5 12.5H21V21l-9.5-1.66V12.5z"/></svg>
+                    Download for Windows
+                  </a>
+                </div>
                 <a class="hero-link" href="#features">
-                  <span class="lang-block zh">无需注册 · 无广告 · 无弹窗</span>
-                  <span class="lang-block en">No account required · No data collection</span>
+                  <span class="lang-block zh">本地运行 · 数据不出设备 · 不用命令行 · 免费开始</span>
+                  <span class="lang-block en">Local-only · No data leaves your device · No account needed</span>
                 </a>
               </div>
             </div>
@@ -102,8 +112,8 @@
         <section class="problem-section section-alt">
           <div class="container">
             <div class="section-heading centered-heading">
-              <div class="lang-block zh"><h2>这些事，已经发生了</h2></div>
-              <div class="lang-block en"><h2>This Already Happened</h2></div>
+              <div class="lang-block zh"><h2>为什么要买</h2></div>
+              <div class="lang-block en"><h2>Why you need this</h2></div>
             </div>
 
             <div class="problem-grid">
@@ -111,14 +121,14 @@
                 <div class="problem-icon danger"></div>
                 <div class="problem-large-copy">
                   <div class="lang-block zh">
-                    <div class="problem-stat">43%</div>
-                    <h3>MCP 服务器存在注入漏洞</h3>
-                    <p>Equixly 2025 安全研究：43% 的 MCP 实现存在命令注入漏洞，22% 存在任意文件读取</p>
+                    <div class="problem-stat">核心逻辑</div>
+                    <h3>损失规避 + 省心 + 别背锅</h3>
+                    <p>中国用户最怕的不是“有风险”，而是“出事了、背锅了、钱丢了、还不知道从哪儿漏的”。大多数人以为 AI 工具只会说说话，但装了 Skill 和 MCP 后，它就可能读密钥、改配置、连外网。</p>
                   </div>
                   <div class="lang-block en">
-                    <div class="problem-stat">43%</div>
-                    <h3>of MCP servers have injection flaws</h3>
-                    <p>Equixly 2025 research: 43% of MCP implementations have command injection vulnerabilities, 22% have arbitrary file read</p>
+                    <div class="problem-stat">Core Logic</div>
+                    <h3>Agency + Visibility + You decide</h3>
+                    <p>Users are not asking for fear. They are asking for control: “I need to see what it does, and I need to decide”. AI tools no longer just answer questions. With skills and MCPs, they can read secrets, change configs, and call unknown endpoints.</p>
                   </div>
                 </div>
               </article>
@@ -126,36 +136,36 @@
               <article class="problem-card bento-card">
                 <div class="problem-icon accent"></div>
                 <div class="lang-block zh">
-                  <h3>一个泄露的 Key，$67,000 账单</h3>
-                  <p>某开发者 OpenAI Key 在公开仓库暴露 11 天，账单从 $400 暴涨到 $67,000</p>
+                  <h3>不是“有没有风险”，而是“出事后谁来背锅”</h3>
+                  <p>中国消费者的付费驱动里，隐私担忧本身就是核心触发因素；越担心损失，越愿意为可控和省心付费。</p>
                 </div>
                 <div class="lang-block en">
-                  <h3>One leaked key. $67,000 in charges.</h3>
-                  <p>A developer's OpenAI key sat in a public repo for 11 days. The bill went from $400 to $67,000</p>
+                  <h3>Visibility drives trust, not auto-pilot AI</h3>
+                  <p>2026 trust research highlights a consistent pattern: clarity, agency, and trust rise together, while “AI decides for me” lowers confidence.</p>
                 </div>
               </article>
 
               <article class="problem-card bento-card">
                 <div class="problem-icon warning"></div>
                 <div class="lang-block zh">
-                  <h3>Cursor 代理被劫持</h3>
-                  <p>CVE-2025-54135 — Slack 消息中一行提示词即可触发 Cursor 远程代码执行</p>
+                  <h3>恶意 Skill 不是小概率事件</h3>
+                  <p>Bitdefender 2026 年 2 月分析 ClawHub：约 20% skills 存在恶意行为。Snyk 同期对 3,984 个 skills 的研究显示，13.4% 为 critical 风险。</p>
                 </div>
                 <div class="lang-block en">
-                  <h3>Cursor agent hijacked</h3>
-                  <p>CVE-2025-54135 — a single prompt injection line in a Slack message triggered remote code execution</p>
+                  <h3>Malicious skills are not edge cases</h3>
+                  <p>Bitdefender's February 2026 analysis of ClawHub found about 20% of skills showed malicious behavior. Snyk reported 13.4% critical issues across 3,984 skills.</p>
                 </div>
               </article>
 
               <article class="problem-card bento-card">
                 <div class="problem-icon primary"></div>
                 <div class="lang-block zh">
-                  <h3>95 万开发者受影响</h3>
-                  <p>Amazon Q VS Code 扩展被攻陷，可删除用户本地文件并破坏 AWS 基础设施</p>
+                  <h3>你不需要懂完所有风险，也该先看见它</h3>
+                  <p>先看清，再决定。不是被动挨打后补救。</p>
                 </div>
                 <div class="lang-block en">
-                  <h3>950K developers affected</h3>
-                  <p>Compromised Amazon Q extension could wipe local files and disrupt AWS infrastructure</p>
+                  <h3>You don't need to master every risk</h3>
+                  <p>You only need to see it before your AI tools act.</p>
                 </div>
               </article>
             </div>
@@ -167,8 +177,8 @@
           <div class="feature-backdrop right"></div>
           <div class="container">
             <div class="section-heading centered-heading">
-              <div class="lang-block zh"><h2>看清风险，一键搞定</h2></div>
-              <div class="lang-block en"><h2>See the Risks. Fix What Matters.</h2></div>
+              <div class="lang-block zh"><h2>这个软件帮你做三件事</h2></div>
+              <div class="lang-block en"><h2>What it does</h2></div>
             </div>
 
             <div class="feature-stack">
@@ -176,12 +186,12 @@
                 <div class="feature-text">
                   <div class="feature-chip"></div>
                   <div class="lang-block zh">
-                    <h3>一键安全扫描</h3>
-                    <p>一分钟内扫描 16+ AI 工具，自动发现明文密钥、高危扩展、权限过大的配置文件</p>
+                    <h3>① 新装 Skill / MCP 之前先告诉你有没有问题</h3>
+                    <p>有高风险就拦住，你看清楚再决定装不装。不是替你做决定，是让你先知道。</p>
                   </div>
                   <div class="lang-block en">
-                    <h3>One-Click Security Scan</h3>
-                    <p>Scan 16+ AI tools in under a minute. Find exposed keys, risky extensions, and permission problems in configs you didn't know existed</p>
+                    <h3>① See what a skill or MCP wants before you install it</h3>
+                    <p>High-risk installs get flagged immediately. You see exactly what it asks for. You decide whether it runs. Nothing moves without your approval.</p>
                   </div>
                 </div>
                 <div class="feature-visual bento-card">
@@ -193,12 +203,12 @@
                 <div class="feature-text">
                   <div class="feature-chip"></div>
                   <div class="lang-block zh">
-                    <h3>OpenClaw 智能体管理</h3>
-                    <p>一键安装、卸载、更新 MCP 智能体，不用碰终端命令行。可视化查看每个智能体的权限和信任等级，有风险的直接卸载</p>
+                    <h3>② 把 OpenClaw 和本机 AI 工具放到一个地方管</h3>
+                    <p>装了什么、改了什么、要了什么权限，一眼看清楚。不用翻文件，不用跑命令行。</p>
                   </div>
                   <div class="lang-block en">
-                    <h3>OpenClaw Agent Manager</h3>
-                    <p>Install, uninstall, or update MCP agents in one click — no terminal needed. See what each agent can access, its trust level, and remove risky ones instantly</p>
+                    <h3>② Manage all your local AI tools from one place</h3>
+                    <p>What's installed. What changed. What's asking for new permissions. All visible. No terminal. No config digging.</p>
                   </div>
                 </div>
                 <div class="feature-visual bento-card">
@@ -210,93 +220,18 @@
                 <div class="feature-text">
                   <div class="feature-chip"></div>
                   <div class="lang-block zh">
-                    <h3>密钥保险库</h3>
-                    <p>把暴露的密钥从明文配置转移到系统钥匙串 — macOS 钥匙串 / Windows 凭据管理器，告别明文存储</p>
+                    <h3>③ 密钥别继续放在配置文件里</h3>
+                    <p>AI 工具最容易碰的就是那几个密钥文件。AgentShield 把它们锁进系统保险库，顺手读走的情况就少一个。</p>
                   </div>
                   <div class="lang-block en">
-                    <h3>Key Vault</h3>
-                    <p>Move exposed keys from plaintext configs to your system keychain. macOS Keychain or Windows Credential Manager — not another config file</p>
+                    <h3>③ Get your secrets out of plaintext config files</h3>
+                    <p>AI tools read config files by default. AgentShield moves your keys into your system keychain, where only you control access.</p>
                   </div>
                 </div>
                 <div class="feature-visual bento-card">
-                  <img src="./images/vault.png" alt="Key Vault" style="width:100%;border-radius:8px;display:block;" />
+                  <img src="./images/dashboard.png" alt="Real-time alerts and authorization" style="width:100%;border-radius:8px;display:block;" />
                 </div>
               </article>
-
-              <article class="feature-block reverse">
-                <div class="feature-text">
-                  <div class="feature-chip"></div>
-                  <div class="lang-block zh">
-                    <h3>实时监控</h3>
-                    <p>AI 工具配置文件变更时即时提醒 — 新装扩展、权限修改、配置更新，第一时间知道</p>
-                  </div>
-                  <div class="lang-block en">
-                    <h3>Real-Time Monitoring</h3>
-                    <p>Get notified when AI tool configs change. New extension installed, permission modified, or config updated — you'll know immediately</p>
-                  </div>
-                </div>
-                <div class="feature-visual bento-card">
-                  <img src="./images/dashboard.png" alt="Real-time Guard Dashboard" style="width:100%;border-radius:8px;display:block;" />
-                </div>
-              </article>
-            </div>
-          </div>
-        </section>
-
-        <section class="social-section section-alt">
-          <div class="container">
-            <div class="section-heading centered-heading">
-              <div class="lang-block zh"><h2>给每天用 AI 工具的开发者</h2></div>
-              <div class="lang-block en"><h2>Built for developers who use AI daily</h2></div>
-            </div>
-
-            <div class="testimonial-grid">
-              <article class="testimonial-card bento-card">
-                <div class="lang-block zh">
-                  <div class="trust-kicker">01</div>
-                  <h3>我装了 5 个 AI 工具，哪个在明文存我的 Key？</h3>
-                  <p>同时使用多个 AI 编程助手的独立开发者，需要一次性看清所有工具的安全状况。</p>
-                </div>
-                <div class="lang-block en">
-                  <div class="trust-kicker">01</div>
-                  <h3>"I use 5 AI tools. Which one has my Stripe key?"</h3>
-                  <p>Solo developers running multiple AI assistants who need a single view of all tool security.</p>
-                </div>
-              </article>
-
-              <article class="testimonial-card bento-card">
-                <div class="lang-block zh">
-                  <div class="trust-kicker">02</div>
-                  <h3>团队接入 AI 工具前，先做安全基线</h3>
-                  <p>在把 Cursor、Claude Code、Windsurf 带进团队工作流前，先做一次统一安全检查。</p>
-                </div>
-                <div class="lang-block en">
-                  <div class="trust-kicker">02</div>
-                  <h3>"Before we onboard, we need a security baseline."</h3>
-                  <p>Teams evaluating AI coding tools for production use who need consistent security checks.</p>
-                </div>
-              </article>
-
-              <article class="testimonial-card bento-card">
-                <div class="lang-block zh">
-                  <div class="trust-kicker">03</div>
-                  <h3>看看我电脑上有什么风险，清理掉</h3>
-                  <p>装了 AI 工具、想确认安全状况的普通用户，一键扫描就能看清全貌。</p>
-                </div>
-                <div class="lang-block en">
-                  <div class="trust-kicker">03</div>
-                  <h3>"I just want to see what's on my machine."</h3>
-                  <p>Anyone who installed AI tools and wants peace of mind with a quick one-click scan.</p>
-                </div>
-              </article>
-            </div>
-
-            <div class="tool-row">
-              <div class="tool-pill"><span>▶</span><strong>Cursor</strong></div>
-              <div class="tool-pill"><span>◆</span><strong>Claude Code</strong></div>
-              <div class="tool-pill"><span>◎</span><strong>Windsurf</strong></div>
-              <div class="tool-pill"><span>◇</span><strong>VS Code + Copilot</strong></div>
-              <div class="tool-pill"><span>▷</span><strong>+12 more</strong></div>
             </div>
           </div>
         </section>
@@ -305,25 +240,24 @@
           <div class="hero-backdrop hero-backdrop-center"></div>
           <div class="container">
             <div class="section-heading centered-heading">
-              <div class="lang-block zh"><h2>免费开始扫描</h2></div>
-              <div class="lang-block en"><h2>Start Scanning for Free</h2></div>
+              <div class="lang-block zh"><h2>你为什么要现在买</h2></div>
+              <div class="lang-block en"><h2>Why buy</h2></div>
             </div>
             <p class="pricing-note" id="review-status">
-              <span class="lang-block zh">当前商家收款审核中。价格和方案已公开，支付与激活码购买会在 Creem 审核通过后开放。</span>
-              <span class="lang-block en">Merchant payment review is in progress. Pricing is public now, and checkout will open after Creem approves live payments.</span>
+              <span class="lang-block zh">免费版先看清风险。Pro 帮你减少手动操作。买断版给长期使用者更低心智负担。</span>
+              <span class="lang-block en">Free lets you see everything first. Pro reduces manual work. Lifetime removes renewal decisions for long-term users.</span>
             </p>
 
             <div class="pricing-grid">
               <article class="pricing-card bento-card">
                 <div class="lang-block zh">
-                  <h3>免费版</h3>
+                  <h3>免费版：先扫一遍，看清风险，没有套路</h3>
                   <div class="price-row"><strong>¥0</strong></div>
-                  <p class="plan-desc">完整扫描 · 完整报告 · 永久免费</p>
+                  <p class="plan-desc">先看清风险，再决定要不要升级。</p>
                   <ul class="plan-list">
-                    <li>扫描全部 16+ AI 工具</li>
-                    <li>查看所有检测到的风险</li>
-                    <li>手动修复（带终端命令指引）</li>
-                    <li>密钥保险库（10 个密钥）</li>
+                    <li>先免费扫描你的 AI 工具</li>
+                    <li>完整查看检测到的风险</li>
+                    <li>没有套路，先看再决定</li>
                   </ul>
                   <div class="plan-button-stack">
                     <a class="btn-secondary full-width" href="/download/macos">免费下载</a>
@@ -331,14 +265,13 @@
                   </div>
                 </div>
                 <div class="lang-block en">
-                  <h3>Free</h3>
+                  <h3>Free - See everything</h3>
                   <div class="price-row"><strong>$0</strong></div>
-                  <p class="plan-desc">Full scan · Full results · No limits</p>
+                  <p class="plan-desc">Full scan. All detected risks. No limits on visibility.</p>
                   <ul class="plan-list">
-                    <li>Scan all 16+ AI tools</li>
-                    <li>View all detected risks</li>
-                    <li>Manual fix with guided commands</li>
-                    <li>Key vault (10 keys)</li>
+                    <li>Run a full scan first</li>
+                    <li>See every detected risk</li>
+                    <li>No paywall on visibility</li>
                   </ul>
                   <div class="plan-button-stack">
                     <a class="btn-secondary full-width" href="/download/macos">Download Free</a>
@@ -351,37 +284,33 @@
                 <div class="plan-badge"><span class="lang-block zh">推荐</span><span class="lang-block en">Best Value</span></div>
                 <div class="pricing-card-inner">
                   <div class="lang-block zh">
-                    <h3>Pro 年付</h3>
-                    <div class="price-row"><strong>¥198</strong><span>/年</span></div>
-                    <p class="plan-desc">同样的扫描，更少的手动操作</p>
+                    <h3>Pro：不想每次手动查、手动修、手动盯着</h3>
+                    <div class="price-row"><strong>Pro</strong></div>
+                    <p class="plan-desc">Pro 帮你自动提醒、一键处理、持续监控。比出事后再补救便宜得多。</p>
                     <ul class="plan-list">
-                      <li>免费版全部功能</li>
-                      <li>一键批量修复</li>
-                      <li>AI 修复建议</li>
-                      <li>无限密钥存储</li>
-                      <li>规则热更新</li>
-                      <li>优先扩展商店</li>
+                      <li>一键处理高风险项</li>
+                      <li>运行时授权与自动提醒</li>
+                      <li>持续监控，不用手动盯</li>
+                      <li>适合经常安装 Skill / MCP 的用户</li>
                     </ul>
                     <div class="plan-button-stack">
-                      <button class="btn-gradient full-width is-disabled" type="button" disabled>支付审核中</button>
-                      <button class="btn-secondary full-width is-disabled" type="button" disabled>365 天激活码（待开放）</button>
+                      <button class="btn-gradient full-width is-disabled" type="button" disabled>解锁 Pro（即将开放）</button>
+                      <button class="btn-secondary full-width is-disabled" type="button" disabled>自动化防护（即将开放）</button>
                     </div>
                   </div>
                   <div class="lang-block en">
-                    <h3>Pro Yearly</h3>
-                    <div class="price-row"><strong>$39.9</strong><span>/year</span></div>
-                    <p class="plan-desc">Same scan. Less manual work.</p>
+                    <h3>Pro - Stay ahead</h3>
+                    <div class="price-row"><strong>Pro</strong></div>
+                    <p class="plan-desc">One-click fixes. Runtime approval. Continuous monitoring.</p>
                     <ul class="plan-list">
-                      <li>Everything in Free</li>
-                      <li>One-click batch fix</li>
-                      <li>AI-guided remediation</li>
-                      <li>Unlimited key vault</li>
-                      <li>Live rule updates</li>
-                      <li>Priority extension store</li>
+                      <li>One-click remediation</li>
+                      <li>Runtime approval prompts</li>
+                      <li>Continuous risk watch</li>
+                      <li>For frequent skill and MCP installers</li>
                     </ul>
                     <div class="plan-button-stack">
-                      <button class="btn-gradient full-width is-disabled" type="button" disabled>Checkout Pending Review</button>
-                      <button class="btn-secondary full-width is-disabled" type="button" disabled>365-day activation (coming soon)</button>
+                      <button class="btn-gradient full-width is-disabled" type="button" disabled>Get Pro (coming soon)</button>
+                      <button class="btn-secondary full-width is-disabled" type="button" disabled>Automated protection (coming soon)</button>
                     </div>
                   </div>
                 </div>
@@ -389,53 +318,35 @@
 
               <article class="pricing-card bento-card">
                 <div class="lang-block zh">
-                  <h3>Pro 终身</h3>
-                  <div class="price-row"><strong>¥398</strong><span>一次买断</span></div>
-                  <p class="plan-desc">全部 Pro 功能，终身免费更新</p>
+                  <h3>买断版：长期用 AI 工具的人，买一次</h3>
+                  <div class="price-row"><strong>Lifetime</strong></div>
+                  <p class="plan-desc">买一次，以后不用再想这件事。</p>
                     <ul class="plan-list">
-                      <li>免费版全部功能</li>
-                      <li>一键批量修复</li>
-                      <li>AI 修复建议</li>
-                      <li>无限密钥存储</li>
-                      <li>规则热更新</li>
-                      <li>优先扩展商店</li>
+                      <li>长期使用最省心</li>
+                      <li>无续费决策负担</li>
+                      <li>一次买断，持续保护</li>
                     </ul>
                     <div class="plan-button-stack">
-                      <button class="btn-secondary full-width is-disabled" type="button" disabled>一次买断（待开放）</button>
-                      <button class="btn-secondary full-width is-disabled" type="button" disabled>终身激活码（待开放）</button>
+                      <button class="btn-secondary full-width is-disabled" type="button" disabled>买断更省心（即将开放）</button>
+                      <button class="btn-secondary full-width is-disabled" type="button" disabled>终身访问（即将开放）</button>
                     </div>
                   </div>
                   <div class="lang-block en">
-                    <h3>Pro Lifetime</h3>
-                    <div class="price-row"><strong>$79.9</strong><span>one-time</span></div>
-                    <p class="plan-desc">All Pro features. Lifetime updates.</p>
+                    <h3>Lifetime - Own it</h3>
+                    <div class="price-row"><strong>Lifetime</strong></div>
+                    <p class="plan-desc">Pay once. No renewals. No decisions to remake next year.</p>
                     <ul class="plan-list">
-                      <li>Everything in Free</li>
-                      <li>One-click batch fix</li>
-                      <li>AI-guided remediation</li>
-                      <li>Unlimited key vault</li>
-                      <li>Live rule updates</li>
-                      <li>Priority extension store</li>
+                      <li>Best for long-term AI tool users</li>
+                      <li>No recurring renewal pressure</li>
+                      <li>Own the workflow once</li>
                     </ul>
                     <div class="plan-button-stack">
-                      <button class="btn-secondary full-width is-disabled" type="button" disabled>One-time checkout pending</button>
-                      <button class="btn-secondary full-width is-disabled" type="button" disabled>Lifetime activation (coming soon)</button>
+                      <button class="btn-secondary full-width is-disabled" type="button" disabled>Get Lifetime Access (coming soon)</button>
+                      <button class="btn-secondary full-width is-disabled" type="button" disabled>One-time purchase (coming soon)</button>
                     </div>
                   </div>
               </article>
             </div>
-
-            <div class="monthly-buy-row">
-              <div class="lang-block zh">
-                <span>也可按月订阅 ¥29/月</span>
-                <span class="monthly-note">30 天激活码（待开放）</span>
-              </div>
-              <div class="lang-block en">
-                <span>Also available monthly at $4.9/mo</span>
-                <span class="monthly-note">30-day activation (coming soon)</span>
-              </div>
-            </div>
-
           </div>
         </section>
 
@@ -484,21 +395,22 @@
           <div class="cta-gradient"></div>
           <div class="container cta-inner">
             <div class="lang-block zh">
-              <h2>一分钟扫描，看清所有风险</h2>
-              <p>免费下载，纯本地运行，数据不出设备</p>
+              <h2>ClawHub 20% 的 Skill 有恶意行为。你装了多少个？</h2>
+              <p>先扫一下，3 分钟，免费，数据不出你的电脑。</p>
             </div>
             <div class="lang-block en">
-              <h2>One Minute to See What's at Risk</h2>
-              <p>Free download. Local only. No data ever leaves your machine.</p>
+              <h2>You don't need to understand every risk.<br />You just need to see it before your AI tools act on it.</h2>
+              <p>Start with a free scan and keep control of every decision.</p>
             </div>
             <div class="final-actions">
               <a class="btn-gradient btn-large" href="/download/macos">
-                <span class="lang-block zh">立即免费下载</span>
-                <span class="lang-block en">Download Free Now</span>
+                <span class="lang-block zh">立即免费扫描</span>
+                <span class="lang-block en">Start Free Scan</span>
               </a>
             </div>
           </div>
         </section>
+
       </main>
 
       <footer class="footer">
@@ -512,6 +424,9 @@
             <a href="./terms.html"><span class="lang-block zh">使用条款</span><span class="lang-block en">Terms</span></a>
             <a href="./refund.html"><span class="lang-block zh">退款政策</span><span class="lang-block en">Refund Policy</span></a>
             <a href="./eula.html">EULA</a>
+            <a href="./capabilities.html"><span class="lang-block zh">能力边界</span><span class="lang-block en">Capabilities</span></a>
+            <a href="./threat-model.html"><span class="lang-block zh">威胁模型</span><span class="lang-block en">Threat Model</span></a>
+            <a href="./cases.html"><span class="lang-block zh">真实案例</span><span class="lang-block en">Cases</span></a>
             <a href="https://github.com/pengluai/agentshield-downloads">GitHub</a>
             <a href="mailto:pengluailll@gmail.com"><span class="lang-block zh">联系我们</span><span class="lang-block en">Contact</span></a>
           </div>
@@ -524,8 +439,8 @@
       </footer>
 
       <a class="mobile-sticky-cta btn-gradient" href="#download">
-        <span class="lang-block zh">免费下载</span>
-        <span class="lang-block en">Free Download</span>
+        <span class="lang-block zh">立即免费扫描</span>
+        <span class="lang-block en">Start Free Scan</span>
       </a>
     </div>
 
@@ -537,13 +452,14 @@
           <h3 style="font-size:18px;margin-bottom:16px">macOS 安装说明</h3>
           <div style="font-size:14px;line-height:1.8;color:#ccc">
             <p><strong>第 1 步：</strong>下载 .dmg 文件，双击打开，将 App 拖入「应用程序」文件夹</p>
-            <p style="margin-top:12px"><strong>第 2 步：</strong>首次打开如果提示"无法打开"或"已损坏"：</p>
+            <p style="margin-top:12px"><strong>第 2 步：</strong>首次打开如果提示“无法打开”“无法验证”或“已损坏”：</p>
             <div style="background:#0a0a0f;border:1px solid #1e1e2e;border-radius:10px;padding:14px;margin:10px 0">
-              <p>① 在「应用程序」中找到 AgentShield</p>
-              <p>② <strong style="color:#34d399">右键点击</strong>（或 Control + 点击）→ 选择「打开」</p>
-              <p>③ 弹窗中点击「打开」即可</p>
+              <p>① 在「应用程序」中双击 AgentShield 一次（让系统记录被拦截）</p>
+              <p>② 打开「系统设置」→「隐私与安全性」→ 在底部点击「仍要打开 / Open Anyway」</p>
+              <p>③ 输入系统密码后，再次点击「打开」</p>
+              <p>④ 如仍提示拦截，可再试：<strong style="color:#34d399">右键点击</strong>（或 Control + 点击）→ 选择「打开」</p>
             </div>
-            <p style="font-size:12px;color:#888;margin-top:8px">* 仅首次需要此操作，之后双击即可正常打开。这是 macOS 对未签名应用的正常安全提示。</p>
+            <p style="font-size:12px;color:#888;margin-top:8px">* “仍要打开 / Open Anyway”通常只会在你首次尝试打开后约 1 小时内显示。完成一次后，后续可直接双击打开。</p>
           </div>
           <div style="display:flex;gap:10px;margin-top:20px">
             <a id="macDownloadLink" href="/download/macos" style="flex:1;text-align:center;padding:12px;background:#6366f1;color:#fff;border-radius:10px;font-weight:600;text-decoration:none;font-size:14px">我知道了，开始下载</a>
@@ -553,13 +469,14 @@
           <h3 style="font-size:18px;margin-bottom:16px">macOS Installation Guide</h3>
           <div style="font-size:14px;line-height:1.8;color:#ccc">
             <p><strong>Step 1:</strong> Download the .dmg file, open it, and drag the app to Applications.</p>
-            <p style="margin-top:12px"><strong>Step 2:</strong> If macOS says "can't be opened" or "is damaged":</p>
+            <p style="margin-top:12px"><strong>Step 2:</strong> If macOS says “can’t be opened,” “can’t be verified,” or “is damaged”:</p>
             <div style="background:#0a0a0f;border:1px solid #1e1e2e;border-radius:10px;padding:14px;margin:10px 0">
-              <p>① Find AgentShield in Applications</p>
-              <p>② <strong style="color:#34d399">Right-click</strong> (or Control + click) → select "Open"</p>
-              <p>③ Click "Open" in the dialog</p>
+              <p>① Double-click AgentShield once in Applications (so macOS records the block)</p>
+              <p>② Open System Settings → Privacy & Security → click "Open Anyway"</p>
+              <p>③ Enter your Mac password, then click "Open" again</p>
+              <p>④ If still blocked, also try: <strong style="color:#34d399">Right-click</strong> (or Control + click) → "Open"</p>
             </div>
-            <p style="font-size:12px;color:#888;margin-top:8px">* Only needed once. This is a standard macOS security prompt for unsigned apps.</p>
+            <p style="font-size:12px;color:#888;margin-top:8px">* “Open Anyway” usually appears for about 1 hour after your first blocked launch attempt. After approving once, future launches are normal.</p>
           </div>
           <div style="display:flex;gap:10px;margin-top:20px">
             <a id="macDownloadLinkEn" href="/download/macos" style="flex:1;text-align:center;padding:12px;background:#6366f1;color:#fff;border-radius:10px;font-weight:600;text-decoration:none;font-size:14px">Got it, start download</a>

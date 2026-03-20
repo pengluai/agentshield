@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { tauriInvoke as invoke } from '@/services/tauri';
 import { motion } from "framer-motion";
 import { Crown, Zap, Shield, Key, Bell, Star, ArrowRight } from "lucide-react";
@@ -77,17 +77,6 @@ const PRO_FEATURES = [
   { icon: Shield, textKey: 'proFeature7' as const },
 ];
 
-function appendCheckoutMetadata(baseUrl: string, skuCode: string) {
-  try {
-    const url = new URL(baseUrl);
-    url.searchParams.set('metadata[sku_code]', skuCode);
-    url.searchParams.set('metadata[campaign]', 'desktop_upgrade');
-    url.searchParams.set('metadata[source]', 'agentshield_app');
-    return url.toString();
-  } catch {
-    return baseUrl;
-  }
-}
 
 export function UpgradePro({ onBack }: UpgradeProProps) {
   const { plan, isPro, isTrial, trialDaysLeft, setLicenseInfo } = useLicenseStore();
@@ -96,6 +85,15 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
   const [licenseKey, setLicenseKey] = useState("");
   const [showKeyInput, setShowKeyInput] = useState(false);
   const [feedback, setFeedback] = useState<{ tone: 'error' | 'success' | 'info'; message: string } | null>(null);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoResult, setPromoResult] = useState<{
+    valid: boolean;
+    discount_pct: number;
+    affiliate_id: string;
+    affiliate_name: string | null;
+    message: string;
+  } | null>(null);
+  const [validatingPromo, setValidatingPromo] = useState(false);
   const previewMessage = t.desktopOnlyInBrowserShell.replace('{feature}', t.moduleUpgradePro);
   const purchaseOptions: PurchaseOption[] = [
     {
@@ -127,6 +125,50 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
       checkoutUrl: import.meta.env.VITE_CHECKOUT_LIFETIME_URL ?? '',
     },
   ];
+
+  const validatePromo = useCallback(async () => {
+    const code = promoCode.trim().toUpperCase();
+    if (!code) { setPromoResult(null); return; }
+    setValidatingPromo(true);
+    try {
+      const gatewayUrl = import.meta.env.VITE_LICENSE_GATEWAY_URL || 'http://localhost:8787';
+      const resp = await fetch(`${gatewayUrl}/api/promos/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      const data = await resp.json();
+      setPromoResult(data);
+    } catch {
+      setPromoResult({ valid: false, discount_pct: 0, affiliate_id: '', affiliate_name: null, message: t.promoInvalid });
+    } finally {
+      setValidatingPromo(false);
+    }
+  }, [promoCode]);
+
+  const getDiscountedPrice = (price: number) => {
+    if (promoResult?.valid && promoResult.discount_pct > 0) {
+      return Math.round(price * (100 - promoResult.discount_pct)) / 100;
+    }
+    return price;
+  };
+
+  const buildCheckoutUrl = (baseUrl: string, skuCode: string) => {
+    try {
+      const url = new URL(baseUrl);
+      url.searchParams.set('metadata[sku_code]', skuCode);
+      url.searchParams.set('metadata[campaign]', 'desktop_upgrade');
+      url.searchParams.set('metadata[source]', 'agentshield_app');
+      if (promoResult?.valid && promoCode.trim()) {
+        url.searchParams.set('discount_code', promoCode.trim().toUpperCase());
+        url.searchParams.set('metadata[affiliate_id]', promoResult.affiliate_id);
+        url.searchParams.set('metadata[promo_code]', promoCode.trim().toUpperCase());
+      }
+      return url.toString();
+    } catch {
+      return baseUrl;
+    }
+  };
 
   const handleActivate = async () => {
     if (!licenseKey.trim()) return;
@@ -205,7 +247,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
     setPurchasingSku(option.id);
     setFeedback(null);
     try {
-      const checkoutUrl = appendCheckoutMetadata(checkoutBaseUrl, option.skuCode);
+      const checkoutUrl = buildCheckoutUrl(checkoutBaseUrl, option.skuCode);
       await openExternalUrl(checkoutUrl);
       setFeedback({ tone: 'info', message: t.purchaseOpenedInBrowser });
     } catch (e) {
@@ -326,6 +368,36 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
             transition={{ delay: 0.2 }}
             className="flex flex-col gap-4"
           >
+            {/* Promo code input */}
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <h4 className="text-sm font-medium text-white/70 mb-2">
+                {t.promoCode}
+              </h4>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={promoCode}
+                  onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoResult(null); }}
+                  placeholder={t.promoCodePlaceholder}
+                  className="flex-1 rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white uppercase placeholder:normal-case placeholder-white/30 outline-none focus:ring-2 focus:ring-amber-500/50"
+                />
+                <button
+                  onClick={() => void validatePromo()}
+                  disabled={!promoCode.trim() || validatingPromo}
+                  className="rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/15 disabled:opacity-50 transition-colors"
+                >
+                  {validatingPromo ? t.promoChecking : t.promoApply}
+                </button>
+              </div>
+              {promoResult && (
+                <div className={`mt-2 text-sm ${promoResult.valid ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {promoResult.valid
+                    ? t.promoDiscountApplied.replace('{pct}', String(promoResult.discount_pct))
+                    : promoResult.message}
+                </div>
+              )}
+            </div>
+
             {/* Pricing cards */}
             <div className="flex flex-col gap-3">
               {purchaseOptions.map((option) => (
@@ -350,7 +422,20 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
                     <p className="text-xs text-white/50 mt-0.5">{option.validity}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <span className="text-2xl font-bold text-white">{option.price}</span>
+                    {promoResult?.valid && promoResult.discount_pct > 0 ? (
+                      <>
+                        <del className="text-sm text-white/40">{option.price}</del>
+                        <span className="text-2xl font-bold text-emerald-400 ml-1">
+                          {(() => {
+                            const num = parseFloat(option.price.replace(/[^0-9.]/g, ''));
+                            const prefix = option.price.replace(/[0-9.]/g, '');
+                            return `${prefix}${getDiscountedPrice(num)}`;
+                          })()}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-2xl font-bold text-white">{option.price}</span>
+                    )}
                     {option.pricePer && (
                       <span className="text-sm text-white/50">{option.pricePer}</span>
                     )}

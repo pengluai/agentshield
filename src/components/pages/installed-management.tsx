@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { tauriInvoke as invoke } from '@/services/tauri';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, RefreshCw, Trash2, ExternalLink, CheckCircle, Play, ShieldAlert, ShieldCheck, ShieldBan, Activity, Wrench } from 'lucide-react';
@@ -180,6 +180,30 @@ interface GuardedInstalledMcp extends InstalledMCP {
 }
 
 const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
+
+const SAFETY_PRIORITY: Record<InstalledMCP['safety_level'], number> = {
+  dangerous: 0,
+  blocked: 1,
+  caution: 2,
+  unverified: 3,
+  safe: 4,
+};
+
+function safeScrollIntoView(target: Element | null) {
+  if (!target) {
+    return;
+  }
+  const maybeHTMLElement = target as HTMLElement & {
+    scrollIntoView?: (options?: ScrollIntoViewOptions) => void;
+  };
+  if (typeof maybeHTMLElement.scrollIntoView === 'function') {
+    maybeHTMLElement.scrollIntoView({
+      block: 'nearest',
+      inline: 'nearest',
+      behavior: 'smooth',
+    });
+  }
+}
 
 const IDE_AI_TOOL_ORDER: Platform[] = [
   'cursor',
@@ -1128,12 +1152,51 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
   }, [loadInstalledData, oneClickOpsUnlocked, requestCleanupPreview]);
 
   const selectedItemKey = selectedItem ? getInstalledItemKey(selectedItem) : null;
+  const selectedHostComponents = useMemo(() => {
+    if (!selectedHost) {
+      return [] as GuardedInstalledMcp[];
+    }
+    return items.filter((item) => item.platform_id === selectedHost.id);
+  }, [items, selectedHost?.id]);
+  const sortedSelectedHostComponents = useMemo(() => (
+    [...selectedHostComponents].sort((a, b) => {
+      const bySafety = SAFETY_PRIORITY[a.safety_level] - SAFETY_PRIORITY[b.safety_level];
+      if (bySafety !== 0) {
+        return bySafety;
+      }
+      return a.name.localeCompare(b.name, isEnglishLocale ? 'en' : 'zh-Hans');
+    })
+  ), [selectedHostComponents]);
   const selectedRuntimeSessions = selectedItem?.runtimeComponentId
     ? runtimeSessions.filter((session) => session.component_id === selectedItem.runtimeComponentId)
     : [];
   const selectedRuntimeEvents = selectedItem?.runtimeComponentId
     ? runtimeEvents.filter((event) => event.component_id === selectedItem.runtimeComponentId)
     : [];
+
+  useEffect(() => {
+    if (!selectedHostId) {
+      return;
+    }
+    const escapedHostId =
+      typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(selectedHostId)
+        : selectedHostId.replace(/"/g, '\\"');
+    const activeHostElement = document.querySelector<HTMLElement>(`[data-host-id="${escapedHostId}"]`);
+    safeScrollIntoView(activeHostElement);
+  }, [selectedHostId]);
+
+  useEffect(() => {
+    if (!selectedItemKey) {
+      return;
+    }
+    const escapedItemKey =
+      typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(selectedItemKey)
+        : selectedItemKey.replace(/"/g, '\\"');
+    const activeItemElement = document.querySelector<HTMLElement>(`[data-item-key="${escapedItemKey}"]`);
+    safeScrollIntoView(activeItemElement);
+  }, [selectedItemKey]);
 
   return (
     <>
@@ -1146,6 +1209,10 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
       middleColumnClassName="w-[30%]"
       leftColumn={
         <div className="space-y-2">
+          <div className="px-1 pb-1">
+            <p className="text-[11px] uppercase tracking-wide text-slate-400">{tr('第 1 步', 'Step 1')}</p>
+            <h3 className="text-sm font-semibold text-slate-800">{tr('选择工具', 'Select tool')}</h3>
+          </div>
           <button
             onClick={() => setShowRiskOnlyHosts((current) => !current)}
             className={cn(
@@ -1166,93 +1233,119 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
               </div>
             ) : (
               visibleHostEntries.map((host) => (
-                <HostFilterItem
-                  key={host.id}
-                  host={host}
-                  active={selectedHost?.id === host.id}
-                  onClick={() => {
-                    setSelectedHostId(host.id);
-                    setSelectedItem(null);
-                  }}
-                />
+                <div key={host.id} data-host-id={host.id}>
+                  <HostFilterItem
+                    host={host}
+                    active={selectedHost?.id === host.id}
+                    onClick={() => {
+                      setSelectedHostId(host.id);
+                      setSelectedItem(null);
+                    }}
+                  />
+                </div>
               ))
             )}
           </div>
         </div>
       }
       middleColumn={
-        <div className="p-4 space-y-2">
-          <AnimatePresence>
-            {visibleHostEntries.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-                <p className="text-sm">{tr('暂未发现工具', 'No tools detected yet')}</p>
+        <div className="p-4 h-full flex flex-col">
+          <div className="px-1 pb-2">
+            <p className="text-[11px] uppercase tracking-wide text-slate-400">{tr('第 2 步', 'Step 2')}</p>
+            <h3 className="text-sm font-semibold text-slate-800">{tr('选择组件', 'Select component')}</h3>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {selectedHost
+                ? tr(`${selectedHost.name} 下的组件`, `Components in ${selectedHost.name}`)
+                : tr('先在左侧选择工具', 'Select a tool on the left first')}
+            </p>
+          </div>
+          <div className="space-y-1 pr-1 overflow-y-auto">
+            {!selectedHost ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-8 text-center text-sm text-slate-500">
+                {tr('先完成第 1 步：选择工具', 'Complete Step 1 first: choose a tool')}
+              </div>
+            ) : sortedSelectedHostComponents.length === 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-8 text-center text-sm text-slate-500">
+                {tr('该工具下暂无已安装组件', 'No installed components under this tool')}
               </div>
             ) : (
-              visibleHostEntries.map((host) => (
-                <motion.div
-                  key={host.id}
-                  layout
-                  exit={{ opacity: 0, x: -20 }}
-                >
-                  <HostOverviewRow
-                    host={host}
-                    selected={selectedHost?.id === host.id}
-                    onClick={() => {
-                      setSelectedHostId(host.id);
-                      setSelectedItem(null);
-                    }}
-                  />
-                </motion.div>
-              ))
+              <AnimatePresence>
+                {sortedSelectedHostComponents.map((item) => (
+                  <motion.div
+                    key={getInstalledItemKey(item)}
+                    layout
+                    exit={{ opacity: 0, x: -20 }}
+                    data-item-key={getInstalledItemKey(item)}
+                  >
+                    <InstalledItemRow
+                      item={item}
+                      selected={selectedItemKey === getInstalledItemKey(item)}
+                      onClick={() => setSelectedItem(item)}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             )}
-          </AnimatePresence>
+          </div>
         </div>
       }
       rightColumn={
-        selectedItem ? (
-          <InstalledItemDetail
-            item={selectedItem}
-            oneClickOpsUnlocked={oneClickOpsUnlocked}
-            onUninstall={() => {
-              void handleUninstall(selectedItem.item_id, selectedItem.platform_id);
-            }}
-            onCheckUpdate={handleCheckUpdates}
-            onApplyUpdate={() => {
-              if (!oneClickOpsUnlocked) {
-                void openManualPathForItem(selectedItem);
-                return;
-              }
-              void handleApplyUpdate();
-            }}
-            checkingUpdate={checkingUpdates}
-            applyingUpdate={updatingItem}
-            updateStatus={updateStatus}
-            pendingUpdate={pendingUpdate}
-            runtimeSessions={selectedRuntimeSessions}
-            runtimeEvents={selectedRuntimeEvents}
-            runtimePolicy={runtimePolicy}
-            runtimeStatus={runtimeStatus}
-            onTrustChange={(trustState) => handleTrustChange(selectedItem, trustState)}
-            onNetworkPolicySave={(allowedDomains, networkMode) => handleNetworkPolicySave(selectedItem, allowedDomains, networkMode)}
-            onGuardedLaunch={() => handleGuardedLaunch(selectedItem)}
-            onTerminateSession={handleTerminateSession}
-            onClearEvents={handleClearEvents}
-            launchingGuardedItem={launchingGuardedItem}
-            onBackToHost={() => setSelectedItem(null)}
-          />
-        ) : selectedHost ? (
-          <HostOverviewDetail
-            host={selectedHost}
-            oneClickUnlocked={oneClickOpsUnlocked}
-            hostComponents={items.filter((item) => item.platform_id === selectedHost.id)}
-            selectedItemKey={selectedItemKey}
-            onSelectItem={(item) => setSelectedItem(item)}
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full text-slate-400">
-            {tr('选择左侧工具查看详情', 'Select a tool on the left to view details')}
+        <div className="h-full flex flex-col">
+          <div className="px-5 pt-4 pb-3 border-b border-slate-100">
+            <p className="text-[11px] uppercase tracking-wide text-slate-400">{tr('第 3 步', 'Step 3')}</p>
+            <h3 className="text-sm font-semibold text-slate-800">{tr('查看详情并处理', 'Review details and act')}</h3>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {selectedItem
+                ? tr(`当前组件：${selectedItem.name}`, `Current component: ${selectedItem.name}`)
+                : selectedHost
+                  ? tr('先在中栏选择组件，再在右侧执行修复、更新或卸载', 'Select a component in the middle, then fix, update, or uninstall here')
+                  : tr('先完成第 1 步与第 2 步', 'Complete Step 1 and Step 2 first')}
+            </p>
           </div>
-        )
+          <div className="flex-1 min-h-0">
+            {selectedItem ? (
+              <InstalledItemDetail
+                item={selectedItem}
+                oneClickOpsUnlocked={oneClickOpsUnlocked}
+                onUninstall={() => {
+                  void handleUninstall(selectedItem.item_id, selectedItem.platform_id);
+                }}
+                onCheckUpdate={handleCheckUpdates}
+                onApplyUpdate={() => {
+                  if (!oneClickOpsUnlocked) {
+                    void openManualPathForItem(selectedItem);
+                    return;
+                  }
+                  void handleApplyUpdate();
+                }}
+                checkingUpdate={checkingUpdates}
+                applyingUpdate={updatingItem}
+                updateStatus={updateStatus}
+                pendingUpdate={pendingUpdate}
+                runtimeSessions={selectedRuntimeSessions}
+                runtimeEvents={selectedRuntimeEvents}
+                runtimePolicy={runtimePolicy}
+                runtimeStatus={runtimeStatus}
+                onTrustChange={(trustState) => handleTrustChange(selectedItem, trustState)}
+                onNetworkPolicySave={(allowedDomains, networkMode) => handleNetworkPolicySave(selectedItem, allowedDomains, networkMode)}
+                onGuardedLaunch={() => handleGuardedLaunch(selectedItem)}
+                onTerminateSession={handleTerminateSession}
+                onClearEvents={handleClearEvents}
+                launchingGuardedItem={launchingGuardedItem}
+                onBackToHost={() => setSelectedItem(null)}
+              />
+            ) : selectedHost ? (
+              <HostOverviewDetail
+                host={selectedHost}
+                oneClickUnlocked={oneClickOpsUnlocked}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-slate-400">
+                {tr('选择左侧工具查看详情', 'Select a tool on the left to view details')}
+              </div>
+            )}
+          </div>
+        </div>
       }
       bottomBar={
         <div className="space-y-2">
@@ -1630,29 +1723,29 @@ function InstalledItemRow({ item, selected, onClick }: InstalledItemRowProps) {
       onClick={onClick}
       whileHover={{ x: 2 }}
       className={cn(
-        'w-full text-left p-4 rounded-xl border transition-all',
+        'w-full text-left px-3 py-2 rounded-lg border transition-all',
         selected
           ? 'bg-white border-slate-200 shadow-sm'
           : 'bg-slate-50/50 border-transparent hover:bg-white hover:border-slate-200'
       )}
     >
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
-          <span className="text-xl">{platformConfig.icon}</span>
+      <div className="flex items-center gap-2.5">
+        <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+          <span className="text-base">{platformConfig.icon}</span>
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-slate-900">{item.name}</span>
-            <span className="text-xs text-slate-400">v{item.version}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-medium text-slate-900 truncate">{item.name}</span>
+            <span className="text-[11px] text-slate-400 shrink-0">v{item.version}</span>
           </div>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-1.5 mt-0.5">
             <SafetyBadge level={item.safety_level} size="small" showIcon={false} />
-            {trustLabel ? <span className="text-xs text-slate-500">{trustLabel}</span> : null}
+            {trustLabel ? <span className="text-[11px] text-slate-500">{trustLabel}</span> : null}
           </div>
         </div>
 
-        <ChevronRight className="w-4 h-4 text-slate-400" />
+        <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
       </div>
     </motion.button>
   );
@@ -1661,17 +1754,11 @@ function InstalledItemRow({ item, selected, onClick }: InstalledItemRowProps) {
 interface HostOverviewDetailProps {
   host: HostOverviewEntry;
   oneClickUnlocked: boolean;
-  hostComponents: GuardedInstalledMcp[];
-  selectedItemKey: string | null;
-  onSelectItem: (item: GuardedInstalledMcp) => void;
 }
 
 function HostOverviewDetail({
   host,
   oneClickUnlocked,
-  hostComponents,
-  selectedItemKey,
-  onSelectItem,
 }: HostOverviewDetailProps) {
   const [manualFixSteps, setManualFixSteps] = useState<ManualFixStep[]>([]);
   const [manualFixLoading, setManualFixLoading] = useState(false);
@@ -1883,53 +1970,14 @@ function HostOverviewDetail({
         </div>
       )}
 
-      {/* Installed extensions list */}
-      {hostComponents.length > 0 && (
-        <div className="flex-1 min-h-0">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                if (hostComponents[0]) {
-                  onSelectItem(hostComponents[0]);
-                }
-              }}
-              className="text-xs font-medium text-slate-500 hover:text-slate-700"
-            >
-              {tr('已安装组件', 'Installed components')}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (hostComponents[0]) {
-                  onSelectItem(hostComponents[0]);
-                }
-              }}
-              className="text-xs text-emerald-700 hover:text-emerald-800"
-            >
-              {tr('查看该宿主组件', 'View components in this tool')}
-            </button>
-          </div>
-          <div className="space-y-1.5 overflow-y-auto" style={{ maxHeight: 'calc(100% - 24px)' }}>
-            {hostComponents.map((comp) => (
-              <button
-                key={getInstalledItemKey(comp)}
-                onClick={() => onSelectItem(comp)}
-                className={cn(
-                  'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border text-left transition-colors',
-                  selectedItemKey === getInstalledItemKey(comp)
-                    ? 'bg-slate-100 border-slate-200'
-                    : 'bg-slate-50 border-slate-100 hover:bg-slate-100'
-                )}
-              >
-                <SafetyBadge level={comp.safety_level} size="small" showIcon />
-                <span className="flex-1 text-sm text-slate-800 truncate">{comp.name}</span>
-                <span className="text-[11px] text-slate-400">v{comp.version}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="mt-auto rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3">
+        <p className="text-xs text-slate-500">
+          {tr(
+            '下一步：请在中栏（第 2 步）选择具体组件，再在右侧进行更新、卸载与信任策略管理。',
+            'Next: choose a component in the middle column (Step 2), then manage update, uninstall, and trust policy here.',
+          )}
+        </p>
+      </div>
     </div>
   );
 }
@@ -2062,134 +2110,221 @@ function InstalledItemDetail({
         <p className="text-sm text-slate-600 mb-6">{item.description}</p>
       )}
 
-      <div className="space-y-4">
-        <DetailRow label={t.platform} value={platformConfig.name} />
-        <DetailRow label={t.securityScan}>
-          <SafetyBadge level={item.safety_level} />
-        </DetailRow>
-        <DetailRow label={t.installDate} value={item.installDate} />
-        <DetailRow label={t.version} value={item.version} />
-        <DetailRow
-          label={tr('安装来源', 'Install source')}
-          value={item.managedByAgentShield ? tr('由 AgentShield 安装', 'Installed by AgentShield') : tr('其他方式安装', 'Installed outside AgentShield')}
-        />
-        {item.runtimeTrustState && (
-          <DetailRow label={tr('当前状态', 'Current status')} value={formatRuntimeTrustState(item.runtimeTrustState)} />
-        )}
-        {item.runtimeSourceKind && (
-          <DetailRow label={tr('来源等级', 'Source level')} value={formatRuntimeSourceKind(item.runtimeSourceKind)} />
-        )}
-        {item.runtimeNetworkMode && (
-          <DetailRow label={tr('联网权限', 'Network access')} value={formatRuntimeNetworkMode(item.runtimeNetworkMode)} />
-        )}
-        {item.runtimeSensitiveCapabilities && item.runtimeSensitiveCapabilities.length > 0 && (
-          <DetailRow
-            label={tr('敏感能力', 'Sensitive capabilities')}
-            value={item.runtimeSensitiveCapabilities.map((capability) => formatSensitiveCapability(capability)).join(' / ')}
-          />
-        )}
-        {runtimeStatus && (
-          <DetailRow label={tr('后台监控', 'Background monitor')} value={runtimeStatus.polling ? tr('运行中', 'Running') : tr('未运行', 'Stopped')} />
-        )}
-        {runtimePolicy && (
-          <DetailRow
-            label={tr('默认安全策略', 'Default safety policy')}
-            value={tr(
-              `陌生组件=${formatRuntimeTrustStateShort(runtimePolicy.unknown_default_trust)} / 已允许组件=${formatRuntimeNetworkMode(runtimePolicy.restricted_network_mode)}`,
-              `Unknown components=${formatRuntimeTrustStateShort(runtimePolicy.unknown_default_trust)} / Approved components=${formatRuntimeNetworkMode(runtimePolicy.restricted_network_mode)}`,
+      <div className="sticky top-0 z-20 -mx-6 mb-6 border-y border-slate-200 bg-white/95 px-6 py-3 backdrop-blur">
+        <p className="text-[11px] uppercase tracking-wide text-slate-400">{tr('主要操作', 'Primary actions')}</p>
+        <div className={cn('mt-2 grid gap-2', pendingUpdate?.has_update ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-2')}>
+          <button
+            onClick={onCheckUpdate}
+            disabled={checkingUpdate}
+            className={cn(
+              'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium transition-colors',
+              checkingUpdate
+                ? 'bg-slate-50 text-slate-400'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             )}
-          />
-        )}
-        {updateSummary && <DetailRow label={tr('版本信息', 'Version status')} value={updateSummary} />}
+          >
+            <RefreshCw className={cn('w-4 h-4', checkingUpdate && 'animate-spin')} />
+            {checkingUpdate ? t.checking : t.checkUpdate}
+          </button>
 
-        {item.runtimeRiskSummary && (
-          <div>
-            <h3 className="text-sm font-medium text-slate-500 mb-2">{tr('安全提醒', 'Safety note')}</h3>
-            <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
-              {localizedDynamicText(
-                item.runtimeRiskSummary,
-                tr(
-                  '检测到该扩展存在安全风险，请先审查再继续。',
-                  'A security risk was detected for this extension. Review it before continuing.',
-                ),
+          {pendingUpdate?.has_update ? (
+            <button
+              onClick={onApplyUpdate}
+              disabled={applyingUpdate}
+              className={cn(
+                'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium transition-colors',
+                applyingUpdate
+                  ? 'bg-emerald-50 text-emerald-300'
+                  : 'bg-emerald-500 text-white hover:bg-emerald-600'
               )}
-            </div>
+            >
+              <RefreshCw className={cn('w-4 h-4', applyingUpdate && 'animate-spin')} />
+              {applyingUpdate
+                ? tr('升级中…', 'Updating…')
+                : oneClickOpsUnlocked
+                  ? tr(`升级到 ${pendingUpdate.new_version}`, `Update to ${pendingUpdate.new_version}`)
+                  : tr('前往官方来源手动更新', 'Open official source for manual update')}
+            </button>
+          ) : null}
+
+          <button
+            onClick={handleUninstall}
+            className={cn(
+              'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium transition-colors',
+              confirmUninstall
+                ? 'bg-red-500 text-white'
+                : 'bg-red-50 text-red-600 hover:bg-red-100'
+            )}
+          >
+            <Trash2 className="w-4 h-4" />
+            {confirmUninstall
+              ? t.confirmUninstallAgain
+              : oneClickOpsUnlocked
+                ? t.uninstall
+                : showItemManualFix
+                  ? tr('收起卸载步骤', 'Hide uninstall steps')
+                  : tr('查看卸载步骤（免费）', 'View uninstall steps (free)')}
+          </button>
+        </div>
+        {updateStatus && (
+          <div className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            {updateStatus}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-4">
+        {item.runtimeRiskSummary && (
+          <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            {localizedDynamicText(
+              item.runtimeRiskSummary,
+              tr(
+                '检测到该扩展存在安全风险，请先审查再继续。',
+                'A security risk was detected for this extension. Review it before continuing.',
+              ),
+            )}
           </div>
         )}
 
         {(item.runtimeTrustState === 'unknown' || item.runtimeRequiresExplicitApproval) && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             {tr(
-              '这个扩展还没获得你的许可。它尝试联网、读写文件或运行程序时，会先暂停并征求你的同意。',
-              'This extension is not approved yet. When it tries to go online, read/write files, or run programs, it will pause and ask for your approval first.',
+              '还没得到你的许可：它尝试联网、读写文件或运行程序时，会先暂停并询问你。',
+              'Not approved yet: when it tries to go online, read/write files, or run programs, it will pause and ask first.',
             )}
           </div>
         )}
 
         {item.runtimeComponentId && (
-          <div className="space-y-3">
-            <div>
-              <h3 className="text-sm font-medium text-slate-500 mb-2">{tr('安全操作', 'Safety actions')}</h3>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => onTrustChange('trusted')}
-                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-100"
-                >
-                  <ShieldCheck className="w-4 h-4" />
-                  {tr('允许正常运行', 'Allow normal run')}
-                </button>
-                <button
-                  onClick={() => onTrustChange('restricted')}
-                  className="inline-flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700 hover:bg-amber-100"
-                >
-                  <ShieldAlert className="w-4 h-4" />
-                  {tr('允许但监控', 'Allow with monitoring')}
-                </button>
-                <button
-                  onClick={() => onTrustChange('blocked')}
-                  className="inline-flex items-center gap-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 hover:bg-rose-100"
-                >
-                  <ShieldBan className="w-4 h-4" />
-                  {tr('继续拦住', 'Keep blocked')}
-                </button>
-              </div>
-            </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-3">
+            <h3 className="text-sm font-medium text-slate-700">{tr('一步处理（推荐）', 'Quick actions (recommended)')}</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              {tr('零基础用户只需要点下面按钮。高级配置可在下方"高级设置"里查看。', 'For most users, just use the buttons below. Advanced settings are under "Advanced settings".')}
+            </p>
 
-            <div>
-              <h3 className="text-sm font-medium text-slate-500 mb-2">{tr('网络策略', 'Network policy')}</h3>
-              <div className="flex flex-wrap gap-2 mb-3">
-                <button
-                  onClick={() => onNetworkPolicySave([], 'observe_only')}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm',
-                    item.runtimeNetworkMode !== 'blocked'
-                      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-                  )}
-                >
-                  {tr('允许联网', 'Allow network')}
-                </button>
-                <button
-                  onClick={() => onNetworkPolicySave([], 'blocked')}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm',
-                    item.runtimeNetworkMode === 'blocked'
-                      ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
-                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-                  )}
-                >
-                  <ShieldBan className="w-3.5 h-3.5" />
-                  {tr('禁止联网（沙箱）', 'Block network (sandbox)')}
-                </button>
+            <div className="mt-3 space-y-3">
+              <div>
+                <h4 className="text-xs font-medium text-slate-500 mb-1">{tr('安全操作', 'Safety actions')}</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    onClick={() => onTrustChange('trusted')}
+                    className={cn(
+                      'inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+                      item.runtimeTrustState === 'trusted'
+                        ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                        : 'bg-slate-50 text-slate-700 hover:bg-slate-100',
+                    )}
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    {tr('允许正常运行', 'Allow normal run')}
+                  </button>
+                  <button
+                    onClick={() => onTrustChange('restricted')}
+                    className={cn(
+                      'inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+                      item.runtimeTrustState === 'restricted'
+                        ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                        : 'bg-slate-50 text-slate-700 hover:bg-slate-100',
+                    )}
+                  >
+                    <ShieldAlert className="w-4 h-4" />
+                    {tr('允许但监控', 'Allow with monitoring')}
+                  </button>
+                  <button
+                    onClick={() => onTrustChange('blocked')}
+                    className={cn(
+                      'inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+                      item.runtimeTrustState === 'blocked'
+                        ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
+                        : 'bg-slate-50 text-slate-700 hover:bg-slate-100',
+                    )}
+                  >
+                    <ShieldBan className="w-4 h-4" />
+                    {tr('继续拦住', 'Keep blocked')}
+                  </button>
+                </div>
               </div>
-              {item.runtimeNetworkMode === 'blocked' && (
-                <p className="mb-3 text-xs text-rose-600">
-                  {tr(
-                    '下次受控启动时，将使用 macOS sandbox-exec 完全阻断该组件的网络访问。',
-                    'On next supervised launch, macOS sandbox-exec will fully block this component\'s network access.',
-                  )}
-                </p>
-              )}
+
+              <div>
+                <h4 className="text-xs font-medium text-slate-500 mb-1">{tr('网络策略', 'Network policy')}</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    onClick={() => onNetworkPolicySave([], 'observe_only')}
+                    className={cn(
+                      'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-colors',
+                      item.runtimeNetworkMode !== 'blocked'
+                        ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                        : 'bg-slate-50 text-slate-700 hover:bg-slate-100',
+                    )}
+                  >
+                    {tr('允许联网', 'Allow network')}
+                  </button>
+                  <button
+                    onClick={() => onNetworkPolicySave([], 'blocked')}
+                    className={cn(
+                      'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-colors',
+                      item.runtimeNetworkMode === 'blocked'
+                        ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
+                        : 'bg-slate-50 text-slate-700 hover:bg-slate-100',
+                    )}
+                  >
+                    <ShieldBan className="w-3.5 h-3.5" />
+                    {tr('禁止联网（沙箱）', 'Block network (sandbox)')}
+                  </button>
+                </div>
+                {item.runtimeNetworkMode === 'blocked' && (
+                  <p className="mt-2 text-xs text-rose-600">
+                    {tr(
+                      '下次受控启动时，会使用沙箱阻断网络访问。',
+                      'On next supervised launch, the sandbox will block network access.',
+                    )}
+                  </p>
+                )}
+              </div>
+
+              <button
+                onClick={onGuardedLaunch}
+                disabled={launchingGuardedItem || guardedLaunchBlocked}
+                className={cn(
+                  'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium transition-colors',
+                  launchingGuardedItem || guardedLaunchBlocked
+                    ? 'bg-slate-50 text-slate-400'
+                    : 'bg-sky-50 text-sky-700 hover:bg-sky-100'
+                )}
+              >
+                <Play className="w-4 h-4" />
+                {launchingGuardedItem
+                  ? tr('受控启动中…', 'Starting with protection…')
+                  : guardedLaunchBlocked
+                    ? tr('先允许再启动', 'Approve first, then start')
+                    : tr('受控启动', 'Start with protection')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+          <h3 className="text-sm font-medium text-slate-700">{tr('基础信息', 'At a glance')}</h3>
+          <div className="mt-2 space-y-1">
+            <DetailRow label={t.platform} value={platformConfig.name} />
+            <DetailRow label={t.securityScan}>
+              <SafetyBadge level={item.safety_level} />
+            </DetailRow>
+            <DetailRow label={t.version} value={item.version} />
+            <DetailRow label={t.installDate} value={item.installDate} />
+            {updateSummary && <DetailRow label={tr('版本信息', 'Version status')} value={updateSummary} />}
+          </div>
+        </div>
+
+        {item.runtimeComponentId && (
+          <details className="group rounded-xl border border-slate-200 bg-white p-3">
+            <summary className="cursor-pointer list-none text-sm font-medium text-slate-700">
+              <span className="inline-flex items-center gap-2">
+                {tr('高级设置（联网地址白名单）', 'Advanced settings (network allowlist)')}
+                <span className="text-xs text-slate-400 group-open:hidden">{tr('点击展开', 'Click to expand')}</span>
+              </span>
+            </summary>
+            <div className="mt-3 border-t border-slate-100 pt-3">
               <h4 className="text-xs font-medium text-slate-500 mb-1">{tr('允许联网的地址', 'Allowed network domains')}</h4>
               <div className="flex gap-2">
                 <input
@@ -2212,145 +2347,169 @@ function InstalledItemDetail({
               </div>
               <p className="mt-2 text-xs text-slate-500">
                 {tr(
-                  '当它尝试连接新的地址时，AgentShield 会先拦截并问你是否放行。',
-                  'When it tries a new domain, AgentShield will block it first and ask for your approval.',
+                  '连接新地址时，AgentShield 会先拦截并询问是否放行。',
+                  'When it tries a new domain, AgentShield blocks first and asks for approval.',
                 )}
               </p>
             </div>
-
-            <button
-              onClick={onGuardedLaunch}
-              disabled={launchingGuardedItem || guardedLaunchBlocked}
-              className={cn(
-                'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium transition-colors',
-                launchingGuardedItem || guardedLaunchBlocked
-                  ? 'bg-slate-50 text-slate-400'
-                  : 'bg-sky-50 text-sky-700 hover:bg-sky-100'
-              )}
-            >
-              <Play className="w-4 h-4" />
-              {launchingGuardedItem
-                ? tr('受控启动中…', 'Starting with protection…')
-                : guardedLaunchBlocked
-                  ? tr('先允许再启动', 'Approve first, then start')
-                  : tr('受控启动', 'Start with protection')}
-            </button>
-          </div>
+          </details>
         )}
 
-        {item.runtimeComponentId && (
-          <div>
-            <h3 className="text-sm font-medium text-slate-500 mb-2">{tr('当前正在运行', 'Active sessions')}</h3>
-            {runtimeSessions.length === 0 ? (
-              <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                {tr('当前未检测到活动会话', 'No active session detected')}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {runtimeSessions.map((session) => (
-                  <div key={session.session_id} className="rounded-xl border border-slate-200 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
-                          <Activity className="w-4 h-4 text-slate-500" />
-                          PID {session.pid}
-                          <span className="text-slate-400">{session.status}</span>
-                        </div>
-                        <div className="mt-1 text-xs text-slate-500 break-all">
-                          {session.commandline || session.exe_path || tr('无命令行信息', 'No command line details')}
-                        </div>
-                        {session.network_connections.length > 0 && (
-                          <div className="mt-2 text-xs text-slate-600">
-                            {tr('网络', 'Network')}: {session.network_connections.map((connection) => connection.remote_address || connection.local_address).join(' | ')}
+        <details className="group rounded-xl border border-slate-200 bg-white p-3">
+          <summary className="cursor-pointer list-none text-sm font-medium text-slate-700">
+            <span className="inline-flex items-center gap-2">
+              {tr('技术详情（运行状态 / 事件 / 来源）', 'Technical details (runtime / events / source)')}
+              <span className="text-xs text-slate-400 group-open:hidden">{tr('点击展开', 'Click to expand')}</span>
+            </span>
+          </summary>
+          <div className="mt-3 border-t border-slate-100 pt-3 space-y-4">
+            <DetailRow
+              label={tr('安装来源', 'Install source')}
+              value={item.managedByAgentShield ? tr('由 AgentShield 安装', 'Installed by AgentShield') : tr('其他方式安装', 'Installed outside AgentShield')}
+            />
+            {item.runtimeTrustState && (
+              <DetailRow label={tr('当前状态', 'Current status')} value={formatRuntimeTrustState(item.runtimeTrustState)} />
+            )}
+            {item.runtimeSourceKind && (
+              <DetailRow label={tr('来源等级', 'Source level')} value={formatRuntimeSourceKind(item.runtimeSourceKind)} />
+            )}
+            {item.runtimeNetworkMode && (
+              <DetailRow label={tr('联网权限', 'Network access')} value={formatRuntimeNetworkMode(item.runtimeNetworkMode)} />
+            )}
+            {item.runtimeSensitiveCapabilities && item.runtimeSensitiveCapabilities.length > 0 && (
+              <DetailRow
+                label={tr('敏感能力', 'Sensitive capabilities')}
+                value={item.runtimeSensitiveCapabilities.map((capability) => formatSensitiveCapability(capability)).join(' / ')}
+              />
+            )}
+            {runtimeStatus && (
+              <DetailRow label={tr('后台监控', 'Background monitor')} value={runtimeStatus.polling ? tr('运行中', 'Running') : tr('未运行', 'Stopped')} />
+            )}
+            {runtimePolicy && (
+              <DetailRow
+                label={tr('默认安全策略', 'Default safety policy')}
+                value={tr(
+                  `陌生组件=${formatRuntimeTrustStateShort(runtimePolicy.unknown_default_trust)} / 已允许组件=${formatRuntimeNetworkMode(runtimePolicy.restricted_network_mode)}`,
+                  `Unknown components=${formatRuntimeTrustStateShort(runtimePolicy.unknown_default_trust)} / Approved components=${formatRuntimeNetworkMode(runtimePolicy.restricted_network_mode)}`,
+                )}
+              />
+            )}
+
+            {item.runtimeComponentId && (
+              <div>
+                <h3 className="text-sm font-medium text-slate-500 mb-2">{tr('当前正在运行', 'Active sessions')}</h3>
+                {runtimeSessions.length === 0 ? (
+                  <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                    {tr('当前未检测到活动会话', 'No active session detected')}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {runtimeSessions.map((session) => (
+                      <div key={session.session_id} className="rounded-xl border border-slate-200 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                              <Activity className="w-4 h-4 text-slate-500" />
+                              PID {session.pid}
+                              <span className="text-slate-400">{session.status}</span>
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500 break-all">
+                              {session.commandline || session.exe_path || tr('无命令行信息', 'No command line details')}
+                            </div>
+                            {session.network_connections.length > 0 && (
+                              <div className="mt-2 text-xs text-slate-600">
+                                {tr('网络', 'Network')}: {session.network_connections.map((connection) => connection.remote_address || connection.local_address).join(' | ')}
+                              </div>
+                            )}
                           </div>
-                        )}
+                          {session.status === 'running' && (
+                            <button
+                              onClick={() => onTerminateSession(session.session_id)}
+                              className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-100"
+                            >
+                              {tr('终止', 'Stop')}
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      {session.status === 'running' && (
-                        <button
-                          onClick={() => onTerminateSession(session.session_id)}
-                          className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-100"
-                        >
-                          {tr('终止', 'Stop')}
-                        </button>
-                      )}
-                    </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             )}
-          </div>
-        )}
 
-        {item.runtimeComponentId && (
-            <div>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <h3 className="text-sm font-medium text-slate-500">{tr('最近被拦下或提醒的事', 'Recent blocked or flagged events')}</h3>
-                {runtimeEvents.length > 0 ? (
-                  <button
-                    onClick={onClearEvents}
-                    className="text-xs text-slate-500 hover:text-slate-700"
-                  >
-                    {tr('清空事件', 'Clear events')}
-                  </button>
-                ) : null}
-              </div>
-              {runtimeEvents.length === 0 ? (
-                <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                  {tr('当前没有与该组件相关的守卫事件', 'No guard events for this component right now')}
+            {item.runtimeComponentId && (
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-medium text-slate-500">{tr('最近被拦下或提醒的事', 'Recent blocked or flagged events')}</h3>
+                  {runtimeEvents.length > 0 ? (
+                    <button
+                      onClick={onClearEvents}
+                      className="text-xs text-slate-500 hover:text-slate-700"
+                    >
+                      {tr('清空事件', 'Clear events')}
+                    </button>
+                  ) : null}
                 </div>
-              ) : (
-              <div className="space-y-2">
-                {runtimeEvents.map((event) => (
-                  <div key={event.id} className="rounded-xl border border-slate-200 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm font-medium text-slate-900">
-                        {localizedDynamicText(event.title, tr('Security event detected', 'Security event detected'))}
-                      </div>
-                      <div className={cn(
-                        'rounded-full px-2 py-0.5 text-[11px]',
-                        event.severity === 'critical'
-                          ? 'bg-rose-50 text-rose-700'
-                          : 'bg-amber-50 text-amber-700'
-                      )}>
-                        {event.severity === 'critical' ? tr('马上处理', 'Action needed now') : tr('提醒', 'Heads-up')}
-                      </div>
-                    </div>
-                    <div className="mt-1 text-xs text-slate-500">
-                      {localizedDynamicText(
-                        event.description,
-                        tr('A guarded operation was blocked or flagged.', 'A guarded operation was blocked or flagged.'),
-                      )}
-                    </div>
-                    <div className="mt-2 text-[11px] text-slate-400">
-                      {new Date(event.timestamp).toLocaleString()}
-                    </div>
+                {runtimeEvents.length === 0 ? (
+                  <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                    {tr('当前没有与该组件相关的守卫事件', 'No guard events for this component right now')}
                   </div>
-                ))}
+                ) : (
+                  <div className="space-y-2">
+                    {runtimeEvents.map((event) => (
+                      <div key={event.id} className="rounded-xl border border-slate-200 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-medium text-slate-900">
+                            {localizedDynamicText(event.title, tr('Security event detected', 'Security event detected'))}
+                          </div>
+                          <div className={cn(
+                            'rounded-full px-2 py-0.5 text-[11px]',
+                            event.severity === 'critical'
+                              ? 'bg-rose-50 text-rose-700'
+                              : 'bg-amber-50 text-amber-700'
+                          )}>
+                            {event.severity === 'critical' ? tr('马上处理', 'Action needed now') : tr('提醒', 'Heads-up')}
+                          </div>
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {localizedDynamicText(
+                            event.description,
+                            tr('A guarded operation was blocked or flagged.', 'A guarded operation was blocked or flagged.'),
+                          )}
+                        </div>
+                        <div className="mt-2 text-[11px] text-slate-400">
+                          {new Date(event.timestamp).toLocaleString()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {item.sourceUrl && (
+              <div>
+                <h3 className="text-sm font-medium text-slate-500 mb-2">
+                  {isRemoteSource ? t.sourceUrl : t.fileLocation}
+                </h3>
+                <button
+                  onClick={() => {
+                    if (isRemoteSource) {
+                      void openExternalUrl(item.sourceUrl!);
+                      return;
+                    }
+                    void invoke('reveal_path_in_finder', { path: item.sourceUrl });
+                  }}
+                  className="flex items-center gap-2 text-sm text-blue-600 hover:underline"
+                >
+                  {item.sourceUrl}
+                  <ExternalLink className="w-3 h-3" />
+                </button>
               </div>
             )}
           </div>
-        )}
-
-        {item.sourceUrl && (
-          <div>
-            <h3 className="text-sm font-medium text-slate-500 mb-2">
-              {isRemoteSource ? t.sourceUrl : t.fileLocation}
-            </h3>
-            <button
-              onClick={() => {
-                if (isRemoteSource) {
-                  void openExternalUrl(item.sourceUrl!);
-                  return;
-                }
-                void invoke('reveal_path_in_finder', { path: item.sourceUrl });
-              }}
-              className="flex items-center gap-2 text-sm text-blue-600 hover:underline"
-            >
-              {item.sourceUrl}
-              <ExternalLink className="w-3 h-3" />
-            </button>
-          </div>
-        )}
+        </details>
       </div>
 
       {/* Manual fix guide for individual item */}
@@ -2378,64 +2537,6 @@ function InstalledItemDetail({
           )}
         </div>
       )}
-
-      <div className="mt-8 space-y-3">
-        {updateStatus && (
-          <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
-            {updateStatus}
-          </div>
-        )}
-        <button
-          onClick={onCheckUpdate}
-          disabled={checkingUpdate}
-          className={cn(
-            'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium transition-colors',
-            checkingUpdate
-              ? 'bg-slate-50 text-slate-400'
-              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-          )}
-        >
-          <RefreshCw className={cn('w-4 h-4', checkingUpdate && 'animate-spin')} />
-          {checkingUpdate ? t.checking : t.checkUpdate}
-        </button>
-        {pendingUpdate?.has_update && (
-          <button
-            onClick={onApplyUpdate}
-            disabled={applyingUpdate}
-            className={cn(
-              'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium transition-colors',
-              applyingUpdate
-                ? 'bg-emerald-50 text-emerald-300'
-                : 'bg-emerald-500 text-white hover:bg-emerald-600'
-            )}
-          >
-            <RefreshCw className={cn('w-4 h-4', applyingUpdate && 'animate-spin')} />
-            {applyingUpdate
-              ? tr('升级中…', 'Updating…')
-              : oneClickOpsUnlocked
-                ? tr(`升级到 ${pendingUpdate.new_version}`, `Update to ${pendingUpdate.new_version}`)
-                : tr('前往官方来源手动更新', 'Open official source for manual update')}
-          </button>
-        )}
-        <button
-          onClick={handleUninstall}
-          className={cn(
-            'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium transition-colors',
-            confirmUninstall
-              ? 'bg-red-500 text-white'
-              : 'bg-red-50 text-red-600 hover:bg-red-100'
-          )}
-        >
-          <Trash2 className="w-4 h-4" />
-          {confirmUninstall
-            ? t.confirmUninstallAgain
-            : oneClickOpsUnlocked
-              ? t.uninstall
-              : showItemManualFix
-                ? tr('收起卸载步骤', 'Hide uninstall steps')
-                : tr('查看卸载步骤（免费）', 'View uninstall steps (free)')}
-        </button>
-      </div>
     </div>
   );
 }

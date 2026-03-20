@@ -52,6 +52,11 @@ const initialState = {
   audit_logs: [],
   webhook_failures: [],
   processed_webhook_events: [],
+  affiliates: [],
+  promo_codes: [],
+  conversions: [],
+  commission_events: [],
+  payouts: [],
   metrics: {
     orders_created_total: 0,
     licenses_issued_total: 0,
@@ -67,6 +72,10 @@ const initialState = {
     webhook_verify_failed_total: 0,
     webhook_duplicate_total: 0,
     delivery_email_failed_total: 0,
+    conversions_total: 0,
+    commissions_accrued_total: 0,
+    commissions_reversed_total: 0,
+    payouts_total: 0,
   },
 };
 
@@ -135,12 +144,56 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === 'POST' && pathname === '/api/promos/validate') {
+      const body = JSON.parse((await readRawBody(req)).toString('utf8'));
+      const code = String(body?.code ?? '').trim().toUpperCase();
+      if (!code) {
+        sendJson(res, 200, { valid: false, message: 'Missing code' });
+        return;
+      }
+      const promo = state.promo_codes.find((p) => p.code === code && p.active);
+      if (!promo) {
+        sendJson(res, 200, { valid: false, message: 'Invalid promo code' });
+        return;
+      }
+      if (promo.expires_at && new Date(promo.expires_at) < new Date()) {
+        sendJson(res, 200, { valid: false, message: 'Promo code expired' });
+        return;
+      }
+      if (promo.max_uses > 0 && promo.times_used >= promo.max_uses) {
+        sendJson(res, 200, { valid: false, message: 'Promo code fully redeemed' });
+        return;
+      }
+      const affiliate = state.affiliates.find((a) => a.id === promo.affiliate_id);
+      sendJson(res, 200, {
+        valid: true,
+        discount_pct: promo.discount_pct,
+        affiliate_id: promo.affiliate_id,
+        affiliate_name: affiliate?.name ?? null,
+        message: `${promo.discount_pct}% discount applied`,
+      });
+      return;
+    }
+
     if (!pathname.startsWith('/admin/')) {
       sendJson(res, 404, { error: 'Not Found' });
       return;
     }
 
     if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    // Admin dashboard UI
+    if (req.method === 'GET' && pathname === '/admin/dashboard') {
+      const dashboardPath = path.join(scriptDir, 'admin-dashboard.html');
+      try {
+        const html = fs.readFileSync(dashboardPath, 'utf8');
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+      } catch {
+        sendJson(res, 500, { error: 'Dashboard file not found' });
+      }
       return;
     }
 
@@ -281,6 +334,215 @@ const server = http.createServer(async (req, res) => {
       saveState();
 
       sendJson(res, 200, { ok: true, license: target });
+      return;
+    }
+
+    if (req.method === 'POST' && pathname === '/admin/affiliates') {
+      const body = JSON.parse((await readRawBody(req)).toString('utf8'));
+      const name = String(body?.name ?? '').trim();
+      const email = String(body?.email ?? '').trim();
+      const platform = String(body?.platform ?? '').trim();
+      const commissionPct = Number(body?.commission_pct ?? 20);
+      const discountPct = Number(body?.discount_pct ?? 30);
+      const promoCodeStr = String(body?.promo_code ?? '').trim().toUpperCase();
+      const payoutMethod = body?.payout_method ?? { type: 'wechat', account: '' };
+      const notes = String(body?.notes ?? '').trim();
+
+      if (!name || !promoCodeStr) {
+        sendJson(res, 400, { error: 'name and promo_code are required' });
+        return;
+      }
+      if (state.promo_codes.find((p) => p.code === promoCodeStr)) {
+        sendJson(res, 409, { error: `Promo code ${promoCodeStr} already exists` });
+        return;
+      }
+
+      const affiliateId = createId('aff');
+      let creemDiscountId = null;
+
+      // Try to create discount on Creem
+      const creemApiKey = process.env.CREEM_API_KEY ?? '';
+      const productIdsJson = process.env.CREEM_PRODUCT_IDS_JSON ?? '[]';
+      let productIds = [];
+      try { productIds = JSON.parse(productIdsJson); } catch {}
+
+      if (creemApiKey) {
+        try {
+          const creemResp = await fetch('https://api.creem.io/v1/discounts', {
+            method: 'POST',
+            headers: { 'x-api-key': creemApiKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: `Affiliate ${name} ${discountPct}off`,
+              code: promoCodeStr,
+              type: 'percentage',
+              percentage: discountPct,
+              duration: 'once',
+              applies_to_products: productIds.length > 0 ? productIds : undefined,
+              max_redemptions: Number(body?.max_uses ?? 10000),
+              expiry_date: body?.expires_at ?? '2027-12-31T23:59:59Z',
+            }),
+          });
+          const creemData = await creemResp.json();
+          creemDiscountId = creemData?.id ?? null;
+          if (!creemResp.ok) {
+            console.warn('[license-gateway] Creem discount creation warning:', JSON.stringify(creemData));
+          }
+        } catch (err) {
+          console.warn('[license-gateway] Creem discount API error:', String(err));
+        }
+      }
+
+      const affiliate = {
+        id: affiliateId,
+        name,
+        email,
+        platform,
+        commission_pct: commissionPct,
+        status: 'active',
+        payout_method: payoutMethod,
+        promo_code: promoCodeStr,
+        creem_discount_id: creemDiscountId,
+        notes,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      state.affiliates.push(affiliate);
+
+      const promo = {
+        code: promoCodeStr,
+        affiliate_id: affiliateId,
+        creem_discount_id: creemDiscountId,
+        discount_pct: discountPct,
+        max_uses: Number(body?.max_uses ?? 10000),
+        times_used: 0,
+        expires_at: body?.expires_at ?? '2027-12-31T23:59:59Z',
+        active: true,
+        created_at: new Date().toISOString(),
+      };
+      state.promo_codes.push(promo);
+
+      addAuditLog({
+        actor: actorFromRequest(req),
+        action: 'affiliate.create',
+        target_type: 'affiliate',
+        target_id: affiliateId,
+        payload: { name, promo_code: promoCodeStr, discount_pct: discountPct, commission_pct: commissionPct },
+      });
+      saveState();
+      sendJson(res, 201, { ok: true, affiliate, promo, creem_discount_id: creemDiscountId });
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/admin/affiliates') {
+      const result = state.affiliates.map((aff) => {
+        const affConversions = state.conversions.filter((c) => c.affiliate_id === aff.id);
+        const affEvents = state.commission_events.filter((e) => e.affiliate_id === aff.id);
+        const totalRevenueCents = affConversions.reduce((s, c) => s + (c.paid_amount_cents || 0), 0);
+        const totalAccruedCents = affEvents.filter((e) => e.event_type === 'accrue').reduce((s, e) => s + e.amount_cents, 0);
+        const totalReversedCents = affEvents.filter((e) => e.event_type === 'reversal').reduce((s, e) => s + e.amount_cents, 0);
+        const totalPaidCents = state.payouts
+          .filter((p) => p.affiliate_id === aff.id && p.status === 'completed')
+          .reduce((s, p) => s + p.amount_cents, 0);
+        const pendingCents = totalAccruedCents + totalReversedCents - totalPaidCents;
+        const promoRecord = state.promo_codes.find((p) => p.affiliate_id === aff.id);
+        return {
+          ...aff,
+          stats: {
+            total_conversions: affConversions.length,
+            total_revenue_cents: totalRevenueCents,
+            total_accrued_cents: totalAccruedCents,
+            total_reversed_cents: totalReversedCents,
+            total_paid_cents: totalPaidCents,
+            pending_cents: pendingCents,
+            promo_times_used: promoRecord?.times_used ?? 0,
+          },
+        };
+      });
+      sendJson(res, 200, { total: result.length, items: result });
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/admin/commissions') {
+      sendJson(res, 200, {
+        total_conversions: state.conversions.length,
+        total_commission_events: state.commission_events.length,
+        conversions: state.conversions.slice(-200).reverse(),
+        recent_events: state.commission_events.slice(-100).reverse(),
+      });
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/admin/commissions/export') {
+      const rows = [['affiliate_name', 'email', 'platform', 'promo_code', 'conversions', 'revenue_cents', 'accrued_cents', 'reversed_cents', 'paid_cents', 'pending_cents', 'payout_method'].join(',')];
+      for (const aff of state.affiliates) {
+        const affConv = state.conversions.filter((c) => c.affiliate_id === aff.id);
+        const affEvts = state.commission_events.filter((e) => e.affiliate_id === aff.id);
+        const rev = affConv.reduce((s, c) => s + (c.paid_amount_cents || 0), 0);
+        const acc = affEvts.filter((e) => e.event_type === 'accrue').reduce((s, e) => s + e.amount_cents, 0);
+        const revd = affEvts.filter((e) => e.event_type === 'reversal').reduce((s, e) => s + e.amount_cents, 0);
+        const paid = state.payouts.filter((p) => p.affiliate_id === aff.id && p.status === 'completed').reduce((s, p) => s + p.amount_cents, 0);
+        const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        rows.push([esc(aff.name), esc(aff.email), esc(aff.platform), esc(aff.promo_code), affConv.length, rev, acc, revd, paid, acc + revd - paid, esc(aff.payout_method?.type ?? '')].join(','));
+      }
+      res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="commissions.csv"' });
+      res.end(rows.join('\n'));
+      return;
+    }
+
+    if (req.method === 'POST' && pathname === '/admin/payouts/mark-paid') {
+      const body = JSON.parse((await readRawBody(req)).toString('utf8'));
+      const affiliateId = String(body?.affiliate_id ?? '').trim();
+      const amountCents = Number(body?.amount_cents ?? 0);
+      const currency = String(body?.currency ?? 'USD').trim();
+      const payoutNotes = String(body?.notes ?? '').trim();
+      if (!affiliateId || !amountCents) {
+        sendJson(res, 400, { error: 'affiliate_id and amount_cents required' });
+        return;
+      }
+      const affiliate = state.affiliates.find((a) => a.id === affiliateId);
+      if (!affiliate) {
+        sendJson(res, 404, { error: 'Affiliate not found' });
+        return;
+      }
+      const payoutId = createId('pay');
+      const payout = {
+        id: payoutId,
+        affiliate_id: affiliateId,
+        amount_cents: amountCents,
+        currency,
+        payout_method: affiliate.payout_method,
+        status: 'completed',
+        notes: payoutNotes,
+        created_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+      };
+      state.payouts.push(payout);
+      state.commission_events.push({
+        id: createId('ce'),
+        conversion_id: null,
+        affiliate_id: affiliateId,
+        event_type: 'payout',
+        amount_cents: -amountCents,
+        currency,
+        related_provider_event: null,
+        notes: `payout marked: ${payoutNotes}`,
+        created_at: new Date().toISOString(),
+      });
+      state.metrics.payouts_total += 1;
+      addAuditLog({
+        actor: actorFromRequest(req),
+        action: 'payout.mark_paid',
+        target_type: 'payout',
+        target_id: payoutId,
+        payload: { affiliate_id: affiliateId, amount_cents: amountCents },
+      });
+      saveState();
+      sendJson(res, 200, { ok: true, payout });
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/admin/promo-codes') {
+      sendJson(res, 200, { total: state.promo_codes.length, items: state.promo_codes });
       return;
     }
 
@@ -486,6 +748,74 @@ async function handleCheckoutCompletedWebhook(extracted, rawBody, res) {
     license.issued_code_hash = sha256Hex(activationCode);
     state.licenses.push(license);
     state.metrics.licenses_issued_total += 1;
+
+    // --- Promo code + commission tracking ---
+    if (extracted.promo_code) {
+      const promoRecord = state.promo_codes.find(
+        (p) => p.code === extracted.promo_code && p.active
+      );
+      if (promoRecord) {
+        promoRecord.times_used += 1;
+        // Anti-abuse: skip commission if same email already used this promo
+        const alreadyUsed = state.conversions.find(
+          (c) => c.promo_code === extracted.promo_code && c.customer_email === extracted.customer_email && c.status === 'paid'
+        );
+        const affiliate = !alreadyUsed ? state.affiliates.find(
+          (a) => a.id === (extracted.affiliate_id || promoRecord.affiliate_id) && a.status === 'active'
+        ) : null;
+        if (affiliate) {
+          const paidAmountCents = extracted.amount_total;
+          const commissionPct = affiliate.commission_pct;
+          const commissionCents = Math.round(paidAmountCents * commissionPct / 100);
+          const lockedUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+          const convId = createId('conv');
+          const conversion = {
+            id: convId,
+            affiliate_id: affiliate.id,
+            promo_code: extracted.promo_code,
+            provider_order_id: extracted.provider_order_id,
+            customer_email: extracted.customer_email,
+            product_id: extracted.product_id,
+            original_price_cents: extracted.product_price_cents || paidAmountCents,
+            paid_amount_cents: paidAmountCents,
+            discount_cents: (extracted.product_price_cents || paidAmountCents) - paidAmountCents,
+            discount_pct: promoRecord.discount_pct,
+            commission_pct: commissionPct,
+            commission_cents: commissionCents,
+            status: 'paid',
+            locked_until: lockedUntil,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          state.conversions.push(conversion);
+          state.commission_events.push({
+            id: createId('ce'),
+            conversion_id: convId,
+            affiliate_id: affiliate.id,
+            event_type: 'accrue',
+            amount_cents: commissionCents,
+            currency: extracted.currency,
+            related_provider_event: extracted.event_id,
+            notes: `checkout.completed promo=${extracted.promo_code}`,
+            created_at: new Date().toISOString(),
+          });
+          state.metrics.conversions_total += 1;
+          state.metrics.commissions_accrued_total += 1;
+          addAuditLog({
+            actor: 'creem:webhook',
+            action: 'commission.accrue',
+            target_type: 'conversion',
+            target_id: convId,
+            payload: {
+              affiliate_id: affiliate.id,
+              promo_code: extracted.promo_code,
+              commission_cents: commissionCents,
+              paid_amount_cents: paidAmountCents,
+            },
+          });
+        }
+      }
+    }
 
     recordDelivery(license.license_id, 'checkout_page', license.customer_email);
     const webhookEmailResult = await trySendActivationCodeEmail({
@@ -864,6 +1194,34 @@ function handleRefundWebhook(extracted, rawBody, res) {
       payload: {
         event_name: extracted.event_name,
       },
+    });
+  }
+
+  // --- Reverse commissions on refund ---
+  const relatedConversions = state.conversions.filter(
+    (c) => c.provider_order_id === extracted.provider_order_id && c.status === 'paid'
+  );
+  for (const conv of relatedConversions) {
+    conv.status = 'refunded';
+    conv.updated_at = new Date().toISOString();
+    state.commission_events.push({
+      id: createId('ce'),
+      conversion_id: conv.id,
+      affiliate_id: conv.affiliate_id,
+      event_type: 'reversal',
+      amount_cents: -conv.commission_cents,
+      currency: extracted.currency,
+      related_provider_event: extracted.event_id,
+      notes: 'refund.created reversal',
+      created_at: new Date().toISOString(),
+    });
+    state.metrics.commissions_reversed_total += 1;
+    addAuditLog({
+      actor: 'creem:webhook',
+      action: 'commission.reverse',
+      target_type: 'conversion',
+      target_id: conv.id,
+      payload: { affiliate_id: conv.affiliate_id, reversed_cents: conv.commission_cents },
     });
   }
 
@@ -1259,6 +1617,9 @@ function extractCreemOrder(payload) {
     amount_total: Number.isFinite(amountTotal) ? amountTotal : 0,
     payment_status: paymentStatus || 'paid',
     subscription_period_end_at: subscriptionPeriodEndAt,
+    affiliate_id: String(metadata?.affiliate_id ?? '').trim() || null,
+    promo_code: String(metadata?.promo_code ?? '').trim().toUpperCase() || null,
+    product_price_cents: Number(productNode?.price ?? 0) || 0,
   };
 }
 
@@ -1823,8 +2184,14 @@ function requireAdmin(req, res) {
     return false;
   }
 
+  // Add RFC-compliant challenge so browsers show the Basic Auth login prompt.
+  const setAuthChallenge = () => {
+    res.setHeader('WWW-Authenticate', 'Basic realm="AgentShield Admin", charset="UTF-8"');
+  };
+
   const authHeader = req.headers.authorization ?? '';
   if (!authHeader.startsWith('Basic ')) {
+    setAuthChallenge();
     sendJson(res, 401, { error: 'Missing Basic authorization header' });
     return false;
   }
@@ -1834,13 +2201,16 @@ function requireAdmin(req, res) {
   try {
     decoded = Buffer.from(encoded, 'base64').toString('utf8');
   } catch {
+    setAuthChallenge();
     sendJson(res, 401, { error: 'Malformed authorization header' });
     return false;
   }
 
   const [username, password] = decoded.split(':');
   if (username !== adminUsername || password !== adminPassword) {
-    sendJson(res, 403, { error: 'Invalid admin credentials' });
+    // Keep challenge on wrong credentials so browser can re-prompt login dialog.
+    setAuthChallenge();
+    sendJson(res, 401, { error: 'Invalid admin credentials' });
     return false;
   }
 

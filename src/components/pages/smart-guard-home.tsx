@@ -46,7 +46,7 @@ function getScanPhaseLabels(): Record<(typeof SCAN_PHASE_ORDER)[number], string>
     mcp_security: tr('检查隐私泄露风险', 'Checking for privacy leaks'),
     key_security: tr('检查密码暴露风险', 'Checking for password exposure'),
     skill_security: tr('检查恶意插件风险', 'Checking for malicious plugins'),
-    env_config: tr('检查权限配置风险', 'Checking permission settings'),
+    env_config: tr('检查插件配置权限风险', 'Checking MCP/Skill config permissions'),
     system_protection: tr('检查后台偷跑风险', 'Checking background activity'),
   };
 }
@@ -573,16 +573,7 @@ function IdleState({ onStartScan, protectionStatus }: IdleStateProps) {
     >
       {/* Pro Badge */}
       <div className="absolute top-6 right-6">
-        <ProUpgradeBanner
-          variant="badge"
-          text={isEnglishLocale ? '🔓 Unlock One-Click Fix' : '🔓 解锁一键修复'}
-          tooltip={
-            isEnglishLocale
-              ? 'Fix all risks in 30 seconds. Free plan: scan only.'
-              : '30 秒修复全部风险。免费版仅支持扫描。'
-          }
-          onClick={() => useAppStore.getState().setCurrentModule('upgradePro')}
-        />
+        <ProUpgradeBanner variant="badge" />
       </div>
 
       {/* Hero Icon */}

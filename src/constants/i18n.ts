@@ -442,6 +442,14 @@ interface Translations {
   openPurchaseFailed: string;
   pasteCodeAfterPurchase: string;
 
+  // Promo Code
+  promoCode: string;
+  promoCodePlaceholder: string;
+  promoApply: string;
+  promoChecking: string;
+  promoInvalid: string;
+  promoDiscountApplied: string;
+
   // Env Config
   envConfig: string;
   detectingEnv: string;
@@ -576,8 +584,8 @@ const zhCN: Translations = {
   appTitle: 'AgentShield 智盾',
 
   // Common
-  welcome: '你的密码正在被 AI 读取',
-  welcomeSubtitle: '2025 年已有 3900 万条密钥泄露、90 万用户被窃取会话。30 秒扫描，揪出隐患。',
+  welcome: '你的 AI 工具，正在偷偷做什么？',
+  welcomeSubtitle: '每 5 个 MCP 插件就有 1 个被发现存在恶意行为。30 秒扫描，一键揪出隐患。',
   startScan: '扫描',
   stop: '停止',
   run: '运行',
@@ -973,6 +981,14 @@ const zhCN: Translations = {
   openPurchaseFailed: '打开购买页面失败',
   pasteCodeAfterPurchase: '支付成功后，请在下方输入 AGSH 激活码完成升级',
 
+  // Promo Code
+  promoCode: '优惠码',
+  promoCodePlaceholder: '输入优惠码',
+  promoApply: '验证',
+  promoChecking: '验证中…',
+  promoInvalid: '无效的优惠码',
+  promoDiscountApplied: '🎉 优惠 {pct}% 折扣已生效',
+
   // Env Config
   envConfig: '环境配置',
   detectingEnv: '正在检测系统环境...',
@@ -1107,8 +1123,8 @@ const enUS: Translations = {
   appTitle: 'AgentShield',
 
   // Common
-  welcome: 'Your AI Is Reading Your Passwords',
-  welcomeSubtitle: '39M secrets leaked. 900K users compromised. Scan in 30 seconds to find what\u2019s hiding on your machine.',
+  welcome: 'What Are Your AI Tools Doing Behind Your Back?',
+  welcomeSubtitle: '1 in 5 MCP extensions has been found malicious. Scan in 30 seconds. Fix in one click.',
   startScan: 'Scan',
   stop: 'Stop',
   run: 'Run',
@@ -1503,6 +1519,14 @@ const enUS: Translations = {
   purchaseOpenedInBrowser: 'Checkout opened in your browser. Paste your AGSH code after payment.',
   openPurchaseFailed: 'Failed to open checkout page',
   pasteCodeAfterPurchase: 'After payment, paste your AGSH activation code below to unlock Pro.',
+
+  // Promo Code
+  promoCode: 'Promo Code',
+  promoCodePlaceholder: 'Enter promo code',
+  promoApply: 'Apply',
+  promoChecking: 'Checking…',
+  promoInvalid: 'Invalid promo code',
+  promoDiscountApplied: '🎉 {pct}% discount applied',
 
   // Env Config
   envConfig: 'Environment Config',

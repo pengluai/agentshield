@@ -222,7 +222,7 @@ function NavItem({
         >
           <Icon
             className="w-5 h-5"
-            style={{ color: isActive ? accent : '#94A3B8' }}
+            style={{ color: isActive ? accent : 'rgba(255,255,255,0.6)' }}
           />
         </div>
         {badge !== undefined && (
@@ -242,7 +242,7 @@ function NavItem({
           exit={{ opacity: 0, x: -10 }}
           className={cn(
             'text-sm font-medium whitespace-nowrap',
-            isActive ? 'text-white' : 'text-slate-400'
+            isActive ? 'text-white' : 'text-white/70'
           )}
         >
           {label}

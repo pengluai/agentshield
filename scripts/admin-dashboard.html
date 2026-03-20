@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentShield - 博主分佣管理后台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#3b82f6;--green:#10b981;--red:#ef4444;--amber:#f59e0b;--purple:#8b5cf6}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.header{background:linear-gradient(135deg,#1e293b,#0f172a);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;backdrop-filter:blur(12px)}
+.header h1{font-size:18px;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header .refresh-btn{background:var(--card);border:1px solid var(--border);color:var(--muted);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px;transition:all .2s}
+.header .refresh-btn:hover{border-color:var(--accent);color:var(--text)}
+.container{max-width:1200px;margin:0 auto;padding:20px}
+.tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--card);padding:4px;border-radius:12px;border:1px solid var(--border)}
+.tab{padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);transition:all .2s;border:none;background:none}
+.tab.active{background:var(--accent);color:#fff}
+.tab:hover:not(.active){color:var(--text);background:rgba(255,255,255,.05)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px}
+.stat-card .label{font-size:12px;color:var(--muted);margin-bottom:4px}
+.stat-card .value{font-size:28px;font-weight:700}
+.stat-card .value.green{color:var(--green)}
+.stat-card .value.amber{color:var(--amber)}
+.stat-card .value.blue{color:var(--accent)}
+.stat-card .value.purple{color:var(--purple)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px}
+.card h2{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-group.full{grid-column:1/-1}
+.form-group label{font-size:12px;color:var(--muted);font-weight:500}
+.form-group input,.form-group select{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;outline:none;transition:border .2s}
+.form-group input:focus,.form-group select:focus{border-color:var(--accent)}
+.form-group input::placeholder{color:#475569}
+.btn{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .2s}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--purple));color:#fff}
+.btn-primary:hover{opacity:.9;transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--muted)}
+.btn-outline:hover{border-color:var(--accent);color:var(--text)}
+.btn-green{background:var(--green);color:#fff}
+.btn-green:hover{opacity:.9}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:10px 12px;color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border)}
+td{padding:10px 12px;border-bottom:1px solid rgba(51,65,85,.5)}
+tr:hover td{background:rgba(255,255,255,.02)}
+.badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600}
+.badge-green{background:rgba(16,185,129,.15);color:var(--green)}
+.badge-red{background:rgba(239,68,68,.15);color:var(--red)}
+.badge-amber{background:rgba(245,158,11,.15);color:var(--amber)}
+.badge-blue{background:rgba(59,130,246,.15);color:var(--accent)}
+.toast{position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;z-index:999;animation:slideUp .3s;max-width:400px}
+.toast-ok{background:var(--green);color:#fff}
+.toast-err{background:var(--red);color:#fff}
+@keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.empty{text-align:center;padding:40px;color:var(--muted);font-size:14px}
+.money{font-family:'SF Mono',Monaco,monospace;font-size:12px}
+.actions-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.payout-row{display:flex;gap:8px;align-items:center;margin-top:8px}
+.payout-row input{width:100px}
+.hidden{display:none}
+@media(max-width:640px){.form-grid{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🛡️ AgentShield 博主分佣管理</h1>
+  <button class="refresh-btn" onclick="loadAll()">↻ 刷新数据</button>
+</div>
+
+<div class="container">
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('overview',this)">📊 概览</button>
+    <button class="tab" onclick="switchTab('create',this)">➕ 创建博主</button>
+    <button class="tab" onclick="switchTab('affiliates',this)">👤 博主管理</button>
+    <button class="tab" onclick="switchTab('conversions',this)">💰 转化记录</button>
+  </div>
+
+  <!-- Overview -->
+  <div id="tab-overview">
+    <div class="stats" id="stats-cards"></div>
+    <div class="card">
+      <h2>📋 博主排行</h2>
+      <table>
+        <thead><tr><th>博主</th><th>平台</th><th>优惠码</th><th>折扣</th><th>提成</th><th>使用次数</th><th>销售额</th><th>应付分佣</th><th>待打款</th></tr></thead>
+        <tbody id="ranking-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Create -->
+  <div id="tab-create" class="hidden">
+    <div class="card">
+      <h2>➕ 创建新博主 + 优惠码</h2>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:16px">创建后会自动在 Creem 后台生成折扣码，博主拿到优惠码就能推广。</p>
+      <form id="create-form" onsubmit="return handleCreate(event)">
+        <div class="form-grid">
+          <div class="form-group"><label>博主名称 *</label><input name="name" placeholder="如：某某UP主" required></div>
+          <div class="form-group"><label>优惠码 *（大写字母+数字）</label><input name="promo_code" placeholder="如：BLOGGER30" style="text-transform:uppercase" required></div>
+          <div class="form-group"><label>邮箱</label><input name="email" type="email" placeholder="blogger@example.com"></div>
+          <div class="form-group"><label>平台</label>
+            <select name="platform"><option value="bilibili">B站</option><option value="douyin">抖音</option><option value="xiaohongshu">小红书</option><option value="youtube">YouTube</option><option value="twitter">Twitter/X</option><option value="other">其他</option></select>
+          </div>
+          <div class="form-group"><label>用户折扣比例 (%)</label><input name="discount_pct" type="number" value="30" min="1" max="90"></div>
+          <div class="form-group"><label>博主提成比例 (%)</label><input name="commission_pct" type="number" value="20" min="1" max="90"></div>
+          <div class="form-group"><label>最大使用次数</label><input name="max_uses" type="number" value="1000" min="1"></div>
+          <div class="form-group"><label>打款方式</label>
+            <select name="payout_type"><option value="wechat">微信</option><option value="alipay">支付宝</option><option value="paypal">PayPal</option><option value="usdc">USDC</option></select>
+          </div>
+          <div class="form-group"><label>打款账号</label><input name="payout_account" placeholder="微信号/支付宝账号/PayPal邮箱/钱包地址"></div>
+          <div class="form-group"><label>备注</label><input name="notes" placeholder="备注信息"></div>
+          <div class="form-group full" style="flex-direction:row;justify-content:flex-end;margin-top:4px">
+            <button type="submit" class="btn btn-primary" id="create-btn">🚀 创建博主 + 生成优惠码</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Affiliates -->
+  <div id="tab-affiliates" class="hidden">
+    <div class="actions-bar">
+      <button class="btn btn-outline" onclick="exportCSV()">📥 导出 CSV</button>
+    </div>
+    <div class="card" style="padding:0;overflow-x:auto">
+      <table>
+        <thead><tr><th>博主</th><th>邮箱</th><th>平台</th><th>优惠码</th><th>Creem ID</th><th>折扣</th><th>提成</th><th>转化</th><th>销售额</th><th>总分佣</th><th>已打款</th><th>待打款</th><th>操作</th></tr></thead>
+        <tbody id="affiliates-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Conversions -->
+  <div id="tab-conversions" class="hidden">
+    <div class="card" style="padding:0;overflow-x:auto">
+      <table>
+        <thead><tr><th>时间</th><th>优惠码</th><th>客户</th><th>实付</th><th>分佣</th><th>状态</th><th>锁定至</th></tr></thead>
+        <tbody id="conversions-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Payout Modal -->
+<div id="payout-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)closePayout()">
+  <div class="card" style="width:400px" onclick="event.stopPropagation()">
+    <h2>💸 标记打款</h2>
+    <p id="payout-info" style="color:var(--muted);font-size:13px;margin-bottom:12px"></p>
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <div class="form-group"><label>打款金额（分）</label><input id="payout-amount" type="number" min="1"></div>
+      <div class="form-group"><label>货币</label><input id="payout-currency" value="USD"></div>
+      <div class="form-group"><label>备注</label><input id="payout-notes" placeholder="如：3月打款"></div>
+      <button class="btn btn-green" onclick="submitPayout()">✅ 确认打款</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE = location.origin;
+const AUTH = 'Basic ' + btoa(prompt('输入管理密码（用户名 admin）:', '') ? 'admin:' + arguments[0] : '');
+
+// Fix: properly get auth
+let authHeader = '';
+function initAuth() {
+  const pwd = localStorage.getItem('agsh_admin_pwd');
+  if (pwd) { authHeader = 'Basic ' + btoa('admin:' + pwd); return true; }
+  const input = prompt('请输入管理密码：');
+  if (!input) return false;
+  localStorage.setItem('agsh_admin_pwd', input);
+  authHeader = 'Basic ' + btoa('admin:' + input);
+  return true;
+}
+
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(BASE + path, opts);
+  if (r.headers.get('content-type')?.includes('text/csv')) return r.text();
+  return r.json();
+}
+
+function toast(msg, ok = true) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err');
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function switchTab(id, btn) {
+  document.querySelectorAll('[id^=tab-]').forEach(e => e.classList.add('hidden'));
+  document.getElementById('tab-' + id).classList.remove('hidden');
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function cents(v) { return (v / 100).toFixed(2); }
+function fmtMoney(v, cur = 'USD') { return cur === 'USD' ? '$' + cents(v) : '¥' + cents(v); }
+
+let affiliatesData = [];
+
+async function loadAll() {
+  try {
+    const [affResp, commResp] = await Promise.all([
+      api('GET', '/admin/affiliates'),
+      api('GET', '/admin/commissions'),
+    ]);
+    affiliatesData = affResp.items || [];
+    renderOverview(affiliatesData, commResp);
+    renderAffiliates(affiliatesData);
+    renderConversions(commResp.conversions || []);
+  } catch (e) {
+    toast('加载失败: ' + e.message, false);
+  }
+}
+
+function renderOverview(affs, comm) {
+  const totalConv = affs.reduce((s, a) => s + a.stats.total_conversions, 0);
+  const totalRev = affs.reduce((s, a) => s + a.stats.total_revenue_cents, 0);
+  const totalComm = affs.reduce((s, a) => s + a.stats.total_accrued_cents + a.stats.total_reversed_cents, 0);
+  const totalPending = affs.reduce((s, a) => s + a.stats.pending_cents, 0);
+
+  document.getElementById('stats-cards').innerHTML = `
+    <div class="stat-card"><div class="label">博主总数</div><div class="value blue">${affs.length}</div></div>
+    <div class="stat-card"><div class="label">总转化次数</div><div class="value purple">${totalConv}</div></div>
+    <div class="stat-card"><div class="label">总销售额</div><div class="value green">$${cents(totalRev)}</div></div>
+    <div class="stat-card"><div class="label">待打款分佣</div><div class="value amber">$${cents(totalPending)}</div></div>
+  `;
+
+  const sorted = [...affs].sort((a, b) => b.stats.total_revenue_cents - a.stats.total_revenue_cents);
+  document.getElementById('ranking-body').innerHTML = sorted.length === 0
+    ? '<tr><td colspan="9" class="empty">暂无数据</td></tr>'
+    : sorted.map(a => {
+      const s = a.stats;
+      const promo = a.promo_code;
+      return `<tr>
+        <td><strong>${esc(a.name)}</strong></td>
+        <td>${esc(a.platform)}</td>
+        <td><span class="badge badge-blue">${promo}</span></td>
+        <td>${a.commission_pct ? '' : ''}${findPromoDiscount(promo)}%</td>
+        <td>${a.commission_pct}%</td>
+        <td>${s.promo_times_used}</td>
+        <td class="money">$${cents(s.total_revenue_cents)}</td>
+        <td class="money">$${cents(s.total_accrued_cents + s.total_reversed_cents)}</td>
+        <td class="money ${s.pending_cents > 0 ? '' : ''}"><strong>$${cents(s.pending_cents)}</strong></td>
+      </tr>`;
+    }).join('');
+}
+
+function findPromoDiscount(code) {
+  // We'll get this from the affiliates create data; for now show from name
+  return '—';
+}
+
+function renderAffiliates(affs) {
+  document.getElementById('affiliates-body').innerHTML = affs.length === 0
+    ? '<tr><td colspan="13" class="empty">暂无博主</td></tr>'
+    : affs.map(a => {
+      const s = a.stats;
+      const cid = a.creem_discount_id;
+      return `<tr>
+        <td><strong>${esc(a.name)}</strong></td>
+        <td>${esc(a.email || '—')}</td>
+        <td>${esc(a.platform || '—')}</td>
+        <td><span class="badge badge-blue">${a.promo_code}</span></td>
+        <td style="font-size:11px;color:var(--muted)">${cid ? cid.slice(0, 12) + '…' : '<span class="badge badge-red">未同步</span>'}</td>
+        <td>—</td>
+        <td>${a.commission_pct}%</td>
+        <td>${s.total_conversions}</td>
+        <td class="money">$${cents(s.total_revenue_cents)}</td>
+        <td class="money">$${cents(s.total_accrued_cents + s.total_reversed_cents)}</td>
+        <td class="money">$${cents(s.total_paid_cents)}</td>
+        <td class="money"><strong>$${cents(s.pending_cents)}</strong></td>
+        <td>${s.pending_cents > 0 ? `<button class="btn btn-green" style="font-size:11px;padding:4px 10px" onclick="openPayout('${a.id}','${esc(a.name)}',${s.pending_cents})">打款</button>` : '—'}</td>
+      </tr>`;
+    }).join('');
+}
+
+function renderConversions(convs) {
+  document.getElementById('conversions-body').innerHTML = convs.length === 0
+    ? '<tr><td colspan="7" class="empty">暂无转化记录</td></tr>'
+    : convs.map(c => `<tr>
+        <td style="font-size:12px">${new Date(c.created_at).toLocaleString('zh-CN')}</td>
+        <td><span class="badge badge-blue">${c.promo_code}</span></td>
+        <td style="font-size:12px">${esc(c.customer_email || '—')}</td>
+        <td class="money">$${cents(c.paid_amount_cents)}</td>
+        <td class="money">$${cents(c.commission_cents)}</td>
+        <td><span class="badge ${c.status === 'paid' ? 'badge-green' : 'badge-red'}">${c.status === 'paid' ? '已付' : '已退款'}</span></td>
+        <td style="font-size:11px;color:var(--muted)">${c.locked_until ? new Date(c.locked_until).toLocaleDateString('zh-CN') : '—'}</td>
+      </tr>`).join('');
+}
+
+async function handleCreate(e) {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const btn = document.getElementById('create-btn');
+  btn.disabled = true;
+  btn.textContent = '创建中…';
+  try {
+    const data = await api('POST', '/admin/affiliates', {
+      name: f.get('name'),
+      email: f.get('email'),
+      platform: f.get('platform'),
+      commission_pct: Number(f.get('commission_pct')),
+      discount_pct: Number(f.get('discount_pct')),
+      promo_code: f.get('promo_code').toUpperCase(),
+      payout_method: { type: f.get('payout_type'), account: f.get('payout_account') },
+      max_uses: Number(f.get('max_uses')),
+      notes: f.get('notes'),
+    });
+    if (data.ok) {
+      const cid = data.creem_discount_id;
+      toast(`✅ 博主创建成功！优惠码: ${data.promo.code}${cid ? ' | Creem: ' + cid : ''}`);
+      e.target.reset();
+      e.target.querySelector('[name=discount_pct]').value = '30';
+      e.target.querySelector('[name=commission_pct]').value = '20';
+      e.target.querySelector('[name=max_uses]').value = '1000';
+      loadAll();
+    } else {
+      toast('❌ ' + (data.error || JSON.stringify(data)), false);
+    }
+  } catch (err) {
+    toast('❌ 请求失败: ' + err.message, false);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🚀 创建博主 + 生成优惠码';
+  }
+}
+
+let payoutAffId = '';
+function openPayout(id, name, pending) {
+  payoutAffId = id;
+  document.getElementById('payout-info').textContent = `博主: ${name} | 待打款: $${cents(pending)}`;
+  document.getElementById('payout-amount').value = pending;
+  document.getElementById('payout-modal').classList.remove('hidden');
+  document.getElementById('payout-modal').style.display = 'flex';
+}
+function closePayout() {
+  document.getElementById('payout-modal').classList.add('hidden');
+  document.getElementById('payout-modal').style.display = 'none';
+}
+async function submitPayout() {
+  const amount = Number(document.getElementById('payout-amount').value);
+  const currency = document.getElementById('payout-currency').value;
+  const notes = document.getElementById('payout-notes').value;
+  if (!amount) { toast('请输入金额', false); return; }
+  try {
+    const data = await api('POST', '/admin/payouts/mark-paid', {
+      affiliate_id: payoutAffId, amount_cents: amount, currency, notes
+    });
+    if (data.ok) {
+      toast('✅ 打款已记录');
+      closePayout();
+      loadAll();
+    } else {
+      toast('❌ ' + (data.error || ''), false);
+    }
+  } catch (err) { toast('❌ ' + err.message, false); }
+}
+
+async function exportCSV() {
+  try {
+    const csv = await api('GET', '/admin/commissions/export');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `commissions_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    toast('✅ CSV 已下载');
+  } catch (err) { toast('❌ 导出失败', false); }
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+// Init
+if (initAuth()) { loadAll(); }
+else { document.querySelector('.container').innerHTML = '<div class="empty">需要输入管理密码才能访问</div>'; }
+</script>
+</body>
+</html>
