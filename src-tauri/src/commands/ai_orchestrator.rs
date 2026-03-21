@@ -83,11 +83,19 @@ fn get_base_url(provider: &str, custom_url: &Option<String>) -> String {
         "deepseek" => "https://api.deepseek.com".to_string(),
         "gemini" => "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
         "openai" => "https://api.openai.com".to_string(),
-        "minimax" => "https://api.minimax.chat/v1".to_string(),
+        "minimax" => "https://api.minimax.chat".to_string(),
         "custom" => custom_url
             .clone()
             .unwrap_or_else(|| "https://api.openai.com".to_string()),
         _ => "https://api.deepseek.com".to_string(),
+    }
+}
+
+fn get_completions_url(provider: &str, custom_url: &Option<String>) -> String {
+    let base = get_base_url(provider, custom_url);
+    match provider {
+        "gemini" => format!("{}/chat/completions", base),
+        _ => format!("{}/v1/chat/completions", base),
     }
 }
 
@@ -409,9 +417,8 @@ pub async fn test_ai_connection(
     model: Option<String>,
     base_url: Option<String>,
 ) -> Result<AiConnectionResult, String> {
-    let base = get_base_url(&provider, &base_url);
+    let url = get_completions_url(&provider, &base_url);
     let model_name = model.unwrap_or_else(|| get_default_model(&provider).to_string());
-    let url = format!("{}/v1/chat/completions", base);
 
     let body = serde_json::json!({
         "model": model_name,
@@ -596,9 +603,8 @@ pub async fn ai_diagnose_error(
     error_context: String,
     step_name: String,
 ) -> Result<AiDiagnosis, String> {
-    let base = get_base_url(&provider, &base_url);
+    let url = get_completions_url(&provider, &base_url);
     let model_name = model.unwrap_or_else(|| get_default_model(&provider).to_string());
-    let url = format!("{}/v1/chat/completions", base);
 
     let prompt = format!(
         "You are a system administrator assistant for {}. The user is installing OpenClaw (an AI security tool). \
@@ -749,7 +755,7 @@ pub async fn detect_env_and_region() -> Result<EnvDetectionResult, String> {
         let client = reqwest::Client::new();
         let result = client
             .head("https://registry.npmjs.org/")
-            .timeout(std::time::Duration::from_secs(3))
+            .timeout(std::time::Duration::from_secs(8))
             .send()
             .await;
         match result {
@@ -898,21 +904,35 @@ pub async fn auto_install_prerequisite(
             if cfg!(target_os = "macos") {
                 let mut cmd = Command::new("/bin/bash");
                 cmd.args(["-c", "xcode-select --install"]);
-                let output = command_output_async(cmd)
+                let _output = command_output_async(cmd)
                     .await
                     .map_err(|e| format!("Failed to run xcode-select: {e}"))?;
-                // xcode-select --install opens a system dialog; it may return non-zero
-                // if already installed or if dialog was shown
+                // xcode-select --install opens a system dialog and returns immediately.
+                // Poll for git availability for up to 3 minutes.
+                for _ in 0..36_u32 {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    let mut check = Command::new("git");
+                    check.arg("--version");
+                    if let Ok(o) = command_output_async(check).await {
+                        if o.status.success() {
+                            return Ok(StepResult {
+                                success: true,
+                                step_id,
+                                message: "Git 安装成功 / installed successfully".to_string(),
+                                output: Some(String::from_utf8_lossy(&o.stdout).to_string()),
+                                error: None,
+                                needs_ai_help: false,
+                            });
+                        }
+                    }
+                }
+                // Timeout — git still not available
                 Ok(StepResult {
-                    success: true,
+                    success: false,
                     step_id,
-                    message: "已触发 Xcode Command Line Tools 安装对话框 / Xcode CLT install dialog triggered".to_string(),
-                    output: Some(String::from_utf8_lossy(&output.stdout).to_string()),
-                    error: if output.status.success() {
-                        None
-                    } else {
-                        Some(String::from_utf8_lossy(&output.stderr).to_string())
-                    },
+                    message: "Git 安装超时，请在系统弹窗中完成安装后重试 / Git install timed out, please complete the system dialog and retry".to_string(),
+                    output: None,
+                    error: Some("xcode-select 安装对话框已触发，但 Git 尚未就绪。请在系统对话框中点击安装，完成后点击重试。".to_string()),
                     needs_ai_help: false,
                 })
             } else if cfg!(target_os = "windows") {

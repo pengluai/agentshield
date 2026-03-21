@@ -584,7 +584,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
                     type="text"
                     value={licenseKey}
                     onChange={(e) => setLicenseKey(e.target.value)}
-                    placeholder="AGSH.<payload>.<signature>"
+                    placeholder={isEnglishLocale ? 'Paste your activation code here' : '粘贴你的激活码'}
                     className="flex-1 px-3 py-2.5 rounded-lg bg-white/10 border border-white/10 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
                   />
                   <button

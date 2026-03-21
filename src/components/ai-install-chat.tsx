@@ -411,6 +411,7 @@ function AutoInstallPanel({ onClose }: { onClose: () => void }) {
   const [errorMsg, setErrorMsg] = useState('');
   const [detectedPlatforms, setDetectedPlatforms] = useState<DetectedTool[]>([]);
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
+  const [retryTrigger, setRetryTrigger] = useState(0);
 
   const detect = useCallback(async () => {
     setPhase('detecting');
@@ -426,7 +427,10 @@ function AutoInstallPanel({ onClose }: { onClose: () => void }) {
       setSteps(buildInstallSteps(result));
       setPhase('detected');
     } catch (err) {
-      setErrorMsg(String(err));
+      setErrorMsg(tr(
+        `操作失败，请重试。详细信息：${String(err)}`,
+        `Operation failed, please retry. Details: ${String(err)}`
+      ));
       setPhase('error');
     }
   }, []);
@@ -491,6 +495,7 @@ function AutoInstallPanel({ onClose }: { onClose: () => void }) {
     setErrorMsg('');
 
     for (const step of steps) {
+      if (step.status === 'done') continue;
       updateStep(step.id, { status: 'running' });
 
       try {
@@ -545,8 +550,12 @@ function AutoInstallPanel({ onClose }: { onClose: () => void }) {
           return;
         }
       } catch (err) {
-        updateStep(step.id, { status: 'failed', message: String(err) });
-        setErrorMsg(String(err));
+        const friendlyMsg = tr(
+          `操作失败，请重试。详细信息：${String(err)}`,
+          `Operation failed, please retry. Details: ${String(err)}`
+        );
+        updateStep(step.id, { status: 'failed', message: friendlyMsg });
+        setErrorMsg(friendlyMsg);
         setPhase('error');
         return;
       }
@@ -559,8 +568,15 @@ function AutoInstallPanel({ onClose }: { onClose: () => void }) {
     setSteps((prev) =>
       prev.map((s) => (s.status === 'failed' ? { ...s, status: 'pending' as const, message: undefined } : s)),
     );
-    void runInstall();
-  }, [runInstall]);
+    setRetryTrigger((n) => n + 1);
+  }, []);
+
+  // Trigger install after retry state has been flushed
+  useEffect(() => {
+    if (retryTrigger > 0 && phase === 'error') {
+      void runInstall();
+    }
+  }, [retryTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <motion.div

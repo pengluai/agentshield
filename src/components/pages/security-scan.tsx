@@ -1361,7 +1361,7 @@ function IssueListItem({ issue, selected, onClick }: IssueListItemProps) {
           </p>
           {issue.semanticReview && issue.semanticReview.verdict !== 'clear' && (
             <p className="text-[11px] text-sky-600 mt-1 line-clamp-1">
-              {tr('Semantic review', 'Semantic review')}: {issue.semanticReview.summary}
+              {tr('语义研判', 'Semantic review')}: {issue.semanticReview.summary}
             </p>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -1502,12 +1502,12 @@ function IssueDetail({ issue, onFix }: IssueDetailProps) {
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-medium text-sky-900">{tr('高级语义研判', 'Semantic review')}</h3>
               <span className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-sky-700">
-                {tr('Confidence', 'Confidence')} {issue.semanticReview.confidence}%
+                {tr('置信度', 'Confidence')} {issue.semanticReview.confidence}%
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-sky-900">{issue.semanticReview.summary}</p>
             <p className="mt-2 text-xs text-sky-800/80">
-              {tr('Recommended action:', 'Recommended action:')} {issue.semanticReview.recommendedAction}
+              {tr('建议操作：', 'Recommended action:')} {issue.semanticReview.recommendedAction}
             </p>
           </div>
         )}
