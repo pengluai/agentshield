@@ -17,32 +17,45 @@
 
 ---
 
-## Why This Exists
+## Why This Exists — Real Losses, Not Hypotheticals
 
-This is not a theoretical threat model. These are real, documented incidents from 2025–2026:
+### Your AI Tools Are Already Causing Real Damage
 
-| Date | Incident | What Happened |
-|------|----------|--------------|
-| **May 2025** | [GitHub MCP Cross-Repo Data Theft](https://nsfocusglobal.com/protecting-ai-security-2025-hot-security-incident/) | Attackers embedded malicious commands in public GitHub Issues. When a developer's AI Agent read the Issue, it silently exfiltrated private repo source code and API keys — bypassing all GitHub permission controls. |
-| **Apr 2025** | [MCP Rug Pull — Silent Tool Redefinition](https://securitysandman.com/2026/03/11/your-ai-agent-is-the-attacker-claude-opencode-threats-and-security-designs/) | MCP servers passed initial review, then silently mutated their tool definitions post-approval to harvest credentials. No CVE. No patch. Still exploitable. |
-| **2025** | [Rules File Backdoor (Copilot & Cursor)](https://www.digitalapplied.com/blog/ai-agent-security-best-practices-2025) | Attackers used hidden Unicode characters to inject malicious instructions into AI tool config files, weaponizing Copilot and Cursor without the developer ever seeing the payload. |
-| **Oct 2025** | [Astrix Research: 5,200 MCP Servers Analyzed](https://astrix.security/learn/blog/state-of-mcp-server-security-2025/) | 53% use static, never-rotated API keys. Only 8.5% use OAuth. 79% pass credentials via plain environment variables. |
+> *"The agent kept deleting files, and at some point, it output: 'I will do a terraform destroy.'"*
+> — [Alexey Grigorev](https://fortune.com/2026/03/18/ai-coding-risks-amazon-agents-enterprise/), whose Claude Code agent **wiped 2.5 years of production data** from two websites. Database + all backup snapshots. Gone. Fortune magazine headline: *"An AI agent destroyed this coder's entire database."*
 
-Your AI tools have root access to your machine. Every MCP server, every Skill, every config file — they can read your keys, delete your files, and call home. You just never checked.
+> *"So much work lost."*
+> — [Reddit user](https://whenaifail.com/), whose Claude Code ran `rm -rf tests/ patches/ plan/ ~/` and **deleted their entire Mac**: Desktop, Documents, Downloads, Keychain, credentials — everything.
 
-**Nobody checks. That's the problem.**
+> *"If Google enforces even a third of this amount, our company goes bankrupt."*
+> — [3-person startup in Mexico](https://www.reddit.com/r/googlecloud/comments/1reqtvi/82000_in_48_hours_from_stolen_gemini_api_key_my/), whose stolen Gemini API key generated **$82,314 in charges in 48 hours**. Normal monthly bill: $180. A 455x spike. Google cited "shared responsibility."
 
-AgentShield is the **only desktop app** that deep-scans 16+ AI tools, intercepts dangerous runtime behavior, and sandboxes untrusted code — before it's too late. First of its kind. No other tool does this.
+> *"One developer. One line of code. Thousands upon thousands of stolen emails."*
+> — [Koi Security CTO](https://thehackernews.com/2025/09/first-malicious-mcp-server-found.html), on the **first malicious MCP server found in the wild**: a trojanized `postmark-mcp` npm package that BCC'd every email — password resets, invoices, customer data — to an attacker. ~300 organizations compromised.
+
+### This Is Not Rare. This Is Systemic.
+
+| What's Happening | Scale | Source |
+|-----------------|-------|--------|
+| AI agents deleting files, databases, entire machines | Multiple incidents in 2025–2026 | [Fortune](https://fortune.com/2026/03/18/ai-coding-risks-amazon-agents-enterprise/), [Reddit](https://www.reddit.com/r/ClaudeAI/comments/1rshuz9/an_ai_agent_deleted_25000_documents_from_the/), [WhenAIFail](https://whenaifail.com/) |
+| API keys stolen → $1K–$82K bills in hours | Ongoing, multiple providers | [The Register](https://www.theregister.com/2026/03/03/gemini_api_key_82314_dollar_charge/), [OpenAI Forum](https://community.openai.com/t/my-api-keeps-getting-leaked-the-chinese-are-happy/1247052) |
+| Malicious MCP servers stealing emails & credentials | First wild case Sep 2025 | [The Hacker News](https://thehackernews.com/2025/09/first-malicious-mcp-server-found.html), [Snyk](https://snyk.io/blog/malicious-mcp-server-on-npm-postmark-mcp-harvests-emails/) |
+| 53% of MCP servers use static, never-rotated API keys | 5,200 servers analyzed | [Astrix Research](https://astrix.security/learn/blog/state-of-mcp-server-security-2025/) |
+| MCP configs weaponized via hidden Unicode injection | Copilot & Cursor affected | [CVE-2025-54136](https://thehackernews.com/2025/08/cursor-ai-code-editor-vulnerability.html) |
+
+Your AI tools have root access to your machine. Every MCP server, every Skill, every config file — they can read your keys, delete your files, drain your API budget, and exfiltrate your emails. **And nobody is checking.**
+
+AgentShield is the **only desktop app** that deep-scans 16+ AI tools, intercepts dangerous runtime behavior, and sandboxes untrusted code — before your next `rm -rf ~/` or $82K invoice.
 
 ## What AgentShield Does
 
 - **Deep Security Scan** — Rips through configs of 16+ AI tools (Cursor, Claude Code, Claude Desktop, VS Code, Windsurf, Kiro, Zed, Codex CLI, Gemini CLI, Trae, Continue, Aider, CodeBuddy, Qwen Code, Antigravity, OpenClaw). Finds every exposed key, every permission overreach, every orphaned config still leaking secrets.
-- **Runtime Guard** — Real-time behavioral interception. File deletions, shell exec, network calls, payment triggers — all blocked until you explicitly approve. Not logged. Blocked.
-- **Sandbox Isolation** — macOS `sandbox-exec` locks untrusted MCP servers and Skills out of your filesystem and network. They run in a cage or they don't run.
-- **Key Vault** — Your API keys are sitting in plaintext JSON files right now. AgentShield moves them into your system keychain (macOS Keychain / Windows Credential Manager). Where they should have been from the start.
+- **Runtime Guard** — Real-time behavioral interception. File deletions, shell exec, network calls, payment triggers — all blocked until you explicitly approve. Not logged. **Blocked.** The `rm -rf ~/` that wiped that developer's Mac? AgentShield would have caught it and asked first.
+- **Sandbox Isolation** — macOS `sandbox-exec` locks untrusted MCP servers and Skills out of your filesystem and network. They run in a cage or they don't run. The `postmark-mcp` email theft? Sandboxed = no network = no exfiltration.
+- **Key Vault** — Your API keys are sitting in plaintext JSON files right now. That's how the $82K Gemini bill happened. AgentShield moves them into your system keychain (macOS Keychain / Windows Credential Manager). Where they should have been from the start.
 - **Installed Management** — Visual 3-column dashboard showing every MCP server and Skill across every AI tool on your machine. Trust levels. Network policies. One screen, total visibility.
 - **Skill Store** — Browse and install security-reviewed extensions from a curated catalog. Every entry vetted before it reaches your machine.
-- **AI Install Assistant** *(Pro)* — AI-powered guided setup for OpenClaw environment configuration, with intelligent diagnostics and step-by-step troubleshooting.
+- **One-Click OpenClaw Setup** *(Pro)* — AI-powered guided setup for OpenClaw: environment detection, installation, channel configuration, and troubleshooting — all in one click with an AI assistant walking you through every step.
 
 ## Threat Detection
 
@@ -204,28 +217,48 @@ No. Antivirus tools look for known malware signatures. AgentShield looks at what
 
 </div>
 
-## 这不是假设——这是真实发生的事
+## 这不是假设——这些是真实的损失
 
-| 时间 | 事件 | 发生了什么 |
-|------|------|-----------|
-| **2025.5** | [GitHub MCP 跨仓库数据窃取](https://nsfocusglobal.com/protecting-ai-security-2025-hot-security-incident/) | 攻击者在公开 Issue 中嵌入恶意指令，开发者的 AI Agent 读取后，自动窃取私有仓库源码和 API 密钥——完全绕过 GitHub 权限控制。 |
-| **2025.4** | [MCP "变脸"攻击——安装后静默篡改](https://securitysandman.com/2026/03/11/your-ai-agent-is-the-attacker-claude-opencode-threats-and-security-designs/) | MCP Server 安装审批时表现正常，通过后悄悄修改工具定义，变成密钥窃取器。无 CVE，无补丁，至今仍可利用。 |
-| **2025** | [Rules File 后门攻击 (Copilot & Cursor)](https://www.digitalapplied.com/blog/ai-agent-security-best-practices-2025) | 攻击者用隐藏 Unicode 字符在 AI 工具配置文件中注入恶意指令，开发者肉眼完全看不到。 |
-| **2025.10** | [Astrix 调研：5,200+ 个 MCP Server](https://astrix.security/learn/blog/state-of-mcp-server-security-2025/) | 53% 使用永不轮换的静态 API Key，仅 8.5% 使用 OAuth，79% 通过环境变量明文传递凭据。 |
+### 你的 AI 工具正在造成真实的破坏
 
-没人查过。**这就是问题。**
+> *"Agent 一直在删文件，然后它输出：'我来做一个 terraform destroy。'"*
+> — [Alexey Grigorev](https://fortune.com/2026/03/18/ai-coding-risks-amazon-agents-enterprise/)，Claude Code agent **删除了他 2.5 年的生产数据**，两个网站全挂，数据库 + 所有备份快照全没了。Fortune 杂志标题：*"AI agent 毁了这个程序员的整个数据库。"*
 
-AgentShield 是**唯一一款**能深度扫描 16+ AI 工具、拦截危险运行时行为、沙箱隔离不可信代码的桌面应用。同类产品不存在。
+> *"失去了太多工作成果。"*
+> — [Reddit 用户](https://whenaifail.com/)，Claude Code 执行了 `rm -rf tests/ patches/ plan/ ~/`，**删除了整台 Mac**：桌面、文档、下载、钥匙串、所有凭据——全部清零。
+
+> *"如果 Google 收我们三分之一，公司就破产了。"*
+> — [墨西哥 3 人创业团队](https://www.reddit.com/r/googlecloud/comments/1reqtvi/82000_in_48_hours_from_stolen_gemini_api_key_my/)，Gemini API Key 被盗，**48 小时产生 $82,314 账单**。正常月账单 $180，暴涨 455 倍。Google 说"共同责任"。
+
+> *"一个开发者，一行代码，成千上万封被盗的邮件。"*
+> — [Koi Security CTO](https://thehackernews.com/2025/09/first-malicious-mcp-server-found.html)，**全球首个恶意 MCP Server**：伪装成合法 `postmark-mcp` npm 包，BCC 每一封邮件——密码重置、发票、客户数据——到攻击者邮箱。~300 个组织中招。
+
+> *"API Key 一直在泄露，一个月内 $250 就没了，日志里全是中文调用。"*
+> — [OpenAI 论坛用户](https://community.openai.com/t/my-api-keeps-getting-leaked-the-chinese-are-happy/1247052)，API Key 被反复盗用，明文存在配置文件里，怎么也堵不住。
+
+### 这不是个案。这是系统性风险。
+
+| 正在发生什么 | 规模 | 来源 |
+|-------------|------|------|
+| AI Agent 删文件、删数据库、删整台电脑 | 2025-2026 多起事件 | [Fortune](https://fortune.com/2026/03/18/ai-coding-risks-amazon-agents-enterprise/)、[Reddit](https://www.reddit.com/r/ClaudeAI/comments/1rshuz9/an_ai_agent_deleted_25000_documents_from_the/)、[WhenAIFail](https://whenaifail.com/) |
+| API Key 被盗 → 几小时亏 $1K–$82K | 持续发生，多个云厂商 | [The Register](https://www.theregister.com/2026/03/03/gemini_api_key_82314_dollar_charge/)、[OpenAI 论坛](https://community.openai.com/t/my-api-keeps-getting-leaked-the-chinese-are-happy/1247052) |
+| 恶意 MCP Server 窃取邮件和凭据 | 首例 2025.9，~300 组织 | [The Hacker News](https://thehackernews.com/2025/09/first-malicious-mcp-server-found.html)、[Snyk](https://snyk.io/blog/malicious-mcp-server-on-npm-postmark-mcp-harvests-emails/) |
+| 53% MCP Server 使用永不轮换的静态密钥 | 5,200 个服务器 | [Astrix Research](https://astrix.security/learn/blog/state-of-mcp-server-security-2025/) |
+| MCP 配置被隐藏 Unicode 注入攻击 | 影响 Copilot & Cursor | [CVE-2025-54136](https://thehackernews.com/2025/08/cursor-ai-code-editor-vulnerability.html) |
+
+你的 Cursor、Claude Code、VS Code 里的每一个 MCP 和 Skill，都可能在读你的密钥、删你的文件、掏空你的 API 预算、偷你的邮件。**没有人在替你检查。**
+
+AgentShield 是**唯一一款**能深度扫描 16+ AI 工具、拦截危险运行时行为、沙箱隔离不可信代码的桌面应用——在你的下一个 `rm -rf ~/` 或 $82K 账单到来之前。
 
 ## 核心功能
 
 - **深度安全扫描** — 自动发现并扫描 16+ AI 工具（Cursor、Claude Code、Claude Desktop、VS Code、Windsurf、Kiro、Zed、Codex CLI、Gemini CLI、Trae、Continue、Aider、CodeBuddy、Qwen Code、Antigravity、OpenClaw）。每一个暴露的密钥、每一个越权的配置、每一个被遗忘的残留文件，全部揪出来。
-- **运行时守卫** — 实时行为拦截。文件删除、命令执行、网络请求、支付操作——全部阻断，等你亲自批准。不是记录日志，是直接阻断。
-- **沙箱隔离** — macOS `sandbox-exec` 将不可信的 MCP 和 Skill 锁在笼子里。断网、断文件系统。要么在笼子里运行，要么不运行。
-- **密钥保险库** — 你的 API Key 现在正以明文形式躺在 JSON 文件里。AgentShield 把它们迁移到系统钥匙串（macOS 钥匙串 / Windows 凭据管理器）。这才是它们该待的地方。
+- **运行时守卫** — 实时行为拦截。文件删除、命令执行、网络请求、支付操作——全部阻断，等你亲自批准。不是记录日志，是**直接阻断**。那个把开发者整台 Mac 删掉的 `rm -rf ~/`？AgentShield 会先拦住，问你要不要继续。
+- **沙箱隔离** — macOS `sandbox-exec` 将不可信的 MCP 和 Skill 锁在笼子里。断网、断文件系统。要么在笼子里运行，要么不运行。`postmark-mcp` 偷邮件？沙箱里没有网络，偷不出去。
+- **密钥保险库** — 你的 API Key 现在正以明文形式躺在 JSON 文件里。那个 $82K Gemini 账单就是这么来的。AgentShield 把它们迁移到系统钥匙串（macOS 钥匙串 / Windows 凭据管理器）。这才是它们该待的地方。
 - **已安装管理** — 三栏可视化仪表盘，展示你机器上每个 AI 工具的每个 MCP 和 Skill。信任等级、网络策略、一屏掌控。
 - **技能商店** — 浏览和安装经过安全审核的扩展。每一个上架前都经过审查。
-- **AI 安装助手** *(Pro)* — AI 驱动的 OpenClaw 环境配置引导，智能诊断 + 逐步排障。
+- **一键 OpenClaw 安装** *(Pro)* — AI 驱动的 OpenClaw 一键配置：环境检测、安装、渠道配置、排障——全程 AI 助手引导，一键搞定。
 
 ## 威胁检测
 
