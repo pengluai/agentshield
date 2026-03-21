@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AgentShield - Scan AI Skills Before They Run</title>
+    <title>AgentShield - Stop AI Tools From Deleting Your Files and Draining Your API Budget</title>
     <meta
       name="description"
-      content="AgentShield lets you review skills, MCPs, and key access before your AI tools act. You review, approve, and stay in control."
+      content="Claude deleted an entire Mac. A stolen API key cost $82K in 48 hours. AgentShield scans 16+ AI tools, intercepts dangerous actions, and sandboxes untrusted code before real damage happens."
     />
     <link
       rel="icon"
@@ -112,60 +112,60 @@
         <section class="problem-section section-alt">
           <div class="container">
             <div class="section-heading centered-heading">
-              <div class="lang-block zh"><h2>为什么要买</h2></div>
-              <div class="lang-block en"><h2>Why you need this</h2></div>
+              <div class=”lang-block zh”><h2>这些事已经发生了</h2></div>
+              <div class=”lang-block en”><h2>This already happened</h2></div>
             </div>
 
-            <div class="problem-grid">
-              <article class="problem-card problem-card-large bento-card">
-                <div class="problem-icon danger"></div>
-                <div class="problem-large-copy">
-                  <div class="lang-block zh">
-                    <div class="problem-stat">核心逻辑</div>
-                    <h3>损失规避 + 省心 + 别背锅</h3>
-                    <p>中国用户最怕的不是“有风险”，而是“出事了、背锅了、钱丢了、还不知道从哪儿漏的”。大多数人以为 AI 工具只会说说话，但装了 Skill 和 MCP 后，它就可能读密钥、改配置、连外网。</p>
+            <div class=”problem-grid”>
+              <article class=”problem-card problem-card-large bento-card”>
+                <div class=”problem-icon danger”></div>
+                <div class=”problem-large-copy”>
+                  <div class=”lang-block zh”>
+                    <div class=”problem-stat”>$82,314</div>
+                    <h3>一个 API Key 被盗，48 小时账单</h3>
+                    <p>墨西哥 3 人团队的 Gemini API Key 被盗用，正常月账单 $180，48 小时暴涨到 $82,314。Google 说”共同责任”，要求全额支付。创始人说：”收三分之一我们就破产了。” 密钥就放在配置文件里。</p>
                   </div>
-                  <div class="lang-block en">
-                    <div class="problem-stat">Core Logic</div>
-                    <h3>Agency + Visibility + You decide</h3>
-                    <p>Users are not asking for fear. They are asking for control: “I need to see what it does, and I need to decide”. AI tools no longer just answer questions. With skills and MCPs, they can read secrets, change configs, and call unknown endpoints.</p>
+                  <div class=”lang-block en”>
+                    <div class=”problem-stat”>$82,314</div>
+                    <h3>One stolen API key. 48 hours. This bill.</h3>
+                    <p>A 3-person startup's Gemini API key was stolen. Normal monthly bill: $180. In 48 hours: $82,314. Google cited “shared responsibility.” The founder said: “If they enforce even a third, we go bankrupt.” The key was in a plaintext config file.</p>
                   </div>
                 </div>
               </article>
 
-              <article class="problem-card bento-card">
-                <div class="problem-icon accent"></div>
-                <div class="lang-block zh">
-                  <h3>不是“有没有风险”，而是“出事后谁来背锅”</h3>
-                  <p>中国消费者的付费驱动里，隐私担忧本身就是核心触发因素；越担心损失，越愿意为可控和省心付费。</p>
+              <article class=”problem-card bento-card”>
+                <div class=”problem-icon accent”></div>
+                <div class=”lang-block zh”>
+                  <h3>Claude 一条命令，整台 Mac 全删了</h3>
+                  <p>开发者让 Claude Code 清理旧仓库。Claude 执行了 rm -rf ~/，桌面、文档、下载、钥匙串、所有凭据——全部清零。”失去了太多工作成果。”</p>
                 </div>
-                <div class="lang-block en">
-                  <h3>Visibility drives trust, not auto-pilot AI</h3>
-                  <p>2026 trust research highlights a consistent pattern: clarity, agency, and trust rise together, while “AI decides for me” lowers confidence.</p>
-                </div>
-              </article>
-
-              <article class="problem-card bento-card">
-                <div class="problem-icon warning"></div>
-                <div class="lang-block zh">
-                  <h3>恶意 Skill 不是小概率事件</h3>
-                  <p>Bitdefender 2026 年 2 月分析 ClawHub：约 20% skills 存在恶意行为。Snyk 同期对 3,984 个 skills 的研究显示，13.4% 为 critical 风险。</p>
-                </div>
-                <div class="lang-block en">
-                  <h3>Malicious skills are not edge cases</h3>
-                  <p>Bitdefender's February 2026 analysis of ClawHub found about 20% of skills showed malicious behavior. Snyk reported 13.4% critical issues across 3,984 skills.</p>
+                <div class=”lang-block en”>
+                  <h3>Claude ran rm -rf ~/. Entire Mac — gone.</h3>
+                  <p>A developer asked Claude Code to clean up old packages. It ran rm -rf with ~/ included. Desktop, Documents, Downloads, Keychain, all credentials — wiped. “So much work lost.”</p>
                 </div>
               </article>
 
-              <article class="problem-card bento-card">
-                <div class="problem-icon primary"></div>
-                <div class="lang-block zh">
-                  <h3>你不需要懂完所有风险，也该先看见它</h3>
-                  <p>先看清，再决定。不是被动挨打后补救。</p>
+              <article class=”problem-card bento-card”>
+                <div class=”problem-icon warning”></div>
+                <div class=”lang-block zh”>
+                  <h3>恶意 MCP Server 偷走 300 个组织的邮件</h3>
+                  <p>npm 上的 postmark-mcp 包——看起来完全正常，装了 15 个版本都没问题。第 16 版加了一行代码：BCC 每封邮件到攻击者邮箱。密码重置、发票、客户数据，全部被复制。</p>
                 </div>
-                <div class="lang-block en">
-                  <h3>You don't need to master every risk</h3>
-                  <p>You only need to see it before your AI tools act.</p>
+                <div class=”lang-block en”>
+                  <h3>Malicious MCP server stole emails from 300 orgs</h3>
+                  <p>The postmark-mcp npm package looked legitimate for 15 versions. Version 1.0.16 added one line: BCC every email to the attacker. Password resets, invoices, customer data — all silently copied.</p>
+                </div>
+              </article>
+
+              <article class=”problem-card bento-card”>
+                <div class=”problem-icon primary”></div>
+                <div class=”lang-block zh”>
+                  <h3>53% 的 MCP Server 用的是永不更换的密钥</h3>
+                  <p>Astrix 分析了 5,200 个 MCP Server：53% 使用静态 API Key，79% 明文传递凭据，仅 8.5% 使用 OAuth。你装的那个 MCP，很可能就在这 53% 里。</p>
+                </div>
+                <div class=”lang-block en”>
+                  <h3>53% of MCP servers use static, never-rotated keys</h3>
+                  <p>Astrix Research analyzed 5,200 MCP servers: 53% use static API keys, 79% pass credentials in plain text, only 8.5% use OAuth. The MCP you just installed? Probably in that 53%.</p>
                 </div>
               </article>
             </div>
@@ -244,8 +244,8 @@
               <div class="lang-block en"><h2>Why buy</h2></div>
             </div>
             <p class="pricing-note" id="review-status">
-              <span class="lang-block zh">免费版先看清风险。Pro 帮你减少手动操作。买断版给长期使用者更低心智负担。</span>
-              <span class="lang-block en">Free lets you see everything first. Pro reduces manual work. Lifetime removes renewal decisions for long-term users.</span>
+              <span class="lang-block zh">所有付费档位在点击购买前都可见价格。当前结算货币为 USD，最终金额会在 Creem Checkout 支付前明确展示。</span>
+              <span class="lang-block en">All paid plans show pricing before checkout. Billing currency is USD, and the final amount is shown before payment on Creem Checkout.</span>
             </p>
 
             <div class="pricing-grid">
@@ -285,7 +285,8 @@
                 <div class="pricing-card-inner">
                   <div class="lang-block zh">
                     <h3>Pro：不想每次手动查、手动修、手动盯着</h3>
-                    <div class="price-row"><strong>Pro</strong></div>
+                    <div class="price-row"><strong>$39.9</strong><span>/年</span></div>
+                    <p class="price-subline">或 $4.9/月（USD 结算）</p>
                     <p class="plan-desc">Pro 帮你自动提醒、一键处理、持续监控。比出事后再补救便宜得多。</p>
                     <ul class="plan-list">
                       <li>一键处理高风险项</li>
@@ -299,18 +300,19 @@
                         href="https://www.creem.io/payment/prod_7kbjugsRm1gGN6lKXOR1NG?metadata%5Bsku_code%5D=AGSH_PRO_365D&metadata%5Bcampaign%5D=storefront_pricing&metadata%5Bsource%5D=agentshield_storefront"
                         target="_blank"
                         rel="noopener noreferrer"
-                      >立即购买（年付）</a>
+                      >立即购买（年付 $39.9）</a>
                       <a
                         class="btn-secondary full-width"
                         href="https://www.creem.io/payment/prod_2T8qrIwLHQ3AlG4KtTB849?metadata%5Bsku_code%5D=AGSH_PRO_30D&metadata%5Bcampaign%5D=storefront_pricing&metadata%5Bsource%5D=agentshield_storefront"
                         target="_blank"
                         rel="noopener noreferrer"
-                      >立即购买（月付）</a>
+                      >立即购买（月付 $4.9）</a>
                     </div>
                   </div>
                   <div class="lang-block en">
                     <h3>Pro - Stay ahead</h3>
-                    <div class="price-row"><strong>Pro</strong></div>
+                    <div class="price-row"><strong>$39.9</strong><span>/year</span></div>
+                    <p class="price-subline">or $4.9/month (billed in USD)</p>
                     <p class="plan-desc">One-click fixes. Runtime approval. Continuous monitoring.</p>
                     <ul class="plan-list">
                       <li>One-click remediation</li>
@@ -324,13 +326,13 @@
                         href="https://www.creem.io/payment/prod_7kbjugsRm1gGN6lKXOR1NG?metadata%5Bsku_code%5D=AGSH_PRO_365D&metadata%5Bcampaign%5D=storefront_pricing&metadata%5Bsource%5D=agentshield_storefront"
                         target="_blank"
                         rel="noopener noreferrer"
-                      >Buy Pro Yearly</a>
+                      >Buy Pro Yearly ($39.9)</a>
                       <a
                         class="btn-secondary full-width"
                         href="https://www.creem.io/payment/prod_2T8qrIwLHQ3AlG4KtTB849?metadata%5Bsku_code%5D=AGSH_PRO_30D&metadata%5Bcampaign%5D=storefront_pricing&metadata%5Bsource%5D=agentshield_storefront"
                         target="_blank"
                         rel="noopener noreferrer"
-                      >Buy Pro Monthly</a>
+                      >Buy Pro Monthly ($4.9)</a>
                     </div>
                   </div>
                 </div>
@@ -339,7 +341,8 @@
               <article class="pricing-card bento-card">
                 <div class="lang-block zh">
                   <h3>买断版：长期用 AI 工具的人，买一次</h3>
-                  <div class="price-row"><strong>Lifetime</strong></div>
+                  <div class="price-row"><strong>$79.9</strong><span>一次性</span></div>
+                  <p class="price-subline">USD 结算，无续费</p>
                   <p class="plan-desc">买一次，以后不用再想这件事。</p>
                     <ul class="plan-list">
                       <li>长期使用最省心</li>
@@ -352,12 +355,13 @@
                         href="https://www.creem.io/payment/prod_4rh2nT74Cqk4IQ5EfvcjbH?metadata%5Bsku_code%5D=AGSH_PRO_LIFETIME&metadata%5Bcampaign%5D=storefront_pricing&metadata%5Bsource%5D=agentshield_storefront"
                         target="_blank"
                         rel="noopener noreferrer"
-                      >立即购买（永久）</a>
+                      >立即购买（永久 $79.9）</a>
                     </div>
                   </div>
                   <div class="lang-block en">
                     <h3>Lifetime - Own it</h3>
-                    <div class="price-row"><strong>Lifetime</strong></div>
+                    <div class="price-row"><strong>$79.9</strong><span>one-time</span></div>
+                    <p class="price-subline">Billed in USD. No renewals.</p>
                     <p class="plan-desc">Pay once. No renewals. No decisions to remake next year.</p>
                     <ul class="plan-list">
                       <li>Best for long-term AI tool users</li>
@@ -370,7 +374,7 @@
                         href="https://www.creem.io/payment/prod_4rh2nT74Cqk4IQ5EfvcjbH?metadata%5Bsku_code%5D=AGSH_PRO_LIFETIME&metadata%5Bcampaign%5D=storefront_pricing&metadata%5Bsource%5D=agentshield_storefront"
                         target="_blank"
                         rel="noopener noreferrer"
-                      >Buy Lifetime</a>
+                      >Buy Lifetime ($79.9)</a>
                     </div>
                   </div>
               </article>
@@ -423,12 +427,12 @@
           <div class="cta-gradient"></div>
           <div class="container cta-inner">
             <div class="lang-block zh">
-              <h2>ClawHub 20% 的 Skill 有恶意行为。你装了多少个？</h2>
-              <p>先扫一下，3 分钟，免费，数据不出你的电脑。</p>
+              <h2>下一个 $82K 账单或 rm -rf ~/ 可能就在明天。先扫一下。</h2>
+              <p>3 分钟，免费，数据不出你的电脑。扫完你就知道该不该担心。</p>
             </div>
             <div class="lang-block en">
-              <h2>You don't need to understand every risk.<br />You just need to see it before your AI tools act on it.</h2>
-              <p>Start with a free scan and keep control of every decision.</p>
+              <h2>The next $82K bill or rm -rf ~/ could be tomorrow.<br />Scan first. 3 minutes. Free.</h2>
+              <p>All scanning runs locally. Your data never leaves your machine.</p>
             </div>
             <div class="final-actions">
               <a class="btn-gradient btn-large" href="/download/macos">
