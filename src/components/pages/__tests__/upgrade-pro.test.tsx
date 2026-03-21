@@ -45,25 +45,38 @@ describe('UpgradePro', () => {
     expect((await screen.findAllByText(t.trialActive.replace('{days}', '14'))).length).toBeGreaterThan(0);
   });
 
-  it('shows a clear error when checkout URL is not configured', async () => {
+  it('falls back to the production Creem monthly checkout when env URL is missing', async () => {
     const user = userEvent.setup();
 
     render(<UpgradePro />);
     await user.click(screen.getAllByRole('button', { name: t.buyActivationCode })[0]);
 
-    expect(await screen.findByText(t.checkoutLinkMissing)).toBeInTheDocument();
-    expect(openExternalUrlSpy).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(openExternalUrlSpy).toHaveBeenCalledTimes(1);
+    });
+
+    const checkoutUrl = openExternalUrlSpy.mock.calls[0][0];
+    const parsed = new URL(checkoutUrl);
+    expect(parsed.origin).toBe('https://www.creem.io');
+    expect(parsed.pathname).toBe('/payment/prod_2T8qrIwLHQ3AlG4KtTB849');
+    expect(parsed.searchParams.get('metadata[sku_code]')).toBe('AGSH_PRO_30D');
   });
 
-  it('blocks placeholder checkout URLs and avoids opening browser', async () => {
+  it('falls back to production checkout when env URL uses placeholder host', async () => {
     const user = userEvent.setup();
     vi.stubEnv('VITE_CHECKOUT_MONTHLY_URL', 'https://example.com/monthly');
 
     render(<UpgradePro />);
     await user.click(screen.getAllByRole('button', { name: t.buyActivationCode })[0]);
 
-    expect(await screen.findByText(t.checkoutLinkMissing)).toBeInTheDocument();
-    expect(openExternalUrlSpy).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(openExternalUrlSpy).toHaveBeenCalledTimes(1);
+    });
+
+    const checkoutUrl = openExternalUrlSpy.mock.calls[0][0];
+    const parsed = new URL(checkoutUrl);
+    expect(parsed.origin).toBe('https://www.creem.io');
+    expect(parsed.pathname).toBe('/payment/prod_2T8qrIwLHQ3AlG4KtTB849');
   });
 
   it('appends checkout metadata for Creem links before opening browser', async () => {

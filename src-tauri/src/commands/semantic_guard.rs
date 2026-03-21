@@ -11,7 +11,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::commands::license;
+use crate::commands::{ai_orchestrator, license};
 use crate::types::license::LicenseInfo;
 use crate::types::scan::{SemanticGuardSummary, SemanticReview};
 
@@ -61,6 +61,7 @@ impl SemanticReviewCandidate {
 pub struct SemanticGuardStatus {
     pub licensed: bool,
     pub configured: bool,
+    pub custom_configured: bool,
     pub active: bool,
     pub message: String,
 }
@@ -293,18 +294,7 @@ async fn request_reviews(
         .build()
         .map_err(|error| format!("Failed to build semantic guard HTTP client: {error}"))?;
 
-    let system_prompt = "你是 AgentShield 的高级语义安全研判器。你只能基于提供的结构化证据判断，不得脑补缺失上下文。不要给 shell 命令，不要弱化已存在的规则命中。只输出 JSON。";
-    let user_prompt = format!(
-        "请审查下面这些由本地确定性扫描器筛出的高风险候选项。返回 JSON 对象，格式为 {{\"items\":[...]}}。\n\
-        items 数组中每项必须包含：issue_id、verdict、confidence、summary、recommended_action。\n\
-        verdict 只能是 escalate、review、clear 三个值：\n\
-        - escalate: 证据显示应立即提高警惕或优先级\n\
-        - review: 证据不足以直接升级，但需要人工确认\n\
-        - clear: 没有发现超出原始规则命中的额外危险信号\n\
-        summary 用中文，20 到 60 字；recommended_action 用中文，15 到 40 字。\n\
-        候选项如下：\n{}",
-        serde_json::to_string_pretty(candidates).map_err(|error| error.to_string())?
-    );
+    let (system_prompt, user_prompt) = build_review_prompts(candidates)?;
 
     let body = json!({
         "model": DEEP_REVIEW_MODEL,
@@ -347,15 +337,54 @@ async fn request_reviews(
     Ok(envelope.items)
 }
 
+fn build_review_prompts(candidates: &[SemanticReviewCandidate]) -> Result<(String, String), String> {
+    let system_prompt = "你是 AgentShield 的高级语义安全研判器。你只能基于提供的结构化证据判断，不得脑补缺失上下文。不要给 shell 命令，不要弱化已存在的规则命中。只输出 JSON。".to_string();
+    let user_prompt = format!(
+        "请审查下面这些由本地确定性扫描器筛出的高风险候选项。返回 JSON 对象，格式为 {{\"items\":[...]}}。\n\
+        items 数组中每项必须包含：issue_id、verdict、confidence、summary、recommended_action。\n\
+        verdict 只能是 escalate、review、clear 三个值：\n\
+        - escalate: 证据显示应立即提高警惕或优先级\n\
+        - review: 证据不足以直接升级，但需要人工确认\n\
+        - clear: 没有发现超出原始规则命中的额外危险信号\n\
+        summary 用中文，20 到 60 字；recommended_action 用中文，15 到 40 字。\n\
+        候选项如下：\n{}",
+        serde_json::to_string_pretty(candidates).map_err(|error| error.to_string())?
+    );
+    Ok((system_prompt, user_prompt))
+}
+
+fn proxy_mode_enabled() -> bool {
+    std::env::var("AGENTSHIELD_AI_PROXY_URL")
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(true)
+}
+
+async fn request_reviews_via_proxy(
+    candidates: &[SemanticReviewCandidate],
+) -> Result<Vec<SemanticResponseItem>, String> {
+    let (system_prompt, user_prompt) = build_review_prompts(candidates)?;
+    let messages = vec![
+        json!({ "role": "system", "content": system_prompt }),
+        json!({ "role": "user", "content": user_prompt }),
+    ];
+    let raw = ai_orchestrator::pro_ai_chat(messages).await?;
+    let json = trim_json_response(&raw);
+    let envelope: SemanticResponseEnvelope = serde_json::from_str(&json)
+        .map_err(|error| format!("Semantic review JSON parse failed: {error}"))?;
+    Ok(envelope.items)
+}
+
 fn build_status(
     licensed: bool,
     configured: bool,
+    custom_configured: bool,
     active: bool,
     message: impl Into<String>,
 ) -> SemanticGuardStatus {
     SemanticGuardStatus {
         licensed,
         configured,
+        custom_configured,
         active,
         message: message.into(),
     }
@@ -364,17 +393,39 @@ fn build_status(
 #[tauri::command]
 pub async fn get_semantic_guard_status() -> Result<SemanticGuardStatus, String> {
     let license_info = license::check_license_status().await?;
-    let configured = load_access_key()
+    let custom_configured = load_access_key()
         .map(|value| !value.trim().is_empty())
         .unwrap_or(false);
+    let proxy_ready = proxy_mode_enabled();
+    let configured = proxy_ready || custom_configured;
     let licensed = license_allows_semantic(&license_info);
 
     Ok(if !licensed {
-        build_status(false, configured, false, "当前套餐未启用高级语义研判")
+        build_status(
+            false,
+            configured,
+            custom_configured,
+            false,
+            "当前套餐未启用高级语义研判",
+        )
+    } else if proxy_ready {
+        build_status(
+            true,
+            true,
+            custom_configured,
+            true,
+            "✅ Pro 内置 AI 已启用（MiniMax M2.7），无需配置访问密钥",
+        )
     } else if configured {
-        build_status(true, true, true, "高级语义研判已就绪")
+        build_status(true, true, custom_configured, true, "高级语义研判已就绪")
     } else {
-        build_status(true, false, false, "请先配置安全研判访问密钥")
+        build_status(
+            true,
+            false,
+            custom_configured,
+            false,
+            "请先配置安全研判访问密钥",
+        )
     })
 }
 
@@ -393,7 +444,7 @@ pub async fn configure_semantic_guard(access_key: String) -> Result<SemanticGuar
     verify_access_key(trimmed).await?;
     store_access_key(trimmed)?;
 
-    Ok(build_status(true, true, true, "高级语义研判已连接"))
+    Ok(build_status(true, true, true, true, "高级语义研判已连接"))
 }
 
 #[tauri::command]
@@ -420,11 +471,12 @@ pub async fn review_candidates(
     };
 
     let licensed = license_allows_semantic(&license_info);
+    let proxy_ready = proxy_mode_enabled();
     let access_key = match load_access_key() {
         Ok(value) if !value.trim().is_empty() => Some(value),
         _ => None,
     };
-    let configured = access_key.is_some();
+    let configured = proxy_ready || access_key.is_some();
 
     if !licensed {
         return SemanticReviewBatchResult {
@@ -440,7 +492,15 @@ pub async fn review_candidates(
     if !configured {
         return SemanticReviewBatchResult {
             reviews: HashMap::new(),
-            summary: SemanticGuardSummary::disabled(true, false, "高级语义研判未配置访问密钥"),
+            summary: SemanticGuardSummary::disabled(
+                true,
+                false,
+                if proxy_ready {
+                    "高级语义研判 Proxy 不可用"
+                } else {
+                    "高级语义研判未配置访问密钥"
+                },
+            ),
         };
     }
 
@@ -496,7 +556,28 @@ pub async fn review_candidates(
             .map(|(_, candidate)| candidate.clone())
             .collect::<Vec<_>>();
 
-        match request_reviews(access_key.as_deref().unwrap_or_default(), &request_items).await {
+        let review_result = if proxy_ready {
+            match request_reviews_via_proxy(&request_items).await {
+                Ok(items) => Ok(items),
+                Err(proxy_error) => {
+                    if let Some(access_key) = access_key.as_deref() {
+                        request_reviews(access_key, &request_items).await.map_err(|key_error| {
+                            format!(
+                                "Proxy 与自定义 Key 路径均失败：proxy={proxy_error}; key={key_error}"
+                            )
+                        })
+                    } else {
+                        Err(format!("Proxy 语义研判失败：{proxy_error}"))
+                    }
+                }
+            }
+        } else if let Some(access_key) = access_key.as_deref() {
+            request_reviews(access_key, &request_items).await
+        } else {
+            Err("高级语义研判未配置访问密钥".to_string())
+        };
+
+        match review_result {
             Ok(items) => {
                 let now = Utc::now().to_rfc3339();
                 let mut reviewed_count = 0u32;

@@ -177,10 +177,14 @@ pub fn run() {
             license::start_trial,
             ai_orchestrator::test_ai_connection,
             ai_orchestrator::ai_diagnose_error,
+            ai_orchestrator::pro_ai_chat,
+            ai_orchestrator::pro_ai_quota_status,
             ai_orchestrator::execute_install_step,
             semantic_guard::get_semantic_guard_status,
             semantic_guard::configure_semantic_guard,
             semantic_guard::clear_semantic_guard_key,
+            audit_export::export_audit_log,
+            risk_profile::profile_skill_risk,
         ])
         .on_window_event(|window, event| {
             #[cfg(target_os = "macos")]

@@ -11,10 +11,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::commands::platform::normalize_path;
 
@@ -1282,11 +1283,100 @@ fn read_json_config(path: &Path) -> Result<Value, String> {
         .map_err(|error| format!("Failed to parse JSON config: {error}"))
 }
 
-fn write_json_config(path: &Path, value: &Value) -> Result<(), String> {
+fn backup_config_file(path: &Path) -> Result<Option<PathBuf>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("cfg");
+    let backup_path = path.with_extension(format!("{ext}.bak"));
+    fs::copy(path, &backup_path)
+        .map_err(|error| format!("Failed to backup config file before update: {error}"))?;
+    Ok(Some(backup_path))
+}
+
+fn write_text_file_atomic(path: &Path, content: &str) -> Result<(), String> {
     ensure_parent_dir(path)?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("Config path has no parent directory: {}", path.display()))?;
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("config");
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temp_path = parent.join(format!(".{}.agentshield.{}.tmp", file_name, stamp));
+
+    let write_result = (|| -> Result<(), String> {
+        let mut temp_file = fs::File::create(&temp_path)
+            .map_err(|error| format!("Failed to create temporary config file: {error}"))?;
+        temp_file
+            .write_all(content.as_bytes())
+            .map_err(|error| format!("Failed to write temporary config file: {error}"))?;
+        temp_file
+            .sync_all()
+            .map_err(|error| format!("Failed to flush temporary config file: {error}"))?;
+        drop(temp_file);
+        fs::rename(&temp_path, path)
+            .map_err(|error| format!("Failed to replace config file atomically: {error}"))?;
+        Ok(())
+    })();
+
+    if write_result.is_err() {
+        let _ = fs::remove_file(&temp_path);
+    }
+
+    write_result
+}
+
+fn write_text_config_with_validation<F>(
+    path: &Path,
+    content: &str,
+    validate: F,
+) -> Result<(), String>
+where
+    F: Fn(&str) -> Result<(), String>,
+{
+    validate(content)?;
+    let backup_path = backup_config_file(path)?;
+
+    let write_result = (|| -> Result<(), String> {
+        write_text_file_atomic(path, content)?;
+        let written = fs::read_to_string(path)
+            .map_err(|error| format!("Failed to read config file after write: {error}"))?;
+        validate(&written)?;
+        Ok(())
+    })();
+
+    if let Err(error) = write_result {
+        if let Some(backup) = backup_path {
+            fs::copy(&backup, path)
+                .map_err(|restore_error| format!("{error}; rollback failed: {restore_error}"))?;
+            return Err(format!(
+                "{error}; restored previous config from {}",
+                backup.display()
+            ));
+        }
+        return Err(error);
+    }
+
+    Ok(())
+}
+
+fn write_json_config(path: &Path, value: &Value) -> Result<(), String> {
     let content = serde_json::to_string_pretty(value)
         .map_err(|error| format!("Failed to serialize JSON config: {error}"))?;
-    fs::write(path, content).map_err(|error| format!("Failed to write config file: {error}"))
+    write_text_config_with_validation(path, &content, |text| {
+        serde_json::from_str::<Value>(text)
+            .map(|_| ())
+            .map_err(|error| format!("Failed to validate JSON config before save: {error}"))
+    })
 }
 
 fn read_yaml_as_json(path: &Path) -> Result<Value, String> {
@@ -1307,12 +1397,15 @@ fn read_yaml_as_json(path: &Path) -> Result<Value, String> {
 }
 
 fn write_json_as_yaml(path: &Path, value: &Value) -> Result<(), String> {
-    ensure_parent_dir(path)?;
     let yaml_value: serde_yaml::Value = serde_json::from_value(value.clone())
         .map_err(|error| format!("Failed to convert config to YAML: {error}"))?;
     let content = serde_yaml::to_string(&yaml_value)
         .map_err(|error| format!("Failed to serialize YAML config: {error}"))?;
-    fs::write(path, content).map_err(|error| format!("Failed to write YAML config: {error}"))
+    write_text_config_with_validation(path, &content, |text| {
+        serde_yaml::from_str::<serde_yaml::Value>(text)
+            .map(|_| ())
+            .map_err(|error| format!("Failed to validate YAML config before save: {error}"))
+    })
 }
 
 fn read_toml_config(path: &Path) -> Result<toml::Value, String> {
@@ -1333,10 +1426,13 @@ fn read_toml_config(path: &Path) -> Result<toml::Value, String> {
 }
 
 fn write_toml_config(path: &Path, value: &toml::Value) -> Result<(), String> {
-    ensure_parent_dir(path)?;
     let content = toml::to_string_pretty(value)
         .map_err(|error| format!("Failed to serialize TOML config: {error}"))?;
-    fs::write(path, content).map_err(|error| format!("Failed to write TOML config: {error}"))
+    write_text_config_with_validation(path, &content, |text| {
+        text.parse::<toml::Table>()
+            .map(|_| ())
+            .map_err(|error| format!("Failed to validate TOML config before save: {error}"))
+    })
 }
 
 fn build_npm_server_entry(package_spec: &str) -> Value {
@@ -1380,16 +1476,6 @@ pub(crate) fn write_server_to_config_path(
     config_path: &Path,
     server_entry: Value,
 ) -> Result<(), String> {
-    // Backup existing config before any modification
-    if config_path.exists() {
-        let ext = config_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("cfg");
-        let backup = config_path.with_extension(format!("{ext}.bak"));
-        let _ = fs::copy(config_path, &backup);
-    }
-
     if is_continue_mcp_server_file(config_path) {
         let mut value = server_entry;
         if value.get("name").is_none() {
@@ -1518,17 +1604,8 @@ pub(crate) fn remove_server_from_config_path(
         return Ok(false);
     }
 
-    // Backup existing config before any modification
-    {
-        let ext = config_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("cfg");
-        let backup = config_path.with_extension(format!("{ext}.bak"));
-        let _ = fs::copy(config_path, &backup);
-    }
-
     if is_continue_mcp_server_file(config_path) {
+        let _ = backup_config_file(config_path);
         let value = if is_yaml_config_path(config_path) {
             read_yaml_as_json(config_path)?
         } else {
@@ -3520,6 +3597,7 @@ pub async fn generate_manual_fix_guide(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
 
     fn temp_path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
@@ -3527,6 +3605,34 @@ mod tests {
             name,
             uuid::Uuid::new_v4()
         ))
+    }
+
+    #[test]
+    fn write_text_config_with_validation_rolls_back_when_post_write_validation_fails() {
+        let base = temp_path("rollback-on-validate");
+        let path = base.join(".codex/config.toml");
+        ensure_parent_dir(&path).expect("create parent dir");
+        fs::write(&path, "safe = true\n").expect("seed config");
+
+        let validation_calls = Cell::new(0usize);
+        let result = write_text_config_with_validation(&path, "safe = false\n", |_| {
+            let calls = validation_calls.get();
+            validation_calls.set(calls + 1);
+            if calls == 0 {
+                Ok(())
+            } else {
+                Err("forced post-write validation failure".to_string())
+            }
+        });
+
+        assert!(result.is_err());
+        let content = fs::read_to_string(&path).expect("read restored config");
+        assert_eq!(content, "safe = true\n");
+
+        let backup = path.with_extension("toml.bak");
+        assert!(backup.exists());
+
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

@@ -11,3 +11,4 @@ data/license-gateway.json
 *.log
 *.tsbuildinfo
 .DS_Store
+.wrangler/

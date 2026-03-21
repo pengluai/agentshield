@@ -1,0 +1,28 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "agentshield-ai-proxy",
+  "main": "./src/index.mjs",
+  "compatibility_date": "2026-03-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "kv_namespaces": [
+    {
+      "binding": "USAGE_KV",
+      "id": "dc32ab80fe464af2a3000f4cebf15df9"
+    }
+  ],
+  "vars": {
+    "MINIMAX_BASE_URL": "https://api.minimax.chat/v1",
+    "MINIMAX_DEFAULT_MODEL": "MiniMax-M2.7",
+    "LICENSE_GATEWAY_URL": "https://agentshield-license-gateway.pengluailll.workers.dev"
+  },
+  "ratelimits": [
+    {
+      "name": "PRO_USER_RATE_LIMITER",
+      "namespace_id": "2001",
+      "simple": {
+        "limit": 10,
+        "period": 60
+      }
+    }
+  ]
+}

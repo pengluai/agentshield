@@ -12,8 +12,10 @@ interface UpgradeProProps {
   onBack?: () => void;
 }
 
+type PurchaseOptionId = 'monthly' | 'yearly' | 'lifetime';
+
 interface PurchaseOption {
-  id: 'monthly' | 'yearly' | 'lifetime';
+  id: PurchaseOptionId;
   skuCode: string;
   title: string;
   price: string;
@@ -23,19 +25,34 @@ interface PurchaseOption {
   recommended?: boolean;
 }
 
-const PLACEHOLDER_OR_LOCAL_CHECKOUT_HOSTS = new Set([
-  'example.com',
+const FALLBACK_CHECKOUT_URLS: Record<PurchaseOptionId, string> = {
+  monthly: 'https://www.creem.io/payment/prod_2T8qrIwLHQ3AlG4KtTB849',
+  yearly: 'https://www.creem.io/payment/prod_7kbjugsRm1gGN6lKXOR1NG',
+  lifetime: 'https://www.creem.io/payment/prod_4rh2nT74Cqk4IQ5EfvcjbH',
+};
+
+const DEFAULT_PRODUCTION_LICENSE_GATEWAY_URL = 'https://api.51silu.com';
+
+const LOCAL_ONLY_HOSTS = new Set([
   'localhost',
   '127.0.0.1',
   '0.0.0.0',
   '::1',
+]);
+
+const PLACEHOLDER_HOSTS = new Set([
+  'example.com',
   'invalid',
   'test',
 ]);
 
-function isPlaceholderCheckoutHost(hostname: string) {
+function isLocalOnlyHost(hostname: string) {
+  return LOCAL_ONLY_HOSTS.has(hostname.toLowerCase());
+}
+
+function isPlaceholderHost(hostname: string) {
   const host = hostname.toLowerCase();
-  if (PLACEHOLDER_OR_LOCAL_CHECKOUT_HOSTS.has(host)) {
+  if (PLACEHOLDER_HOSTS.has(host)) {
     return true;
   }
   return (
@@ -55,10 +72,46 @@ function isCheckoutUrlUsable(url: string) {
     if (parsed.protocol !== 'https:') {
       return false;
     }
-    return !isPlaceholderCheckoutHost(parsed.hostname);
+    return !isLocalOnlyHost(parsed.hostname) && !isPlaceholderHost(parsed.hostname);
   } catch {
     return false;
   }
+}
+
+function isGatewayUrlUsable(url: string) {
+  const normalized = url.trim();
+  if (!normalized) {
+    return false;
+  }
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol === 'https:') {
+      return !isLocalOnlyHost(parsed.hostname) && !isPlaceholderHost(parsed.hostname);
+    }
+    if (import.meta.env.DEV && parsed.protocol === 'http:') {
+      return isLocalOnlyHost(parsed.hostname);
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function resolveCheckoutBaseUrl(optionId: PurchaseOptionId, configuredUrl: string) {
+  const normalized = configuredUrl.trim();
+  if (isCheckoutUrlUsable(normalized)) {
+    return normalized;
+  }
+  const fallback = FALLBACK_CHECKOUT_URLS[optionId] ?? '';
+  return isCheckoutUrlUsable(fallback) ? fallback : '';
+}
+
+function resolveLicenseGatewayBaseUrl(configuredUrl: string) {
+  const normalized = configuredUrl.trim();
+  if (isGatewayUrlUsable(normalized)) {
+    return normalized;
+  }
+  return DEFAULT_PRODUCTION_LICENSE_GATEWAY_URL;
 }
 
 const FREE_FEATURES = [
@@ -103,7 +156,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
       price: isEnglishLocale ? '$4.9' : '¥29',
       pricePer: isEnglishLocale ? '/mo' : '/月',
       validity: t.validFor30Days,
-      checkoutUrl: import.meta.env.VITE_CHECKOUT_MONTHLY_URL ?? '',
+      checkoutUrl: resolveCheckoutBaseUrl('monthly', import.meta.env.VITE_CHECKOUT_MONTHLY_URL ?? ''),
     },
     {
       id: 'yearly',
@@ -112,7 +165,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
       price: isEnglishLocale ? '$39.9' : '¥198',
       pricePer: isEnglishLocale ? '/yr' : '/年',
       validity: isEnglishLocale ? 'Save 32%' : '省 43%',
-      checkoutUrl: import.meta.env.VITE_CHECKOUT_YEARLY_URL ?? '',
+      checkoutUrl: resolveCheckoutBaseUrl('yearly', import.meta.env.VITE_CHECKOUT_YEARLY_URL ?? ''),
       recommended: true,
     },
     {
@@ -122,7 +175,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
       price: isEnglishLocale ? '$79.9' : '¥398',
       pricePer: '',
       validity: isEnglishLocale ? 'Pay once, own forever' : '一次付清，永久使用',
-      checkoutUrl: import.meta.env.VITE_CHECKOUT_LIFETIME_URL ?? '',
+      checkoutUrl: resolveCheckoutBaseUrl('lifetime', import.meta.env.VITE_CHECKOUT_LIFETIME_URL ?? ''),
     },
   ];
 
@@ -131,7 +184,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
     if (!code) { setPromoResult(null); return; }
     setValidatingPromo(true);
     try {
-      const gatewayUrl = import.meta.env.VITE_LICENSE_GATEWAY_URL || 'http://localhost:8787';
+      const gatewayUrl = resolveLicenseGatewayBaseUrl(import.meta.env.VITE_LICENSE_GATEWAY_URL ?? '');
       const resp = await fetch(`${gatewayUrl}/api/promos/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

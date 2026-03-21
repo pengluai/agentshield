@@ -739,6 +739,11 @@ function AppContent() {
       return (
         <SecurityScanDetail
           onBack={goBackFromDetail}
+          onOpenInstalledManagement={() => {
+            setShowSecurityDetail(false);
+            setSelectedCardId(null);
+            setCurrentModule('installed');
+          }}
           cachedIssues={cachedIssues}
           categoryTitle={title}
         />

@@ -22,6 +22,13 @@ export interface AiConnectionResult {
   message: string;
 }
 
+export interface ProAiQuotaStatus {
+  daily_used: number;
+  daily_limit: number;
+  monthly_used: number;
+  monthly_limit: number;
+}
+
 export async function testAiConnection(
   provider: string,
   apiKey: string,
@@ -84,5 +91,16 @@ export async function aiDiagnoseError(
   } catch (error) {
     console.error('Failed to diagnose AI setup error:', error);
     throw Object.assign(new Error(`Failed to diagnose AI setup error: ${String(error)}`), { cause: error });
+  }
+}
+
+export async function getProAiQuotaStatus(): Promise<ProAiQuotaStatus> {
+  try {
+    return await invoke<ProAiQuotaStatus>('pro_ai_quota_status');
+  } catch (error) {
+    console.error('Failed to fetch Pro AI quota status:', error);
+    throw Object.assign(new Error(`Failed to fetch Pro AI quota status: ${String(error)}`), {
+      cause: error,
+    });
   }
 }

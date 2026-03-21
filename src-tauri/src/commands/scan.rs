@@ -2509,38 +2509,33 @@ fn collect_fix_all_targets() -> Vec<String> {
 }
 
 pub fn collect_config_files() -> Vec<(PathBuf, String)> {
-    let snapshot = discovery::refresh_discovery_snapshot(false);
     let mut files: Vec<(PathBuf, String)> = Vec::new();
     let mut seen_paths = std::collections::HashSet::new();
 
-    for raw_path in snapshot
-        .config_files
-        .iter()
-        .chain(snapshot.env_files.iter())
-    {
-        let path = PathBuf::from(raw_path);
-        if !path_exists(&path) {
-            continue;
-        }
+    // Scope boundary: only include active MCP/Skill risk surface configs.
+    // We intentionally avoid scanning generic host settings/env files to reduce
+    // false positives and prevent accidental operations on non-plugin configs.
+    for tool in collect_detected_tools().into_iter().filter(|tool| tool.detected) {
+        for mcp_path in tool.mcp_config_paths {
+            let path = PathBuf::from(&mcp_path);
+            if !path_exists(&path) {
+                continue;
+            }
 
-        let key = path.to_string_lossy().to_string();
-        if !seen_paths.insert(key) {
-            continue;
-        }
+            // Only treat this file as risk surface when it actually contains MCP servers.
+            if extract_servers_from_file(&path).is_empty() {
+                continue;
+            }
 
-        let platform = if path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .map(is_env_file_name)
-            .unwrap_or(false)
-        {
-            "环境变量".to_string()
-        } else {
-            let (_, tool_name, _) = identify_tool_from_path(&path.to_string_lossy());
-            tool_name
-        };
-        files.push((path, platform));
+            let normalized = normalize_path_string(&path.to_string_lossy());
+            if !seen_paths.insert(normalized) {
+                continue;
+            }
+
+            files.push((path, tool.name.clone()));
+        }
     }
+
     files
 }
 
@@ -3810,8 +3805,8 @@ pub async fn scan_full(
         "completed",
     );
 
-    // --- Category 4: 环境配置 ---
-    emit_scan_progress(&app, "env_config", "审计环境文件与权限配置", 76, "running");
+    // --- Category 4: 插件配置权限 ---
+    emit_scan_progress(&app, "env_config", "审计 MCP/Skill 配置权限", 76, "running");
     let mut env_issues: Vec<SecurityIssue> = Vec::new();
     let mut env_passed: u32 = 0;
     let env_total = config_files.len();
@@ -3829,10 +3824,10 @@ pub async fn scan_full(
         emit_scan_item_progress(
             &app,
             "env_config",
-            "审计环境文件与权限配置",
+            "审计 MCP/Skill 配置权限",
             path.file_name()
                 .and_then(|name| name.to_str())
-                .unwrap_or("环境文件"),
+                .unwrap_or("插件配置"),
             (76, 86),
             (env_processed, env_total),
         );
@@ -3840,7 +3835,7 @@ pub async fn scan_full(
     emit_scan_progress(
         &app,
         "env_config",
-        "审计环境文件与权限配置",
+        "审计 MCP/Skill 配置权限",
         86,
         "completed",
     );
@@ -4007,7 +4002,7 @@ pub async fn scan_full(
         },
         ScanCategory {
             id: "env_config".to_string(),
-            name: "环境配置".to_string(),
+            name: "插件配置权限".to_string(),
             issue_count: env_issues.len() as u32,
             issues: env_issues,
             passed_count: env_passed,

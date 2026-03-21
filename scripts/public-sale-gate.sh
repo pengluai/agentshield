@@ -174,6 +174,7 @@ echo "[public-sale-gate] checking checkout links"
 check_env_checkout_url "VITE_CHECKOUT_MONTHLY_URL"
 check_env_checkout_url "VITE_CHECKOUT_YEARLY_URL"
 check_env_checkout_url "VITE_CHECKOUT_LIFETIME_URL"
+check_env_gateway_url "VITE_LICENSE_GATEWAY_URL"
 check_env_gateway_url "AGENTSHIELD_LICENSE_GATEWAY_URL"
 check_env_required "AGENTSHIELD_LICENSE_PUBLIC_KEY"
 

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertCircle,
+  Bot,
   Check,
   ChevronRight,
   Download,
@@ -19,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { MODULE_THEMES } from '@/constants/colors';
 import { isEnglishLocale, t } from '@/constants/i18n';
 import { GlassmorphicCard } from '@/components/glassmorphic-card';
+import { AiInstallChat } from '@/components/ai-install-chat';
 import { ManualModeGateDialog } from '@/components/manual-mode-gate-dialog';
 import { requestRuntimeGuardActionApproval, listenRuntimeGuardApprovals, type RuntimeApprovalRequest } from '@/services/runtime-guard';
 import { aiDiagnoseError, executeInstallStep, type AiDiagnosis, type StepResult } from '@/services/ai-orchestrator';
@@ -383,6 +385,7 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
   const [setupLogs, setSetupLogs] = useState<SetupLogEntry[]>([]);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [aiDiagnosis, setAiDiagnosis] = useState<AiDiagnosis | null>(null);
+  const [showAiChat, setShowAiChat] = useState(false);
   const [manualGateState, setManualGateState] = useState<{
     open: boolean;
     action: 'setup' | 'install' | 'update' | 'uninstall';
@@ -1389,6 +1392,69 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
               </div>
             ) : null}
 
+            {isInstalled ? (
+              <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-white">{tr('OpenClaw Skills', 'OpenClaw Skills')}</p>
+                  <span className="rounded-full border border-white/15 bg-black/20 px-2 py-0.5 text-[11px] text-white/65">
+                    {skills.length}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-white/50">
+                  {tr(
+                    '仅显示 OpenClaw 配置目录下的 skill 条目，不包含其它宿主工具的 skill。',
+                    'Only skills under OpenClaw config roots are shown. Skills from other hosts are excluded.',
+                  )}
+                </p>
+
+                {skills.length > 0 ? (
+                  <div className="mt-3 space-y-2.5">
+                    {skills.map((skill) => (
+                      <div
+                        key={`${skill.name}:${skill.path}`}
+                        className="rounded-lg border border-white/10 bg-black/20 px-3 py-2.5"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-white">{skill.name}</p>
+                            <p className="mt-1 truncate text-[11px] text-white/45">{skill.path}</p>
+                          </div>
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-md border border-white/15 px-2 py-1 text-[11px] text-white/70 hover:bg-white/10"
+                            onClick={() => handleRevealPath(skill.path)}
+                          >
+                            {tr('打开目录', 'Open folder')}
+                          </button>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                          <span className="rounded-full border border-white/15 bg-black/20 px-2 py-0.5 text-white/70">
+                            {tr(`${skill.file_count} 个文件`, `${skill.file_count} files`)}
+                          </span>
+                          <span className={cn(
+                            'rounded-full border px-2 py-0.5',
+                            skill.has_skill_md
+                              ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200'
+                              : 'border-amber-400/40 bg-amber-500/10 text-amber-200',
+                          )}
+                          >
+                            {skill.has_skill_md ? 'SKILL.md' : tr('缺少 SKILL.md', 'Missing SKILL.md')}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-lg border border-dashed border-white/15 bg-black/20 px-3 py-3 text-xs text-white/55">
+                    {tr(
+                      '未发现 OpenClaw skill。请确认已安装到 OpenClaw 的 skills 目录后，点击“刷新”或重新进入本页。',
+                      'No OpenClaw skills found. Install skills into OpenClaw skills directory, then refresh or re-open this page.',
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
             {showUninstallConfirm ? (
               <motion.div
                 initial={{ opacity: 0, y: 5 }}
@@ -1531,7 +1597,32 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
               <span className="text-xs text-white/55">
                 {tr('已完成', 'Completed')} {setupCompletedSteps}/{getSetupSteps().length} {tr('步', 'steps')}
               </span>
+              {oneClickOpsUnlocked && (
+                <button
+                  type="button"
+                  onClick={() => setShowAiChat((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-teal-400/25 bg-teal-500/10 px-3 py-2 text-xs font-medium text-teal-300 hover:bg-teal-500/20 transition-colors"
+                >
+                  <Bot className="h-3.5 w-3.5" />
+                  {showAiChat ? tr('收起 AI 助手', 'Hide AI Assistant') : tr('AI 智能引导', 'AI Guided Setup')}
+                </button>
+              )}
             </div>
+
+            {/* AI Install Chat (Pro only) */}
+            <AnimatePresence>
+              {showAiChat && oneClickOpsUnlocked && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="mt-3"
+                >
+                  <AiInstallChat onClose={() => setShowAiChat(false)} isPro={isPro} />
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <div className="mt-2.5 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
               {getSetupSteps().map((step) => (

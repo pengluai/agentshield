@@ -35,6 +35,10 @@ export interface SecurityIssue {
   title: string;
   description: string;
   platform: Platform;
+  hostName?: string;
+  componentType?: 'skill' | 'mcp' | 'config' | 'system' | 'unknown';
+  componentName?: string;
+  ownershipLabel?: string;
   fixable: boolean;
   affectedScope?: string;
   filePath?: string;

@@ -36,8 +36,15 @@ function mockSettingsPageBoot(
   mockInvoke('get_semantic_guard_status', {
     licensed: false,
     configured: false,
+    custom_configured: false,
     active: false,
     message: '',
+  });
+  mockInvoke('pro_ai_quota_status', {
+    daily_used: 0,
+    daily_limit: 100,
+    monthly_used: 0,
+    monthly_limit: 2000,
   });
   mockInvoke('configure_protection', ({ enabled, autoQuarantine }: Record<string, unknown> = {}) => ({
     ...DEFAULT_PROTECTION_STATUS,
@@ -172,6 +179,7 @@ describe('SettingsPage', () => {
     render(<SettingsPage />);
 
     await user.click(screen.getByRole('button', { name: t.settingsAI }));
+    await user.click(screen.getByRole('button', { name: /切换到自定义 AI/ }));
     await user.type(screen.getByPlaceholderText(t.apiKeyHint), 'sk-test-key');
     await user.click(screen.getByRole('button', { name: t.testConnection }));
 

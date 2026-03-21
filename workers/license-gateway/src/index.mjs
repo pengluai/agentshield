@@ -64,12 +64,13 @@ export class LicenseGatewayDurableObject {
   }
 
   async fetch(request) {
+    this._currentRequest = request;
     this.data = await this.loadState();
     const url = new URL(request.url);
     const pathname = url.pathname;
 
     if (request.method === 'OPTIONS') {
-      return this.json(204, {});
+      return this.handleCorsPreflightOrReject(request);
     }
 
     if (request.method === 'GET' && (pathname === '/admin' || pathname === '/admin/')) {
@@ -97,7 +98,7 @@ export class LicenseGatewayDurableObject {
       return this.json(404, { error: 'Not Found' });
     }
 
-    const admin = this.requireAdmin(request);
+    const admin = await this.requireAdmin(request);
     if (!admin.ok) {
       return admin.response;
     }
@@ -335,6 +336,19 @@ export class LicenseGatewayDurableObject {
     if (!licenseId) {
       return this.json(400, { ok: false, error: 'Invalid activation_code.' });
     }
+
+    // --- ed25519 signature verification ---
+    const sigValid = await this.verifyActivationCodeSignature(activationCode);
+    if (!sigValid) {
+      // Return the same shape as "not found" to avoid leaking info
+      return this.json(200, {
+        ok: true,
+        found: false,
+        checked_at: new Date().toISOString(),
+        license: null,
+      });
+    }
+    // --- end signature verification ---
 
     const now = new Date().toISOString();
     const license = this.data.licenses.find((item) => item.license_id === licenseId);
@@ -888,34 +902,43 @@ export class LicenseGatewayDurableObject {
     await this.ctx.storage.put(STATE_KEY, this.data);
   }
 
-  requireAdmin(request) {
+  async requireAdmin(request) {
     const adminPassword = this.readEnvString('LICENSE_GATEWAY_ADMIN_PASSWORD');
     const adminUsername = this.readEnvString('LICENSE_GATEWAY_ADMIN_USERNAME', 'admin') || 'admin';
     if (!adminPassword) {
       return {
         ok: false,
-        response: this.json(503, { error: 'Admin API disabled: LICENSE_GATEWAY_ADMIN_PASSWORD is empty' }),
+        response: this.json(503, { error: 'Admin API disabled: LICENSE_GATEWAY_ADMIN_PASSWORD is empty' }, request),
       };
     }
 
     const authHeader = request.headers.get('Authorization') ?? '';
     if (!authHeader.startsWith('Basic ')) {
-      return { ok: false, response: this.json(401, { error: 'Missing Basic authorization header' }) };
+      return { ok: false, response: this.json(401, { error: 'Missing Basic authorization header' }, request) };
     }
 
     let decoded;
     try {
       decoded = Buffer.from(authHeader.slice('Basic '.length), 'base64').toString('utf8');
     } catch {
-      return { ok: false, response: this.json(401, { error: 'Malformed authorization header' }) };
+      return { ok: false, response: this.json(401, { error: 'Malformed authorization header' }, request) };
     }
 
     const [username, password] = decoded.split(':');
-    if (username !== adminUsername || password !== adminPassword) {
-      return { ok: false, response: this.json(403, { error: 'Invalid admin credentials' }) };
+    const usernameMatch = await this.timingSafeCompare(username ?? '', adminUsername);
+    const passwordMatch = await this.timingSafeCompare(password ?? '', adminPassword);
+    if (!usernameMatch || !passwordMatch) {
+      return { ok: false, response: this.json(403, { error: 'Invalid admin credentials' }, request) };
     }
 
     return { ok: true };
+  }
+
+  async timingSafeCompare(a, b) {
+    const encoder = new TextEncoder();
+    const aHash = await crypto.subtle.digest('SHA-256', encoder.encode(a));
+    const bHash = await crypto.subtle.digest('SHA-256', encoder.encode(b));
+    return crypto.subtle.timingSafeEqual(aHash, bHash);
   }
 
   actorFromRequest(request) {
@@ -1289,6 +1312,44 @@ export class LicenseGatewayDurableObject {
     return Buffer.from(padded, 'base64').toString('utf8');
   }
 
+  decodeBase64UrlToBytes(input) {
+    const normalized = input.replaceAll('-', '+').replaceAll('_', '/');
+    const paddingNeeded = (4 - (normalized.length % 4)) % 4;
+    const padded = normalized + '='.repeat(paddingNeeded);
+    return new Uint8Array(Buffer.from(padded, 'base64'));
+  }
+
+  async verifyActivationCodeSignature(activationCode) {
+    try {
+      const pubKeyB64 = this.readEnvString('AGENTSHIELD_LICENSE_PUBLIC_KEY');
+      if (!pubKeyB64) {
+        // If no public key is configured, skip verification (backward compat)
+        return true;
+      }
+
+      const parts = activationCode.trim().split('.');
+      if (parts.length !== 3 || parts[0] !== 'AGSH') {
+        return false;
+      }
+
+      const payloadBytes = new TextEncoder().encode(parts[1]);
+      const signatureBytes = this.decodeBase64UrlToBytes(parts[2]);
+
+      const keyBytes = this.decodeBase64UrlToBytes(pubKeyB64);
+      const publicKey = await crypto.subtle.importKey(
+        'raw',
+        keyBytes,
+        { name: 'NODE-ED25519', namedCurve: 'NODE-ED25519' },
+        false,
+        ['verify'],
+      );
+
+      return await crypto.subtle.verify('NODE-ED25519', publicKey, signatureBytes, payloadBytes);
+    } catch {
+      return false;
+    }
+  }
+
   async trySendActivationCodeEmail({ license, activationCode }) {
     if (!license.customer_email) {
       this.data.metrics.delivery_email_failed_total += 1;
@@ -1416,14 +1477,44 @@ export class LicenseGatewayDurableObject {
     });
   }
 
-  json(status, payload) {
+  getAllowedOrigin(request) {
+    const raw = this.readEnvString('ADMIN_ALLOWED_ORIGINS');
+    if (!raw) return null;
+    const allowedOrigins = raw.split(',').map(o => o.trim()).filter(Boolean);
+    const requestOrigin = (request?.headers?.get('Origin') ?? '').trim();
+    if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+      return requestOrigin;
+    }
+    return null;
+  }
+
+  corsHeaders(request) {
+    const origin = this.getAllowedOrigin(request);
+    if (!origin) return {};
+    return {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, creem-signature, X-Signature',
+      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+      'Vary': 'Origin',
+    };
+  }
+
+  handleCorsPreflightOrReject(request) {
+    const cors = this.corsHeaders(request);
+    return new Response(null, {
+      status: 204,
+      headers: cors,
+    });
+  }
+
+  json(status, payload, request) {
+    const effectiveRequest = request ?? this._currentRequest;
+    const cors = effectiveRequest ? this.corsHeaders(effectiveRequest) : {};
     return new Response(JSON.stringify(payload), {
       status,
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, creem-signature, X-Signature',
-        'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+        ...cors,
       },
     });
   }

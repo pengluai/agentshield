@@ -6,10 +6,16 @@
   "vars": {
     "DOWNLOAD_RELEASE_REPO": "pengluai/agentshield-downloads",
     "DOWNLOAD_RELEASE_TAG": "agentshield-pilot-v1.0.1",
-    "DOWNLOAD_ASSET_MACOS": "AgentShield-macos-arm64.dmg",
-    "DOWNLOAD_ASSET_WINDOWS": "AgentShield-windows-x64-setup.exe",
+    "DOWNLOAD_ASSET_MACOS": "AgentShield-pilot-1.0.1-macos-arm64.dmg",
+    "DOWNLOAD_ASSET_WINDOWS": "AgentShield-pilot-1.0.1-windows-x64-setup.exe",
     "DOWNLOAD_RELEASES_URL": "https://github.com/pengluai/agentshield-downloads/releases"
   },
+  "routes": [
+    {
+      "pattern": "app.51silu.com",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "directory": "./site",
     "binding": "ASSETS",

@@ -2,7 +2,7 @@ use crate::types::license::LicenseInfo;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Duration, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use reqwest::Client;
+use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -22,6 +22,7 @@ const LICENSE_ONLINE_CONNECT_TIMEOUT_SECS: u64 = 5;
 const LICENSE_ONLINE_USER_AGENT: &str = concat!("AgentShield/", env!("CARGO_PKG_VERSION"));
 #[cfg(not(test))]
 const DEFAULT_LICENSE_PUBLIC_KEY_BASE64URL: &str = "p-p1nNJB9CTwlvedV2If0h2A2_yHAbb7thMkVHRh620";
+const DEFAULT_LICENSE_GATEWAY_BASE_URL: &str = "https://api.51silu.com";
 
 static ONLINE_CHECK_CACHE: LazyLock<Mutex<HashMap<String, DateTime<Utc>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -49,6 +50,12 @@ struct SignedLicensePayload {
     license_id: Option<String>,
     #[serde(default)]
     customer: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct ProAiLicenseContext {
+    pub activation_code: String,
+    pub license_id: String,
 }
 
 #[derive(Serialize)]
@@ -271,16 +278,58 @@ fn parse_signed_license_allow_expired(key: &str) -> Result<SignedLicensePayload,
     parse_signed_license_internal(key, true)
 }
 
+fn is_local_gateway_host(host: &str) -> bool {
+    matches!(host, "localhost" | "127.0.0.1" | "0.0.0.0" | "::1")
+}
+
+fn is_placeholder_gateway_host(host: &str) -> bool {
+    matches!(host, "example.com" | "invalid" | "test")
+        || host.ends_with(".example.com")
+        || host.ends_with(".invalid")
+        || host.ends_with(".test")
+}
+
+fn normalize_gateway_candidate(candidate: &str, allow_local_http: bool) -> Option<String> {
+    let normalized = candidate.trim().trim_end_matches('/');
+    if normalized.is_empty() {
+        return None;
+    }
+
+    let parsed = Url::parse(normalized).ok()?;
+    let host = parsed.host_str()?.to_ascii_lowercase();
+
+    match parsed.scheme() {
+        "https" => {
+            if is_local_gateway_host(&host) || is_placeholder_gateway_host(&host) {
+                None
+            } else {
+                Some(normalized.to_string())
+            }
+        }
+        "http" if allow_local_http && is_local_gateway_host(&host) => Some(normalized.to_string()),
+        _ => None,
+    }
+}
+
 fn resolve_license_gateway_base_url() -> Option<String> {
     let runtime = env::var("AGENTSHIELD_LICENSE_GATEWAY_URL").ok();
     let compile_time = option_env!("AGENTSHIELD_LICENSE_GATEWAY_URL").map(str::to_string);
-    let candidate = runtime.or(compile_time)?;
-    let normalized = candidate.trim().trim_end_matches('/').to_string();
-    if normalized.is_empty() {
-        None
-    } else {
-        Some(normalized)
+
+    let allow_local_http = cfg!(debug_assertions);
+
+    for candidate in [
+        runtime.as_deref(),
+        compile_time.as_deref(),
+        Some(DEFAULT_LICENSE_GATEWAY_BASE_URL),
+    ] {
+        if let Some(resolved) =
+            candidate.and_then(|value| normalize_gateway_candidate(value, allow_local_http))
+        {
+            return Some(resolved);
+        }
     }
+
+    None
 }
 
 fn cache_key_for_license(raw_key: &str) -> String {
@@ -427,8 +476,7 @@ fn normalize_license_data(data: LicenseData, now: DateTime<Utc>) -> LicenseData 
                     // timestamp within the expected range, trust the file and
                     // attempt to re-create the keychain entry for next time.
                     if let Ok(start) = trial_start.parse::<DateTime<Utc>>() {
-                        let earliest_plausible =
-                            now - Duration::days(TRIAL_DURATION_DAYS + 30);
+                        let earliest_plausible = now - Duration::days(TRIAL_DURATION_DAYS + 30);
                         if start > earliest_plausible && start <= now {
                             // Best-effort keychain recovery
                             let _ = store_license_secret(TRIAL_LOCK_KEY_ID, trial_start);
@@ -547,6 +595,39 @@ pub async fn check_license_status() -> Result<LicenseInfo, String> {
     Ok(to_license_info(&normalized))
 }
 
+pub async fn get_pro_ai_license_context() -> Result<ProAiLicenseContext, String> {
+    let info = check_license_status().await?;
+    if info.status != "active" {
+        return Err("Current license is not active.".to_string());
+    }
+    if !matches!(info.plan.as_str(), "pro" | "enterprise") {
+        return Err(
+            "AI 助手为 Pro 会员专属功能，请升级后使用。AI assistant is a Pro-exclusive feature. Please upgrade to Pro."
+                .to_string(),
+        );
+    }
+
+    let data = load_license().ok_or_else(|| "No local license data found.".to_string())?;
+    let activation_code = data.key.ok_or_else(|| {
+        "No activation code found for current license. Please activate a paid code."
+            .to_string()
+    })?;
+    let payload = parse_signed_license_allow_expired(&activation_code)?;
+    let license_id = payload
+        .license_id
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if license_id.is_empty() {
+        return Err("Activation code does not contain a valid license_id.".to_string());
+    }
+
+    Ok(ProAiLicenseContext {
+        activation_code,
+        license_id,
+    })
+}
+
 #[tauri::command]
 pub async fn deactivate_license() -> Result<bool, String> {
     let path = get_license_path();
@@ -602,7 +683,9 @@ mod tests {
     }
 
     fn with_trial_lock_guard<R>(f: impl FnOnce() -> R) -> R {
-        let _guard = TEST_TRIAL_LOCK_SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_TRIAL_LOCK_SERIAL
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         reset_trial_lock();
         let result = f();
         reset_trial_lock();

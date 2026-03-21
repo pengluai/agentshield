@@ -1,4 +1,9 @@
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use chrono::Utc;
+use hmac::{Hmac, Mac};
+use rand::random;
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 use std::path::PathBuf;
 use std::process::{Command, Output};
 
@@ -8,6 +13,8 @@ use crate::commands::runtime_guard;
 use crate::commands::store::{get_mcp_config_for_platform, write_server_to_config_path};
 
 const CHANNEL_KEYRING_SERVICE: &str = "com.agentshield.openclaw.channels";
+const DEFAULT_AI_PROXY_URL: &str = "https://agentshield-ai-proxy.pengluailll.workers.dev";
+const SIGNING_SECRET: &[u8] = b"FFBpb3wDPTy9hEsII41KBd7zYNkXhsszcS3KcrXmlvE=";
 
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone)]
@@ -43,6 +50,14 @@ pub struct AiDiagnosis {
     pub fix_command: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ProAiQuotaStatus {
+    pub daily_used: u32,
+    pub daily_limit: u32,
+    pub monthly_used: u32,
+    pub monthly_limit: u32,
+}
+
 struct StepApprovalSpec {
     action_kind: &'static str,
     action_source: &'static str,
@@ -67,7 +82,7 @@ fn get_default_model(provider: &str) -> &str {
         "deepseek" => "deepseek-chat",
         "gemini" => "gemini-2.0-flash",
         "openai" => "gpt-4o-mini",
-        "minimax" => "MiniMax-Text-01",
+        "minimax" => "MiniMax-M2.7",
         _ => "deepseek-chat",
     }
 }
@@ -422,6 +437,142 @@ pub async fn test_ai_connection(
     }
 }
 
+fn resolve_ai_proxy_url() -> String {
+    std::env::var("AGENTSHIELD_AI_PROXY_URL")
+        .unwrap_or_else(|_| DEFAULT_AI_PROXY_URL.to_string())
+}
+
+fn sign_proxy_request(license_id: &str) -> Result<String, String> {
+    let timestamp = Utc::now().timestamp();
+    let nonce: u64 = random();
+    let payload = format!("{license_id}{timestamp}{nonce}");
+    let mut mac = Hmac::<Sha256>::new_from_slice(SIGNING_SECRET)
+        .map_err(|error| format!("Failed to initialize request signer: {error}"))?;
+    mac.update(payload.as_bytes());
+    let signature = URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes());
+    Ok(format!("{timestamp}-{nonce}-{signature}"))
+}
+
+async fn build_proxy_auth_headers() -> Result<(String, String, String), String> {
+    let context = license::get_pro_ai_license_context().await?;
+    let signature = sign_proxy_request(&context.license_id)?;
+    Ok((context.license_id, context.activation_code, signature))
+}
+
+fn parse_quota_headers(headers: &reqwest::header::HeaderMap) -> Option<ProAiQuotaStatus> {
+    fn parse_one(headers: &reqwest::header::HeaderMap, name: &str) -> Option<u32> {
+        let value = headers.get(name)?.to_str().ok()?;
+        value.trim().parse::<u32>().ok()
+    }
+
+    Some(ProAiQuotaStatus {
+        daily_used: parse_one(headers, "X-Quota-Daily-Used")?,
+        daily_limit: parse_one(headers, "X-Quota-Daily-Limit")?,
+        monthly_used: parse_one(headers, "X-Quota-Monthly-Used")?,
+        monthly_limit: parse_one(headers, "X-Quota-Monthly-Limit")?,
+    })
+}
+
+/// Pro-only AI chat via the AgentShield AI Proxy.
+/// The proxy holds the real MiniMax key; the app sends signed license identity.
+#[tauri::command]
+pub async fn pro_ai_chat(messages: Vec<serde_json::Value>) -> Result<String, String> {
+    let proxy_url = resolve_ai_proxy_url();
+    let (license_id, activation_code, signature) = build_proxy_auth_headers().await?;
+
+    let body = serde_json::json!({
+        "model": "MiniMax-M2.7",
+        "messages": messages,
+        "temperature": 0.3,
+        "max_tokens": 2000,
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{proxy_url}/v1/chat/completions"))
+        .header("Content-Type", "application/json")
+        .header("X-License-ID", &license_id)
+        .header("X-Activation-Code", &activation_code)
+        .header("X-Signature", &signature)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(60))
+        .send()
+        .await
+        .map_err(|e| format!("AI proxy request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("AI proxy error {status}: {text}"));
+    }
+
+    let json: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse AI response: {e}"))?;
+
+    // Extract assistant reply, strip <think> tags if present
+    let raw_content = json["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("AI 没有返回内容")
+        .to_string();
+
+    let content = if let Some(pos) = raw_content.find("</think>") {
+        raw_content[pos + 8..].trim().to_string()
+    } else {
+        raw_content
+    };
+
+    Ok(content)
+}
+
+#[tauri::command]
+pub async fn pro_ai_quota_status() -> Result<ProAiQuotaStatus, String> {
+    let proxy_url = resolve_ai_proxy_url();
+    let (license_id, activation_code, signature) = build_proxy_auth_headers().await?;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("{proxy_url}/v1/quota"))
+        .header("X-License-ID", &license_id)
+        .header("X-Activation-Code", &activation_code)
+        .header("X-Signature", &signature)
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|e| format!("AI quota request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("AI quota request error {status}: {text}"));
+    }
+
+    if let Some(quota) = parse_quota_headers(resp.headers()) {
+        return Ok(quota);
+    }
+
+    let json: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse AI quota response: {e}"))?;
+
+    let read = |field: &str| -> Result<u32, String> {
+        let value = json
+            .get(field)
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| format!("Missing field in quota response: {field}"))?;
+        u32::try_from(value).map_err(|_| format!("Quota field too large: {field}"))
+    };
+
+    Ok(ProAiQuotaStatus {
+        daily_used: read("daily_used")?,
+        daily_limit: read("daily_limit")?,
+        monthly_used: read("monthly_used")?,
+        monthly_limit: read("monthly_limit")?,
+    })
+}
+
 #[tauri::command]
 pub async fn ai_diagnose_error(
     provider: String,
@@ -542,33 +693,49 @@ pub async fn execute_install_step(
         "check_node" => {
             let node_ok = which::which("node").is_ok() || win_fallback_which("node");
             let npm_ok = which::which("npm").is_ok() || win_fallback_which("npm");
-            if node_ok && npm_ok {
-                let mut version_command = Command::new("node");
-                version_command.arg("--version");
-                let version = command_output_async(version_command)
-                    .await
-                    .ok()
-                    .and_then(|o| String::from_utf8(o.stdout).ok())
-                    .map(|v| v.trim().to_string())
-                    .unwrap_or_else(|| "unknown".to_string());
-                Ok(StepResult {
-                    success: true,
-                    step_id,
-                    message: format!("Node.js {} 和 npm 已就绪", version),
-                    output: Some(version),
-                    error: None,
-                    needs_ai_help: false,
-                })
-            } else {
-                Ok(StepResult {
+            let git_ok = which::which("git").is_ok() || win_fallback_which("git");
+
+            if !node_ok || !npm_ok {
+                let mut missing = Vec::new();
+                if !node_ok { missing.push("Node.js"); }
+                if !npm_ok { missing.push("npm"); }
+                return Ok(StepResult {
                     success: false,
                     step_id,
-                    message: "Node.js 或 npm 未安装".to_string(),
+                    message: format!("{} 未安装", missing.join(" 和 ")),
                     output: None,
                     error: Some("请先安装 Node.js (https://nodejs.org)".to_string()),
                     needs_ai_help: true,
-                })
+                });
             }
+
+            if !git_ok {
+                return Ok(StepResult {
+                    success: false,
+                    step_id,
+                    message: "Git 未安装（npm 安装 OpenClaw 需要 Git）".to_string(),
+                    output: None,
+                    error: Some("请先安装 Git: https://git-scm.com/downloads\n安装时选择 \"Run Git from the Windows Command Prompt\"\n安装完后需要重启 AgentShield".to_string()),
+                    needs_ai_help: true,
+                });
+            }
+
+            let mut version_command = Command::new("node");
+            version_command.arg("--version");
+            let version = command_output_async(version_command)
+                .await
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .map(|v| v.trim().to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            Ok(StepResult {
+                success: true,
+                step_id,
+                message: format!("Node.js {} + npm + Git 已就绪", version),
+                output: Some(version),
+                error: None,
+                needs_ai_help: false,
+            })
         }
 
         "install_openclaw" => {
@@ -941,10 +1108,16 @@ pub fn win_fallback_which(cmd: &str) -> bool {
     }
 
     // Check common Windows install locations
-    let common_paths: Vec<std::path::PathBuf> = vec![
+    let mut common_paths: Vec<std::path::PathBuf> = vec![
         std::path::PathBuf::from(r"C:\Program Files\nodejs"),
         std::path::PathBuf::from(r"C:\Program Files (x86)\nodejs"),
     ];
+    // Git common paths
+    if cmd == "git" {
+        common_paths.push(std::path::PathBuf::from(r"C:\Program Files\Git\cmd"));
+        common_paths.push(std::path::PathBuf::from(r"C:\Program Files (x86)\Git\cmd"));
+        common_paths.push(std::path::PathBuf::from(r"C:\Program Files\Git\bin"));
+    }
     if let Ok(appdata) = std::env::var("APPDATA") {
         let nvm_path = std::path::PathBuf::from(&appdata).join("nvm");
         if nvm_path.is_dir() {

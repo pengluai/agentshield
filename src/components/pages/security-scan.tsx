@@ -25,6 +25,69 @@ import { containsCjk, localizedDynamicText } from '@/lib/locale-text';
 
 const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
 
+// ── Risk category definitions ──────────────────────────────────────────
+const RISK_CATEGORIES = [
+  { id: 'credential_access', icon: '\u{1F511}', label: { zh: '读取密钥', en: 'Credential Access' }, weight: 25 },
+  { id: 'file_read_write', icon: '\u{1F4C1}', label: { zh: '读写文件', en: 'File Read/Write' }, weight: 15 },
+  { id: 'host_config_modify', icon: '\u{2699}\u{FE0F}', label: { zh: '改宿主配置', en: 'Host Config Modify' }, weight: 20 },
+  { id: 'shell_exec', icon: '\u{26A1}', label: { zh: '执行命令', en: 'Shell Execution' }, weight: 30 },
+  { id: 'unknown_network', icon: '\u{1F310}', label: { zh: '未知外联', en: 'Unknown Network' }, weight: 20 },
+  { id: 'persistence', icon: '\u{1F4BE}', label: { zh: '持久化启动', en: 'Persistence' }, weight: 15 },
+  { id: 'cross_tool_chain', icon: '\u{1F517}', label: { zh: '跨工具联动', en: 'Cross-Tool Chain' }, weight: 10 },
+  { id: 'plaintext_secret', icon: '\u{1F4DD}', label: { zh: '明文秘密', en: 'Plaintext Secret' }, weight: 25 },
+] as const;
+
+type RiskCategoryId = (typeof RISK_CATEGORIES)[number]['id'];
+
+/** Keyword-based mapping from issue text to risk categories. */
+const RISK_KEYWORD_MAP: Array<[RiskCategoryId, RegExp]> = [
+  ['credential_access', /密钥|密码|credential|password|token|secret.*access|key.*expos|api.?key|auth.*token/i],
+  ['file_read_write', /读写文件|文件读写|file.*read|file.*write|read.*file|write.*file|文件访问|file.*access|读取文件|写入文件/i],
+  ['host_config_modify', /配置文件|config.*modif|modify.*config|宿主配置|host.*config|改.*配置|设置被修改|settings.*changed/i],
+  ['shell_exec', /命令行|执行命令|shell|exec|command.*run|运行程序|subprocess|启动参数|spawn|bash|sh\s/i],
+  ['unknown_network', /外联|网络|network|外部连接|http|url|域名|domain|dns|外部通信|remote.*connect|未知.*连接|数据传输未加密/i],
+  ['persistence', /持久化|启动项|autostart|persist|launchd|cron|startup|开机启动|daemon|scheduled/i],
+  ['cross_tool_chain', /跨.*工具|联动|cross.*tool|chain|工具.*调用|inter.*tool|tool.*invoke/i],
+  ['plaintext_secret', /明文|plaintext|plain.*text|未加密.*密|secret.*plain|明文密钥|hardcoded.*secret/i],
+];
+
+function classifyIssueRiskCategories(issue: SecurityIssue): RiskCategoryId[] {
+  const text = `${issue.title} ${issue.description} ${issue.filePath ?? ''}`.toLowerCase();
+  const matched: RiskCategoryId[] = [];
+  for (const [catId, regex] of RISK_KEYWORD_MAP) {
+    if (regex.test(text)) {
+      matched.push(catId);
+    }
+  }
+  // Fallback: if nothing matched, infer from component type
+  if (matched.length === 0) {
+    if (issue.componentType === 'config') matched.push('host_config_modify');
+    else if (issue.componentType === 'mcp') matched.push('shell_exec');
+    else if (issue.componentType === 'skill') matched.push('file_read_write');
+    else matched.push('file_read_write'); // generic fallback
+  }
+  return matched;
+}
+
+function buildRiskCategoryCounts(issues: SecurityIssue[]): Record<RiskCategoryId, SecurityIssue[]> {
+  const result = Object.fromEntries(
+    RISK_CATEGORIES.map((cat) => [cat.id, [] as SecurityIssue[]])
+  ) as Record<RiskCategoryId, SecurityIssue[]>;
+  for (const issue of issues) {
+    const categories = classifyIssueRiskCategories(issue);
+    for (const catId of categories) {
+      result[catId].push(issue);
+    }
+  }
+  return result;
+}
+
+function riskCardColor(count: number, weight: number): { bg: string; border: string; text: string } {
+  if (count === 0) return { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700' };
+  if (weight >= 20) return { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700' };
+  return { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700' };
+}
+
 const PLATFORM_KEYWORD_MAPPING: Array<[string[], Platform]> = [
   [['vscode', 'vs code', 'visual studio code', '/code/', '.vscode'], 'vscode'],
   [['kiro', '.kiro'], 'kiro'],
@@ -69,6 +132,78 @@ function extractPlatform(issue: RustSecurityIssue): Platform {
   return 'unknown_ai_tool';
 }
 
+function extractHostName(issue: RustSecurityIssue): string | null {
+  const bracketMatch = issue.description.match(/^\s*\[([^\]]+)\]/);
+  if (bracketMatch?.[1]) {
+    return bracketMatch[1].trim();
+  }
+  return null;
+}
+
+function inferComponentType(issue: RustSecurityIssue): SecurityIssue['componentType'] {
+  const title = issue.title.toLowerCase();
+  const description = issue.description.toLowerCase();
+
+  if (title.includes('skill "') || title.includes('skill “') || description.includes('skill')) {
+    return 'skill';
+  }
+  if (title.includes('mcp') || description.includes('mcp')) {
+    return 'mcp';
+  }
+  if (title.includes('配置文件') || description.includes('配置文件') || description.includes('config')) {
+    return 'config';
+  }
+  if (title.includes('正在运行') || description.includes('running')) {
+    return 'system';
+  }
+  return 'unknown';
+}
+
+function inferComponentName(issue: RustSecurityIssue, componentType: SecurityIssue['componentType']): string | undefined {
+  if (componentType === 'skill') {
+    const match = issue.title.match(/skill\s*[“"]([^”"]+)[”"]/i);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+
+  if (componentType === 'mcp') {
+    const match = issue.title.match(/^(.+?)\s+(通过命令行运行程序|数据传输未加密|启动参数存在安全隐患|MCP 配置含明文密钥)/);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+
+  if (componentType === 'system') {
+    const runningMatch = issue.title.match(/^(.+?)\s+正在运行/);
+    if (runningMatch?.[1]) {
+      return runningMatch[1].trim();
+    }
+  }
+
+  const quotedMatch = issue.title.match(/[“"]([^”"]+)[”"]/);
+  if (quotedMatch?.[1]) {
+    return quotedMatch[1].trim();
+  }
+
+  return undefined;
+}
+
+function formatComponentTypeLabel(componentType?: SecurityIssue['componentType']): string {
+  switch (componentType) {
+    case 'skill':
+      return 'Skill';
+    case 'mcp':
+      return 'MCP';
+    case 'config':
+      return tr('配置项', 'Config');
+    case 'system':
+      return tr('运行态', 'Runtime');
+    default:
+      return tr('待确认', 'Needs review');
+  }
+}
+
 /** Map a RustSecurityIssue to the UI SecurityIssue type. */
 export function mapRustIssue(ri: RustSecurityIssue): SecurityIssue {
   const severity: Severity =
@@ -88,13 +223,29 @@ export function mapRustIssue(ri: RustSecurityIssue): SecurityIssue {
     severity === 'critical'
       ? 'A high-risk behavior was detected. Please review the file path and suggested fix.'
       : 'A potential risk was detected. Please review the related configuration.';
+  const hostNameHint = extractHostName(ri);
+  const platform = hostNameHint
+    ? (inferPlatformFromText(hostNameHint) ?? extractPlatform(ri))
+    : extractPlatform(ri);
+  const hostName = hostNameHint || platformDisplayName(platform);
+  const componentType = inferComponentType(ri);
+  const componentName = inferComponentName(ri, componentType);
+  const componentTypeLabel = formatComponentTypeLabel(componentType);
+  const ownershipLabel = tr(
+    `归属：${hostName} · ${componentTypeLabel}${componentName ? ` · ${componentName}` : ''}`,
+    `Owner: ${hostName} · ${componentTypeLabel}${componentName ? ` · ${componentName}` : ''}`,
+  );
 
   return {
     id: ri.id,
     severity,
     title: localizedDynamicText(ri.title, fallbackTitle),
     description: localizedDynamicText(ri.description, fallbackDescription),
-    platform: extractPlatform(ri),
+    platform,
+    hostName,
+    componentType,
+    componentName,
+    ownershipLabel,
     fixable: ri.auto_fixable,
     filePath: ri.file_path ?? undefined,
     semanticReview: ri.semantic_review
@@ -216,6 +367,7 @@ export function SecurityScanHome({ onViewDetail, onStartScan }: SecurityScanHome
 interface SecurityScanDetailProps {
   onBack: () => void;
   onFix?: () => void;
+  onOpenInstalledManagement?: () => void;
   /** Pre-loaded issues from cached scan — skips re-scanning when provided */
   cachedIssues?: SecurityIssue[];
   /** Category-specific title (e.g. "扩展安全检查") */
@@ -246,7 +398,7 @@ function getScanPhaseLabels(): Record<(typeof SCAN_PHASE_ORDER)[number], string>
     mcp_security: tr('检查隐私泄露风险', 'Checking for privacy leaks'),
     key_security: tr('检查密码暴露风险', 'Checking for password exposure'),
     skill_security: tr('检查恶意插件风险', 'Checking for malicious plugins'),
-    env_config: tr('检查权限配置风险', 'Checking permission settings'),
+    env_config: tr('检查插件配置权限风险', 'Checking MCP/Skill config permissions'),
     system_protection: tr('检查后台偷跑风险', 'Checking background activity'),
   };
 }
@@ -270,7 +422,7 @@ function getScanSteps() {
     { icon: Cpu, label: tr('检查隐私泄露风险', 'Checking for privacy leaks') },
     { icon: Lock, label: tr('检查密码暴露风险', 'Checking for password exposure') },
     { icon: Eye, label: tr('检查恶意插件风险', 'Checking for malicious plugins') },
-    { icon: Search, label: tr('检查权限配置风险', 'Checking permission settings') },
+    { icon: Search, label: tr('检查插件配置权限风险', 'Checking MCP/Skill config permissions') },
     { icon: Shield, label: tr('检查后台偷跑风险', 'Checking background activity') },
   ];
 }
@@ -408,7 +560,7 @@ function ScanningAnimation({
   );
 }
 
-export function SecurityScanDetail({ onBack, cachedIssues, categoryTitle }: SecurityScanDetailProps) {
+export function SecurityScanDetail({ onBack, onOpenInstalledManagement, cachedIssues, categoryTitle }: SecurityScanDetailProps) {
   const { isPro, isTrial } = useProGate();
   const batchFixUnlocked = isPro || isTrial;
   const useCached = cachedIssues && cachedIssues.length >= 0;
@@ -419,6 +571,7 @@ export function SecurityScanDetail({ onBack, cachedIssues, categoryTitle }: Secu
   const [severityFilter, setSeverityFilter] = useState<Severity | 'all'>('all');
   const [platformFilter, setPlatformFilter] = useState<Platform | 'all'>('all');
   const [sortBy, setSortBy] = useState('severity');
+  const [riskCategoryFilter, setRiskCategoryFilter] = useState<RiskCategoryId | null>(null);
   const [scanning, setScanning] = useState(!useCached);
   const [totalLoaded, setTotalLoaded] = useState(useCached ? cachedIssues.length : 0);
   const [scanStep, setScanStep] = useState(0);
@@ -446,6 +599,7 @@ export function SecurityScanDetail({ onBack, cachedIssues, categoryTitle }: Secu
     setScanning(true);
     setIssues([]);
     setSelectedIssue(null);
+    setRiskCategoryFilter(null);
     setTotalLoaded(0);
     setScanStep(0);
     setScanProgress(0);
@@ -574,7 +728,15 @@ export function SecurityScanDetail({ onBack, cachedIssues, categoryTitle }: Secu
     ? severityScopedIssues
     : severityScopedIssues.filter((issue) => issue.platform === platformFilter);
 
-  const filteredIssues = [...platformScopedIssues].sort((a, b) => {
+  const riskCategoryCounts = buildRiskCategoryCounts(issues);
+
+  const riskScopedIssues = riskCategoryFilter
+    ? platformScopedIssues.filter((issue) =>
+        classifyIssueRiskCategories(issue).includes(riskCategoryFilter)
+      )
+    : platformScopedIssues;
+
+  const filteredIssues = [...riskScopedIssues].sort((a, b) => {
     if (sortBy === 'severity') {
       const order = { critical: 0, warning: 1, info: 2 };
       return order[a.severity] - order[b.severity];
@@ -710,7 +872,22 @@ export function SecurityScanDetail({ onBack, cachedIssues, categoryTitle }: Secu
     try {
       const fixTargets = collectFixAllTargets(issues);
       if (fixTargets.length === 0) {
-        setFixAllMessage(t.noAutoFixable);
+        if (onOpenInstalledManagement) {
+          setFixAllMessage(
+            tr(
+              '当前没有可自动修复项，正在打开“已安装管理”继续处理。',
+              'No auto-fixable items. Opening Installed Management for guided handling.',
+            )
+          );
+          onOpenInstalledManagement();
+        } else {
+          setFixAllMessage(
+            tr(
+              '当前没有可自动修复项，请前往“已安装管理”继续处理。',
+              'No auto-fixable items. Continue in Installed Management.',
+            )
+          );
+        }
         return;
       }
 
@@ -920,6 +1097,63 @@ export function SecurityScanDetail({ onBack, cachedIssues, categoryTitle }: Secu
       }
       middleColumn={
         <div className="p-4 space-y-2">
+          {/* Risk Overview Cards */}
+          {issues.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-slate-700">
+                  {tr('风险概览', 'Risk Overview')}
+                </h3>
+                {riskCategoryFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setRiskCategoryFilter(null)}
+                    className="text-xs text-slate-500 hover:text-slate-700 underline underline-offset-2"
+                  >
+                    {tr('清除筛选', 'Clear filter')}
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {RISK_CATEGORIES.map((cat) => {
+                  const count = riskCategoryCounts[cat.id].length;
+                  const colors = riskCardColor(count, cat.weight);
+                  const isActive = riskCategoryFilter === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() =>
+                        setRiskCategoryFilter(isActive ? null : cat.id)
+                      }
+                      className={cn(
+                        'flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl border text-center transition-all cursor-pointer',
+                        colors.bg,
+                        colors.border,
+                        isActive
+                          ? 'ring-2 ring-offset-1 ring-slate-400 shadow-sm'
+                          : 'hover:shadow-sm',
+                      )}
+                    >
+                      <span className="text-lg leading-none">{cat.icon}</span>
+                      <span className={cn('text-[11px] font-medium leading-tight', colors.text)}>
+                        {isEnglishLocale ? cat.label.en : cat.label.zh}
+                      </span>
+                      <span
+                        className={cn(
+                          'text-xs font-bold tabular-nums',
+                          count > 0 ? colors.text : 'text-emerald-600',
+                        )}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {filteredIssues.length === 0 && issues.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
               <CheckCircle className="w-12 h-12 mb-3 text-green-400" />
@@ -991,41 +1225,55 @@ export function SecurityScanDetail({ onBack, cachedIssues, categoryTitle }: Secu
               >
                 {tr('重新扫描', 'Rescan now')}
               </button>
-              {fixableCount > 0 ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setFixAllMessage(
-                        tr(
-                          '已切换为手动模式：请逐项点击问题并手动处理。',
-                          'Switched to manual mode: review and handle issues one by one.'
-                        )
+              <button
+                type="button"
+                onClick={() => {
+                  if (fixableCount > 0) {
+                    setFixAllMessage(
+                      tr(
+                        '已切换为手动模式：请逐项点击问题并手动处理。',
+                        'Switched to manual mode: review and handle issues one by one.'
                       )
-                    }
-                    className="px-4 py-2 rounded-lg text-xs text-slate-700 bg-slate-100 hover:bg-slate-200"
-                  >
-                    {tr('逐个查看并手动处理', 'Review manually one by one')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleFixAll}
-                    disabled={fixAllLoading}
-                    className="px-4 py-2 rounded-lg text-xs font-semibold text-[#2B1B00] bg-gradient-to-r from-amber-300 via-yellow-300 to-amber-400 shadow-[0_0_18px_rgba(251,191,36,0.35)] disabled:opacity-60"
-                  >
-                    {fixAllLoading ? t.fixing : tr('⚡ 一键无损修复全部 (Pro)', '⚡ One-click Fix All (Pro)')}
-                  </button>
-                </>
-              ) : null}
+                    );
+                    return;
+                  }
+                  if (onOpenInstalledManagement) {
+                    onOpenInstalledManagement();
+                    return;
+                  }
+                  setFixAllMessage(
+                    tr(
+                      '当前没有可自动修复项，请前往“已安装管理”继续处理。',
+                      'No auto-fixable items. Continue in Installed Management.',
+                    )
+                  );
+                }}
+                className="px-4 py-2 rounded-lg text-xs text-slate-700 bg-slate-100 hover:bg-slate-200"
+              >
+                {fixableCount > 0
+                  ? tr('逐个查看并手动处理', 'Review manually one by one')
+                  : tr('去已安装管理继续处理', 'Continue in Installed Management')}
+              </button>
+              <button
+                type="button"
+                onClick={handleFixAll}
+                disabled={fixAllLoading}
+                className="px-4 py-2 rounded-lg text-xs font-semibold text-[#2B1B00] bg-gradient-to-r from-amber-300 via-yellow-300 to-amber-400 shadow-[0_0_18px_rgba(251,191,36,0.35)] disabled:opacity-60"
+              >
+                {fixAllLoading ? t.fixing : tr('⚡ 一键无损修复全部 (Pro)', '⚡ One-click Fix All (Pro)')}
+              </button>
             </div>
-            {fixableCount > 0 ? (
-              <span className="text-[11px] text-slate-500">
-                {tr(
-                  '每多等一秒，数据泄露风险就多一分',
-                  'Every second you wait, your data is more exposed'
-                )}
-              </span>
-            ) : null}
+            <span className="text-[11px] text-slate-500">
+              {fixableCount > 0
+                ? tr(
+                    '每多等一秒，数据泄露风险就多一分',
+                    'Every second you wait, your data is more exposed'
+                  )
+                : tr(
+                    '当前自动修复项为 0：点击“一键修复”会自动跳转到已安装管理继续处理。',
+                    '0 auto-fix items now: Fix All will route you to Installed Management for guided handling.',
+                  )}
+            </span>
           </div>
         </div>
         }
@@ -1116,6 +1364,29 @@ function IssueListItem({ issue, selected, onClick }: IssueListItemProps) {
               {tr('Semantic review', 'Semantic review')}: {issue.semanticReview.summary}
             </p>
           )}
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-600">
+              {tr('所属', 'Owner')}: {issue.hostName || platformDisplayName(issue.platform)}
+            </span>
+            <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] text-indigo-700">
+              {formatComponentTypeLabel(issue.componentType)}
+            </span>
+            {issue.componentName ? (
+              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 max-w-[180px] truncate" title={issue.componentName}>
+                {issue.componentName}
+              </span>
+            ) : null}
+            <span
+              className={cn(
+                'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] border',
+                issue.fixable
+                  ? 'border-amber-200 bg-amber-50 text-amber-700'
+                  : 'border-slate-200 bg-slate-50 text-slate-500'
+              )}
+            >
+              {issue.fixable ? tr('可自动修复', 'Auto-fixable') : tr('需手动处理', 'Manual')}
+            </span>
+          </div>
         </div>
         <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
       </div>
@@ -1169,6 +1440,24 @@ function IssueDetail({ issue, onFix }: IssueDetailProps) {
       </div>
 
       <div className="space-y-6">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <h3 className="text-sm font-medium text-slate-700 mb-2">{tr('风险归属', 'Risk ownership')}</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <PlatformBadge platform={issue.platform} size="small" showName={true} />
+            <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700">
+              {formatComponentTypeLabel(issue.componentType)}
+            </span>
+            {issue.componentName ? (
+              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-700 max-w-[240px] truncate" title={issue.componentName}>
+                {issue.componentName}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            {issue.ownershipLabel || tr('该问题已定位到具体 AI 工具与组件。', 'This issue is mapped to a specific AI tool and component.')}
+          </p>
+        </div>
+
         <div>
           <h3 className="text-sm font-medium text-slate-500 mb-2">{t.issueDescription}</h3>
           <p className="text-sm text-slate-700 leading-relaxed">

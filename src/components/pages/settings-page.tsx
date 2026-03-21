@@ -31,7 +31,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useNotificationStore } from '@/stores/notificationStore';
 import { useProGate } from '@/hooks/useProGate';
 import { playSound } from '@/services/sound';
-import { testAiConnection } from '@/services/ai-orchestrator';
+import { getProAiQuotaStatus, testAiConnection, type ProAiQuotaStatus } from '@/services/ai-orchestrator';
 import {
   clearProtectionIncidents,
   configureProtection,
@@ -152,6 +152,8 @@ export function SettingsPage() {
   const [freeRuleSyncAt, setFreeRuleSyncAt] = useState<number | null>(null);
   const [autoRuleSyncAt, setAutoRuleSyncAt] = useState<number | null>(null);
   const [aiConnectionMessage, setAiConnectionMessage] = useState<string | null>(null);
+  const [proAiQuota, setProAiQuota] = useState<ProAiQuotaStatus | null>(null);
+  const [showCustomAiPanel, setShowCustomAiPanel] = useState(false);
 
   const settings = useSettingsStore();
   const license = useLicenseStore();
@@ -246,6 +248,7 @@ export function SettingsPage() {
           setSemanticGuardStatus({
             licensed: semanticUnlocked,
             configured: false,
+            custom_configured: false,
             active: false,
             message: getErrorMessage(error),
           });
@@ -295,6 +298,33 @@ export function SettingsPage() {
       plan: license.plan,
     });
   }, [activeSection, autoRuleUpdatesUnlocked, license.plan]);
+
+  useEffect(() => {
+    if (!aiFeatureUnlocked) {
+      setProAiQuota(null);
+      setShowCustomAiPanel(false);
+      return;
+    }
+    if (activeSection !== 'ai') {
+      return;
+    }
+
+    let mounted = true;
+    void getProAiQuotaStatus()
+      .then((quota) => {
+        if (mounted) {
+          setProAiQuota(quota);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setProAiQuota(null);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [activeSection, aiFeatureUnlocked]);
 
   const updateSummary = useMemo(() => {
     if (!updateAudit) {
@@ -666,6 +696,11 @@ export function SettingsPage() {
         return;
       }
 
+      if (!showCustomAiPanel) {
+        setFeedbackMessage('info', tr('Pro 内置 AI 已启用，无需连接测试。', 'Built-in Pro AI is enabled. Connection test is not required.'));
+        return;
+      }
+
       if (settings.aiApiKey.trim().length === 0) {
         setFeedbackMessage('error', tr('请先填写 API 密钥。', 'Please enter your API key first.'));
         return;
@@ -839,7 +874,7 @@ export function SettingsPage() {
                     <p className="mt-2 text-xs text-white/60">
                       {semanticUnlocked
                         ? semanticGuardStatus?.message ?? tr('检查高级语义研判状态中', 'Checking advanced semantic analysis status')
-                        : tr('仅 Pro / 试用版可用，且需要你自行填写访问密钥。启用后只会对最可疑的少量项目做深度判定，以控制成本。', 'Available for Pro / trial only. You need to provide your own access key. When enabled, only the most suspicious items undergo deep analysis to control costs.')}
+                        : tr('仅 Pro / 试用版可用。升级后默认启用内置 AI 语义研判，也可按需切换到自定义密钥模式。', 'Available for Pro / trial only. Upgrade to enable built-in semantic analysis by default, with optional custom key mode.')}
                     </p>
                   </div>
                   <div
@@ -870,9 +905,11 @@ export function SettingsPage() {
                           setSemanticDialogOpen(true);
                         }}
                       >
-                        {semanticGuardStatus?.configured ? tr('更新访问密钥', 'Update access key') : tr('配置访问密钥', 'Configure access key')}
+                        {semanticGuardStatus?.custom_configured
+                          ? tr('更新自定义访问密钥', 'Update custom access key')
+                          : tr('配置自定义访问密钥（可选）', 'Configure custom access key (optional)')}
                       </Button>
-                      {semanticGuardStatus?.configured && (
+                      {semanticGuardStatus?.custom_configured && (
                         <Button
                           variant="ghost"
                           className="text-rose-300 hover:bg-rose-500/10 hover:text-rose-200"
@@ -1062,105 +1099,198 @@ export function SettingsPage() {
           <div className="space-y-6">
             <h2 className="text-lg font-semibold text-white">{t.settingsAI}</h2>
             <div className="space-y-4">
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-white">{t.settingsAIDesc}</p>
-                    <p className="mt-1 text-xs text-white/50">
-                      {tr('用于 OpenClaw 一键向导失败时自动诊断原因，不会上传完整项目文件。', 'Used for auto-diagnosing OpenClaw wizard failures. Does not upload entire project files.')}
-                    </p>
-                    <p className="mt-2 text-xs text-white/60">{aiConnectionSummary}</p>
-                  </div>
-                  <span
-                    className={cn(
-                      'rounded-full px-3 py-1 text-xs font-medium',
-                      aiFeatureUnlocked ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/10 text-white/60'
-                    )}
-                  >
-                    {aiFeatureUnlocked ? tr('已解锁', 'Unlocked') : tr('完整版', 'Full version')}
-                  </span>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-white">{t.aiProvider}</label>
-                  <select
-                    value={settings.aiProvider}
-                    onChange={(event) => settings.setAiProvider(event.target.value as 'deepseek' | 'gemini' | 'openai' | 'custom')}
-                    disabled={!aiFeatureUnlocked}
-                    className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-white disabled:opacity-60"
-                  >
-                    <option value="deepseek">DeepSeek · {t.aiProviderDeepseek}</option>
-                    <option value="gemini">Gemini · {t.aiProviderGemini}</option>
-                    <option value="openai">OpenAI · {t.aiProviderOpenai}</option>
-                    <option value="minimax">MiniMax · {t.aiProviderMinimax}</option>
-                    <option value="custom">{t.aiProviderCustom}</option>
-                  </select>
-                </div>
-
-                {settings.aiProvider === 'custom' ? (
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-white">{t.apiEndpoint}</label>
-                    <input
-                      value={settings.aiBaseUrl}
-                      onChange={(event) => settings.setAiBaseUrl(event.target.value)}
-                      disabled={!aiFeatureUnlocked}
-                      placeholder="https://api.openai.com"
-                      className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-white outline-none placeholder:text-white/35 focus:border-sky-400/40 disabled:opacity-60"
-                    />
-                  </div>
-                ) : null}
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-white">{t.model}</label>
-                  <input
-                    value={settings.aiModel}
-                    onChange={(event) => settings.setAiModel(event.target.value)}
-                    disabled={!aiFeatureUnlocked}
-                    placeholder={settings.aiProvider === 'gemini' ? 'gemini-2.0-flash' : settings.aiProvider === 'openai' ? 'gpt-4o-mini' : settings.aiProvider === 'minimax' ? 'MiniMax-Text-01' : 'deepseek-chat'}
-                    className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-white outline-none placeholder:text-white/35 focus:border-sky-400/40 disabled:opacity-60"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-white">{t.apiKey}</label>
-                  <input
-                    type="password"
-                    value={settings.aiApiKey}
-                    onChange={(event) => settings.setAiApiKey(event.target.value)}
-                    disabled={!aiFeatureUnlocked}
-                    placeholder={t.apiKeyHint}
-                    className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-white outline-none placeholder:text-white/35 focus:border-sky-400/40 disabled:opacity-60"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between gap-3">
-                  <Button
-                    className="bg-sky-500 text-white hover:bg-sky-400 disabled:opacity-60"
-                    onClick={handleTestAiConnection}
-                    disabled={busyKey === 'testAiConnection' || !aiFeatureUnlocked}
-                  >
-                    {busyKey === 'testAiConnection' ? (
-                      <span className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        {t.testing}
+              {aiFeatureUnlocked ? (
+                <>
+                  <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/5 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-medium text-white">{tr('AI 智能配置', 'AI Configuration')}</p>
+                        <p className="mt-1 text-xs text-emerald-200/90">
+                          {tr('✅ Pro 内置 AI 已启用（MiniMax M2.7），无需配置。', 'Built-in Pro AI is enabled (MiniMax M2.7), no configuration required.')}
+                        </p>
+                        <p className="mt-1 text-xs text-white/60">
+                          {tr('用于 OpenClaw 一键向导失败时自动诊断，不会上传完整项目文件。', 'Used for auto-diagnosing OpenClaw wizard failures. Does not upload entire project files.')}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300">
+                        {tr('已解锁', 'Unlocked')}
                       </span>
-                    ) : (
-                      t.testConnection
-                    )}
-                  </Button>
-                  {!aiFeatureUnlocked ? (
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                        <p className="text-[11px] text-white/45">{tr('今日已用', 'Daily usage')}</p>
+                        <p className="mt-1 text-sm text-white">
+                          {proAiQuota
+                            ? `${proAiQuota.daily_used}/${proAiQuota.daily_limit}`
+                            : tr('读取中…', 'Loading…')}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                        <p className="text-[11px] text-white/45">{tr('本月已用', 'Monthly usage')}</p>
+                        <p className="mt-1 text-sm text-white">
+                          {proAiQuota
+                            ? `${proAiQuota.monthly_used}/${proAiQuota.monthly_limit}`
+                            : tr('读取中…', 'Loading…')}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <Button
+                        variant="ghost"
+                        className="border border-white/10 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white"
+                        onClick={() => setShowCustomAiPanel((value) => !value)}
+                      >
+                        <span className="flex items-center gap-2">
+                          <ChevronRight className={cn('h-4 w-4 transition-transform', showCustomAiPanel && 'rotate-90')} />
+                          {tr('切换到自定义 AI（可选）', 'Switch to custom AI (optional)')}
+                        </span>
+                      </Button>
+                    </div>
+                  </div>
+
+                  {showCustomAiPanel ? (
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4">
+                      <p className="text-sm font-medium text-white">{tr('自定义 AI 配置', 'Custom AI configuration')}</p>
+                      <p className="text-xs text-white/50">{aiConnectionSummary}</p>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-white">{t.aiProvider}</label>
+                        <select
+                          value={settings.aiProvider}
+                          onChange={(event) => settings.setAiProvider(event.target.value as 'deepseek' | 'gemini' | 'openai' | 'minimax' | 'custom')}
+                          className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-white disabled:opacity-60"
+                        >
+                          <option value="deepseek">DeepSeek · {t.aiProviderDeepseek}</option>
+                          <option value="gemini">Gemini · {t.aiProviderGemini}</option>
+                          <option value="openai">OpenAI · {t.aiProviderOpenai}</option>
+                          <option value="minimax">MiniMax · {t.aiProviderMinimax}</option>
+                          <option value="custom">{t.aiProviderCustom}</option>
+                        </select>
+                      </div>
+
+                      {settings.aiProvider === 'custom' ? (
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-white">{t.apiEndpoint}</label>
+                          <input
+                            value={settings.aiBaseUrl}
+                            onChange={(event) => settings.setAiBaseUrl(event.target.value)}
+                            placeholder="https://api.openai.com"
+                            className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-white outline-none placeholder:text-white/35 focus:border-sky-400/40 disabled:opacity-60"
+                          />
+                        </div>
+                      ) : null}
+
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-white">{t.model}</label>
+                        {settings.aiProvider === 'custom' ? (
+                          <input
+                            value={settings.aiModel}
+                            onChange={(event) => settings.setAiModel(event.target.value)}
+                            placeholder="model-name"
+                            className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-white outline-none placeholder:text-white/35 focus:border-sky-400/40 disabled:opacity-60"
+                          />
+                        ) : (
+                          <select
+                            value={settings.aiModel || ''}
+                            onChange={(event) => settings.setAiModel(event.target.value)}
+                            className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-white outline-none focus:border-sky-400/40 disabled:opacity-60 [&>option]:bg-slate-800 [&>option]:text-white"
+                          >
+                            <option value="">{tr('选择模型…', 'Select model…')}</option>
+                            {settings.aiProvider === 'deepseek' && (
+                              <>
+                                <option value="deepseek-chat">deepseek-chat</option>
+                                <option value="deepseek-reasoner">deepseek-reasoner (R1)</option>
+                              </>
+                            )}
+                            {settings.aiProvider === 'gemini' && (
+                              <>
+                                <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                                <option value="gemini-2.5-flash-preview-05-20">gemini-2.5-flash-preview</option>
+                                <option value="gemini-2.5-pro-preview-05-06">gemini-2.5-pro-preview</option>
+                              </>
+                            )}
+                            {settings.aiProvider === 'openai' && (
+                              <>
+                                <option value="gpt-4o-mini">gpt-4o-mini</option>
+                                <option value="gpt-4o">gpt-4o</option>
+                                <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+                                <option value="gpt-4.1">gpt-4.1</option>
+                                <option value="o4-mini">o4-mini</option>
+                              </>
+                            )}
+                            {settings.aiProvider === 'minimax' && (
+                              <>
+                                <option value="MiniMax-M2.7">MiniMax-M2.7</option>
+                                <option value="MiniMax-M2">MiniMax-M2</option>
+                                <option value="MiniMax-M2-Stable">MiniMax-M2-Stable</option>
+                              </>
+                            )}
+                          </select>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-white">{t.apiKey}</label>
+                        <input
+                          type="password"
+                          value={settings.aiApiKey}
+                          onChange={(event) => settings.setAiApiKey(event.target.value)}
+                          placeholder={t.apiKeyHint}
+                          className="w-full rounded-lg border border-white/10 bg-white/10 p-3 text-white outline-none placeholder:text-white/35 focus:border-sky-400/40 disabled:opacity-60"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3">
+                        <Button
+                          className="bg-sky-500 text-white hover:bg-sky-400 disabled:opacity-60"
+                          onClick={handleTestAiConnection}
+                          disabled={busyKey === 'testAiConnection'}
+                        >
+                          {busyKey === 'testAiConnection' ? (
+                            <span className="flex items-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              {t.testing}
+                            </span>
+                          ) : (
+                            t.testConnection
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-white">{tr('AI 智能配置', 'AI Configuration')}</p>
+                      <p className="mt-1 text-xs text-white/60">
+                        {tr('AI 功能需要 Pro 版本，升级后可直接使用内置 AI（零配置）。', 'AI features require Pro. Upgrade to use built-in AI with zero configuration.')}
+                      </p>
+                      <div className="mt-3 space-y-1 text-xs text-white/55">
+                        <p>{tr('· AI 安装引导', '· AI install guide')}</p>
+                        <p>{tr('· AI 语义分析', '· AI semantic analysis')}</p>
+                        <p>{tr('· AI 错误诊断', '· AI error diagnosis')}</p>
+                        <p>{tr('· AI 修复建议', '· AI fix suggestions')}</p>
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/60">
+                      {tr('Pro', 'Pro')}
+                    </span>
+                  </div>
+                  <div className="mt-4">
                     <Button
                       variant="ghost"
                       className="border border-white/10 bg-white/5 text-white/75 hover:bg-white/10 hover:text-white"
                       onClick={() => navigateToUpgrade('ai_diagnosis_locked')}
                     >
-                      {tr('升级完整版', 'Upgrade to full version')}
+                      {tr('升级 Pro（含 14 天试用）', 'Upgrade to Pro (14-day trial)')}
                     </Button>
-                  ) : null}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         );

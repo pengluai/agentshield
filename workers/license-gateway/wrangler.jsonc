@@ -4,6 +4,12 @@
   "main": "src/index.mjs",
   "compatibility_date": "2026-03-16",
   "compatibility_flags": ["nodejs_compat"],
+  "routes": [
+    {
+      "pattern": "api.51silu.com",
+      "custom_domain": true
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {

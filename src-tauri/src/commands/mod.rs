@@ -1,4 +1,5 @@
 pub mod ai_orchestrator;
+pub mod audit_export;
 pub mod builtin_catalog;
 pub mod discovery;
 pub mod install;
@@ -6,6 +7,7 @@ pub mod license;
 pub mod notification;
 pub mod platform;
 pub mod protection;
+pub mod risk_profile;
 pub mod runtime_guard;
 pub mod runtime_settings;
 pub mod scan;

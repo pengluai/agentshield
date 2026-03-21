@@ -3,6 +3,7 @@ import { tauriInvoke as invoke } from '@/services/tauri';
 export interface SemanticGuardStatus {
   licensed: boolean;
   configured: boolean;
+  custom_configured: boolean;
   active: boolean;
   message: string;
 }

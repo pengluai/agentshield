@@ -4,9 +4,11 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  Info,
   Lock,
   ShieldCheck,
   ShieldX,
+  Skull,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
@@ -80,6 +82,132 @@ function actionKindLabel(actionKind: string) {
       return tr('执行高危操作', 'Execute high-risk action');
     default:
       return tr('待确认动作', 'Action pending approval');
+  }
+}
+
+function whyFlaggedExplanation(request: RuntimeApprovalRequest): string {
+  const caps = request.sensitive_capabilities;
+  const kind = request.action_kind;
+
+  const parts: string[] = [];
+
+  if (kind === 'shell_exec' || caps.some((c) => /命令执行|command/i.test(c))) {
+    parts.push(
+      tr(
+        '该操作涉及命令执行，恶意命令可能获得当前用户的完整文件系统访问权限',
+        'This action involves command execution — malicious commands could gain full filesystem access under your user account',
+      ),
+    );
+  }
+  if (kind === 'file_delete' || kind === 'bulk_file_modify' || caps.some((c) => /文件|file/i.test(c))) {
+    parts.push(
+      tr(
+        '该操作涉及文件修改或删除，可能导致数据丢失',
+        'This action involves file modification or deletion, which may cause data loss',
+      ),
+    );
+  }
+  if (kind === 'credential_export' || kind === 'credential_delete' || kind === 'credential_access' || caps.some((c) => /密钥|credential|secret/i.test(c))) {
+    parts.push(
+      tr(
+        '该操作涉及密钥或凭据访问，敏感信息可能被泄露',
+        'This action involves credential access — sensitive secrets may be exposed',
+      ),
+    );
+  }
+  if (kind === 'network_access' || caps.some((c) => /联网|network/i.test(c))) {
+    parts.push(
+      tr(
+        '该操作涉及网络连接，数据可能被传输到外部服务器',
+        'This action involves network access — data may be transmitted to external servers',
+      ),
+    );
+  }
+  if (kind === 'payment_submit' || caps.some((c) => /支付|payment/i.test(c))) {
+    parts.push(
+      tr(
+        '该操作涉及支付提交，可能产生实际费用',
+        'This action involves payment submission, which may incur real charges',
+      ),
+    );
+  }
+  if (kind === 'email_send' || kind === 'email_delete_or_archive' || caps.some((c) => /邮件|email/i.test(c))) {
+    parts.push(
+      tr(
+        '该操作涉及邮件操作，邮件可能被发送、删除或归档',
+        'This action involves email operations — emails may be sent, deleted, or archived',
+      ),
+    );
+  }
+
+  if (parts.length === 0) {
+    parts.push(
+      tr(
+        '该操作被系统策略标记为高风险，需要你确认后才能执行',
+        'This action was flagged as high-risk by system policy and requires your confirmation',
+      ),
+    );
+  }
+
+  return parts.join(tr('；', '; '));
+}
+
+function worstCaseDescription(actionKind: string): string {
+  switch (actionKind) {
+    case 'shell_exec':
+      return tr(
+        '恶意命令可获得当前用户完整权限',
+        'Malicious commands gain your full user permissions',
+      );
+    case 'file_delete':
+    case 'bulk_file_modify':
+      return tr(
+        '文件被永久删除且可能无法恢复',
+        'Files may be permanently deleted and unrecoverable',
+      );
+    case 'credential_access':
+    case 'credential_export':
+    case 'credential_delete':
+      return tr(
+        '密钥可能被窃取并用于未授权访问',
+        'Credentials may be stolen for unauthorized access',
+      );
+    case 'network_access':
+      return tr(
+        '数据可能被发送到未知服务器',
+        'Data may be sent to unknown servers',
+      );
+    case 'payment_submit':
+      return tr(
+        '可能产生未经授权的真实扣款',
+        'Unauthorized real charges may be incurred',
+      );
+    case 'email_send':
+      return tr(
+        '邮件可能以你的身份发送给任意收件人',
+        'Emails may be sent on your behalf to arbitrary recipients',
+      );
+    case 'email_delete_or_archive':
+      return tr(
+        '重要邮件可能被永久删除',
+        'Important emails may be permanently deleted',
+      );
+    case 'browser_submit':
+      return tr(
+        '网页表单可能提交敏感信息到不可信站点',
+        'Web forms may submit sensitive data to untrusted sites',
+      );
+    case 'component_launch':
+    case 'component_install':
+      return tr(
+        '不可信组件可能在后台执行恶意操作',
+        'Untrusted components may perform malicious operations in the background',
+      );
+    default:
+      return tr(
+        '该操作可能造成不可逆的损害',
+        'This action may cause irreversible damage',
+      );
   }
 }
 
@@ -227,6 +355,28 @@ export function RuntimeApprovalModal({
                     'This is a high-risk approval. Confirm the source is trusted before allowing.'
                   )
                 )}
+              </div>
+
+              {/* Why this was flagged */}
+              <div className="rounded-xl border border-blue-300/20 bg-blue-400/8 px-3 py-2.5">
+                <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-blue-200">
+                  <Info className="h-3.5 w-3.5" />
+                  {tr('为什么被标记', 'Why this was flagged')}
+                </div>
+                <p className="text-[11px] leading-5 text-blue-100/90">
+                  {whyFlaggedExplanation(request)}
+                </p>
+              </div>
+
+              {/* Worst case */}
+              <div className="rounded-xl border border-rose-400/20 bg-rose-500/8 px-3 py-2.5">
+                <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-rose-200">
+                  <Skull className="h-3.5 w-3.5" />
+                  {tr('最坏后果', 'Worst case')}
+                </div>
+                <p className="text-[11px] leading-5 text-rose-100/90">
+                  {worstCaseDescription(request.action_kind)}
+                </p>
               </div>
 
               <AnimatePresence initial={false}>
@@ -407,6 +557,22 @@ export function RuntimeApprovalModal({
                         : tr('允许并继续', 'Allow and continue'),
                     )}
                 </button>
+              </div>
+
+              {/* Authorization level explanations */}
+              <div className="mt-2 space-y-0.5 text-[10px] leading-4 text-white/50">
+                <div>
+                  <span className="font-medium text-white/65">{tr('允许一次', 'Allow once')}</span>
+                  {tr('：仅对本次操作生效', ' — One-time only')}
+                </div>
+                <div>
+                  <span className="font-medium text-white/65">{tr('本次会话', 'This session')}</span>
+                  {tr('：应用关闭后失效', ' — Expires when app closes')}
+                </div>
+                <div>
+                  <span className="font-medium text-white/65">{tr('永久允许', 'Always allow')}</span>
+                  {tr('：可在设置中撤销', ' — Can be revoked in Settings')}
+                </div>
               </div>
             </div>
           </div>
