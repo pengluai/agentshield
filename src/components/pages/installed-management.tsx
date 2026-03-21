@@ -965,7 +965,33 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
       return;
     }
     try {
-      await updateComponentTrustState(item.runtimeComponentId, trustState);
+      const approval = await requestRuntimeGuardActionApproval({
+        component_id: item.runtimeComponentId,
+        component_name: item.name,
+        platform_id: item.platform_id,
+        platform_name: getPlatformVisual(item.platform_id).name,
+        request_kind: 'runtime_guard_policy',
+        trigger_event: 'runtime_guard_trust_change_request',
+        action_kind: 'component_trust_update',
+        action_source: 'user_requested_component_trust_change',
+        action_targets: [trustState],
+        action_preview: [
+          tr(`将把 ${item.name} 信任级别调整为 ${formatRuntimeTrustStateShort(trustState)}`, `Will set ${item.name} trust to ${formatRuntimeTrustStateShort(trustState)}`),
+          tr('此操作会影响实时守卫放行/拦截策略。', 'This operation changes runtime guard allow/block policy.'),
+        ],
+        sensitive_capabilities: [tr('修改运行时信任策略', 'Modify runtime trust policy')],
+        is_destructive: trustState === 'blocked' || trustState === 'quarantined',
+        is_batch: false,
+      });
+      if (approval.status !== 'approved' || !approval.approval_ticket) {
+        setUpdateStatus(tr(
+          '请先确认弹出的安全提示，然后再次修改信任级别。',
+          'Please approve the security prompt, then retry changing trust state.',
+        ));
+        return;
+      }
+
+      await updateComponentTrustState(item.runtimeComponentId, trustState, undefined, approval.approval_ticket);
       await loadInstalledData();
       setUpdateStatus(
         tr(
@@ -983,10 +1009,54 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
       return;
     }
     try {
+      const normalizedDomains = Array.from(
+        new Set(
+          allowedDomains
+            .map((domain) => domain.trim())
+            .filter((domain) => domain.length > 0)
+        )
+      ).sort();
+      const normalizedMode = (networkMode ?? '').trim();
+      const actionTargets = [
+        normalizedMode ? `mode:${normalizedMode}` : 'mode:unchanged',
+        ...normalizedDomains,
+      ];
+      const approval = await requestRuntimeGuardActionApproval({
+        component_id: item.runtimeComponentId,
+        component_name: item.name,
+        platform_id: item.platform_id,
+        platform_name: getPlatformVisual(item.platform_id).name,
+        request_kind: 'runtime_guard_policy',
+        trigger_event: 'runtime_guard_network_policy_update_request',
+        action_kind: 'component_network_policy_update',
+        action_source: 'user_requested_component_network_policy_update',
+        action_targets: actionTargets,
+        action_preview: [
+          tr(`将更新 ${item.name} 的联网策略`, `Will update network policy for ${item.name}`),
+          normalizedMode
+            ? tr(`模式: ${normalizedMode}`, `Mode: ${normalizedMode}`)
+            : tr('模式保持不变', 'Mode unchanged'),
+          normalizedDomains.length > 0
+            ? tr(`白名单域名: ${normalizedDomains.join(', ')}`, `Allowlist domains: ${normalizedDomains.join(', ')}`)
+            : tr('白名单为空（仅按模式控制）', 'No allowlist domains (mode-only control)'),
+        ],
+        sensitive_capabilities: [tr('修改联网白名单', 'Modify network allowlist')],
+        is_destructive: normalizedMode === 'blocked',
+        is_batch: false,
+      });
+      if (approval.status !== 'approved' || !approval.approval_ticket) {
+        setUpdateStatus(tr(
+          '请先确认弹出的安全提示，然后再次保存联网策略。',
+          'Please approve the security prompt, then retry saving network policy.',
+        ));
+        return;
+      }
+
       await updateComponentNetworkPolicy(
         item.runtimeComponentId,
-        allowedDomains,
-        networkMode ?? (allowedDomains.length > 0 ? 'allowlist' : 'observe_only'),
+        normalizedDomains,
+        networkMode ?? (normalizedDomains.length > 0 ? 'allowlist' : 'observe_only'),
+        approval.approval_ticket,
       );
       await loadInstalledData();
       setUpdateStatus(tr('已保存联网地址白名单。', 'Allowed network domains saved.'));

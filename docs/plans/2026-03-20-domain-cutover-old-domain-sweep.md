@@ -39,9 +39,9 @@
 
 ### 2.2 当前文档中的旧生产域名残留
 
-1. 大量历史 `docs/specs/*.md`、`docs/plans/*.md` 仍引用：
-   - `agentshield-storefront.pengluailll.workers.dev`
-   - `agentshield-license-gateway.pengluailll.workers.dev`
+1. 大量历史 `docs/specs/*.md`、`docs/plans/*.md` 仍引用（以下两项为历史旧域名，仅用于回溯，不可作为当前入口）：
+   - `agentshield-storefront.pengluailll.workers.dev`（历史旧域名）
+   - `agentshield-license-gateway.pengluailll.workers.dev`（历史旧域名）
    - `app.51silu.com`
    - `api.51silu.com`
    - `license@mail.51silu.com`

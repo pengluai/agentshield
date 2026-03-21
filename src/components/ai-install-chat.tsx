@@ -355,12 +355,12 @@ function TrialQueueCard({ onClose }: { onClose: () => void }) {
         {/* Queue status */}
         <div className="space-y-2">
           <h4 className="text-base font-semibold text-white">
-            {tr('AI 助手 · 排队中', 'AI Assistant · Queued')}
+            {tr('AI 助手 · 繁忙中', 'AI Assistant · High Demand')}
           </h4>
           <p className="text-sm text-white/50 max-w-[280px] leading-relaxed">
             {tr(
-              '试用期间，AI 助手处于排队模式。升级 Pro 会员可立即使用，享受优先通道。',
-              'During trial, AI assistant is in queue mode. Upgrade to Pro for instant priority access.',
+              '当前使用人数较多，AI 助手暂时不可用。升级 Pro 会员可免排队，立即使用。',
+              'High usage right now. Upgrade to Pro to skip the queue and get instant access.',
             )}
           </p>
         </div>
@@ -369,7 +369,7 @@ function TrialQueueCard({ onClose }: { onClose: () => void }) {
         <div className="flex items-center gap-2 rounded-xl bg-white/5 border border-white/10 px-4 py-2.5">
           <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
           <span className="text-sm text-white/60">
-            {tr('预计等待：约 2-3 小时', 'Estimated wait: ~2-3 hours')}
+            {tr('当前排队人数较多', 'Queue is currently full')}
           </span>
         </div>
 
@@ -576,7 +576,7 @@ function AutoInstallPanel({ onClose }: { onClose: () => void }) {
     if (retryTrigger > 0 && phase === 'error') {
       void runInstall();
     }
-  }, [retryTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phase, retryTrigger, runInstall]);
 
   return (
     <motion.div

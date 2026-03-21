@@ -12,6 +12,10 @@ import { Buffer } from 'node:buffer';
 const encoder = new TextEncoder();
 const SIGNATURE_MAX_SKEW_SECONDS = 300;
 const NONCE_TTL_SECONDS = 300;
+const TOKEN_CLOCK_SKEW_SECONDS = 60;
+const DEFAULT_TOKEN_ISSUER = 'agentshield-license-gateway';
+const DEFAULT_TOKEN_AUDIENCE = 'agentshield-ai-proxy';
+const DEFAULT_TOKEN_TYP = 'at+jwt';
 const DAILY_TTL_SECONDS = 172800; // 48h
 const MONTHLY_TTL_SECONDS = 3024000; // 35d
 
@@ -33,7 +37,7 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers':
-    'Content-Type, X-License-ID, X-Activation-Code, X-Signature',
+    'Content-Type, Authorization, X-License-ID, X-Activation-Code, X-Signature',
   'Access-Control-Expose-Headers':
     'X-Quota-Daily-Used, X-Quota-Daily-Limit, X-Quota-Monthly-Used, X-Quota-Monthly-Limit',
 };
@@ -203,6 +207,43 @@ export default {
 };
 
 async function authenticateRequest(request, env) {
+  const bearerToken = parseBearerToken(request.headers.get('Authorization'));
+  if (bearerToken) {
+    const tokenAuth = await verifyProxyAccessToken(env, bearerToken);
+    if (!tokenAuth.ok) {
+      return {
+        ok: false,
+        response: jsonResponse(403, { error: tokenAuth.error }),
+      };
+    }
+    return {
+      ok: true,
+      licenseId: tokenAuth.licenseId,
+      quotaPlan: tokenAuth.quotaPlan,
+      auth_mode: 'bearer',
+    };
+  }
+
+  if (!legacyAuthEnabled(env)) {
+    return {
+      ok: false,
+      response: jsonResponse(401, {
+        error: 'Legacy proxy authentication is disabled. Please upgrade client authentication.',
+      }),
+    };
+  }
+
+  return authenticateLegacyRequest(request, env);
+}
+
+function legacyAuthEnabled(env) {
+  const raw = String(env.ALLOW_LEGACY_AUTH ?? env.AI_PROXY_ALLOW_LEGACY_AUTH ?? '1')
+    .trim()
+    .toLowerCase();
+  return !(raw === '0' || raw === 'false' || raw === 'off' || raw === 'no');
+}
+
+async function authenticateLegacyRequest(request, env) {
   const licenseId = String(request.headers.get('X-License-ID') ?? '').trim();
   if (!licenseId) {
     return {
@@ -224,7 +265,7 @@ async function authenticateRequest(request, env) {
   }
 
   const signature = String(request.headers.get('X-Signature') ?? '').trim();
-  const signatureOk = await verifySignature(env, licenseId, signature);
+  const signatureOk = await verifySignature(env, licenseId, activationCode, signature);
   if (!signatureOk) {
     return {
       ok: false,
@@ -266,7 +307,157 @@ async function authenticateRequest(request, env) {
     licenseId,
     quotaPlan,
     license: verifyResult.license,
+    auth_mode: 'legacy',
   };
+}
+
+function parseBearerToken(authorizationHeader) {
+  const value = String(authorizationHeader ?? '').trim();
+  if (!value) return null;
+  const parts = value.split(/\s+/);
+  if (parts.length !== 2) return null;
+  if (parts[0].toLowerCase() !== 'bearer') return null;
+  const token = parts[1].trim();
+  return token || null;
+}
+
+async function verifyProxyAccessToken(env, token) {
+  const secret =
+    String(env.PROXY_TOKEN_SIGNING_SECRET ?? '').trim() ||
+    String(env.AI_PROXY_TOKEN_SIGNING_SECRET ?? '').trim();
+  if (!secret) {
+    return {
+      ok: false,
+      error: 'Proxy token verifier is not configured.',
+    };
+  }
+
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    return { ok: false, error: 'Invalid access token format.' };
+  }
+
+  const [encodedHeader, encodedPayload, encodedSignature] = parts;
+  let header;
+  let payload;
+  let signatureBytes;
+  try {
+    header = decodeBase64UrlJson(encodedHeader);
+    payload = decodeBase64UrlJson(encodedPayload);
+    signatureBytes = decodeBase64UrlBytes(encodedSignature);
+  } catch {
+    return { ok: false, error: 'Malformed access token.' };
+  }
+
+  if (String(header?.alg ?? '') !== 'HS256') {
+    return { ok: false, error: 'Unsupported access token algorithm.' };
+  }
+  const expectedType = String(env.AI_PROXY_TOKEN_TYP ?? DEFAULT_TOKEN_TYP).trim();
+  if (expectedType && String(header?.typ ?? '') !== expectedType) {
+    return { ok: false, error: 'Access token type mismatch.' };
+  }
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['verify'],
+  );
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+  const verified = await crypto.subtle.verify(
+    'HMAC',
+    key,
+    signatureBytes,
+    encoder.encode(signingInput),
+  );
+  if (!verified) {
+    return { ok: false, error: 'Access token signature is invalid.' };
+  }
+
+  const issuer = String(env.AI_PROXY_TOKEN_ISSUER ?? DEFAULT_TOKEN_ISSUER).trim();
+  const audience = String(env.AI_PROXY_TOKEN_AUDIENCE ?? DEFAULT_TOKEN_AUDIENCE).trim();
+  if (String(payload?.iss ?? '') !== issuer) {
+    return { ok: false, error: 'Access token issuer mismatch.' };
+  }
+  if (!tokenAudienceMatches(payload?.aud, audience)) {
+    return { ok: false, error: 'Access token audience mismatch.' };
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const exp = parseNumericClaim(payload?.exp);
+  const nbf = parseNumericClaim(payload?.nbf);
+  const iat = parseNumericClaim(payload?.iat);
+  if (!exp || !nbf || !iat) {
+    return { ok: false, error: 'Access token is missing required time claims.' };
+  }
+  if (now > exp + TOKEN_CLOCK_SKEW_SECONDS) {
+    return { ok: false, error: 'Access token has expired.' };
+  }
+  if (now + TOKEN_CLOCK_SKEW_SECONDS < nbf) {
+    return { ok: false, error: 'Access token is not yet valid.' };
+  }
+  if (iat > now + TOKEN_CLOCK_SKEW_SECONDS) {
+    return { ok: false, error: 'Access token issued-at is in the future.' };
+  }
+
+  const licenseId = String(payload?.sub ?? '').trim();
+  if (!licenseId) {
+    return { ok: false, error: 'Access token subject is missing.' };
+  }
+  const jti = String(payload?.jti ?? '').trim();
+  if (!jti) {
+    return { ok: false, error: 'Access token jti is missing.' };
+  }
+
+  if (env.USAGE_KV) {
+    const [revokedByJti, revokedByLicense] = await Promise.all([
+      env.USAGE_KV.get(`revoked:jti:${jti}`),
+      env.USAGE_KV.get(`revoked:license:${licenseId}`),
+    ]);
+    if (revokedByJti || revokedByLicense) {
+      return { ok: false, error: 'Access token has been revoked.' };
+    }
+  }
+
+  const quotaPlan = resolveQuotaPlan({
+    plan: payload?.plan,
+    billing_cycle: payload?.billing_cycle,
+  });
+  if (quotaPlan === 'free') {
+    return { ok: false, error: 'AI features require Pro license.' };
+  }
+
+  return {
+    ok: true,
+    licenseId,
+    quotaPlan,
+  };
+}
+
+function decodeBase64UrlJson(value) {
+  const bytes = decodeBase64UrlBytes(value);
+  return JSON.parse(Buffer.from(bytes).toString('utf8'));
+}
+
+function decodeBase64UrlBytes(value) {
+  return new Uint8Array(Buffer.from(String(value ?? ''), 'base64url'));
+}
+
+function parseNumericClaim(value) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
+}
+
+function tokenAudienceMatches(tokenAud, expectedAudience) {
+  if (typeof tokenAud === 'string') {
+    return tokenAud === expectedAudience;
+  }
+  if (Array.isArray(tokenAud)) {
+    return tokenAud.some((aud) => String(aud) === expectedAudience);
+  }
+  return false;
 }
 
 function splitSignatureHeader(signatureHeader) {
@@ -286,7 +477,7 @@ function splitSignatureHeader(signatureHeader) {
   return { timestamp, nonce, signature };
 }
 
-async function verifySignature(env, licenseId, signatureHeader) {
+async function verifySignature(env, licenseId, activationCode, signatureHeader) {
   if (!signatureHeader) return false;
   const parsed = splitSignatureHeader(signatureHeader);
   if (!parsed) return false;
@@ -306,14 +497,14 @@ async function verifySignature(env, licenseId, signatureHeader) {
     return false;
   }
 
-  const secret = String(env.SIGNING_SECRET ?? '').trim();
-  if (!secret) {
+  const perLicenseKey = String(activationCode ?? '').trim();
+  if (!perLicenseKey) {
     return false;
   }
 
   const key = await crypto.subtle.importKey(
     'raw',
-    encoder.encode(secret),
+    encoder.encode(perLicenseKey),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['verify'],

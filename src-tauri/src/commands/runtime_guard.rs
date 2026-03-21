@@ -1213,6 +1213,20 @@ fn network_mode_for_trust(policy: &RuntimeGuardPolicy, trust_state: &str) -> Str
     }
 }
 
+fn is_allowed_trust_state(value: &str) -> bool {
+    matches!(
+        value,
+        "unknown" | "restricted" | "trusted" | "blocked" | "quarantined"
+    )
+}
+
+fn is_allowed_network_mode(value: &str) -> bool {
+    matches!(
+        value,
+        "inherit" | "observe_only" | "allowlist" | "blocked" | "trusted" | "restricted"
+    )
+}
+
 fn launch_requires_approval(component: &RuntimeGuardComponent) -> bool {
     component.trust_state == "unknown" || component.requires_explicit_approval
 }
@@ -4065,8 +4079,17 @@ pub async fn get_runtime_guard_policy() -> Result<RuntimeGuardPolicy, String> {
 
 #[tauri::command]
 pub async fn update_runtime_guard_policy(
+    approval_ticket: Option<String>,
     policy: RuntimeGuardPolicy,
 ) -> Result<RuntimeGuardPolicy, String> {
+    let action_targets = vec!["runtime-guard-policy".to_string()];
+    require_action_approval_ticket(
+        approval_ticket.as_deref(),
+        "agentshield:runtime-guard:policy",
+        "runtime_guard_policy_update",
+        &action_targets,
+        "user_requested_runtime_guard_policy_update",
+    )?;
     save_policy(&policy)?;
     Ok(policy)
 }
@@ -4094,7 +4117,20 @@ pub async fn update_component_trust_state(
     component_id: String,
     trust_state: String,
     reason: Option<String>,
+    approval_ticket: Option<String>,
 ) -> Result<RuntimeGuardComponent, String> {
+    let trust_state = trust_state.trim().to_string();
+    if !is_allowed_trust_state(&trust_state) {
+        return Err(format!("Unsupported trust state: {trust_state}"));
+    }
+    let action_targets = vec![trust_state.clone()];
+    require_action_approval_ticket(
+        approval_ticket.as_deref(),
+        &component_id,
+        "component_trust_update",
+        &action_targets,
+        "user_requested_component_trust_change",
+    )?;
     let policy = load_policy();
     let mut components = load_components();
     let index = components
@@ -4137,21 +4173,51 @@ pub async fn update_component_network_policy(
     component_id: String,
     network_mode: Option<String>,
     allowed_domains: Vec<String>,
+    approval_ticket: Option<String>,
 ) -> Result<RuntimeGuardComponent, String> {
+    let normalized_mode = network_mode
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    if let Some(ref mode) = normalized_mode {
+        if !is_allowed_network_mode(mode) {
+            return Err(format!("Unsupported network mode: {mode}"));
+        }
+    }
+
+    let mut normalized_domains: Vec<String> = allowed_domains
+        .into_iter()
+        .map(|domain| domain.trim().to_string())
+        .filter(|domain| !domain.is_empty())
+        .collect();
+    normalized_domains.sort();
+    normalized_domains.dedup();
+
+    let mut action_targets = normalized_domains.clone();
+    if let Some(ref mode) = normalized_mode {
+        action_targets.insert(0, format!("mode:{mode}"));
+    } else {
+        action_targets.insert(0, "mode:unchanged".to_string());
+    }
+
+    require_action_approval_ticket(
+        approval_ticket.as_deref(),
+        &component_id,
+        "component_network_policy_update",
+        &action_targets,
+        "user_requested_component_network_policy_update",
+    )?;
+
     let mut components = load_components();
     let index = components
         .iter()
         .position(|component| component.component_id == component_id)
         .ok_or_else(|| format!("Component not found: {component_id}"))?;
 
-    if let Some(network_mode) = network_mode {
+    if let Some(network_mode) = normalized_mode {
         components[index].network_mode = network_mode;
     }
-    components[index].allowed_domains = allowed_domains
-        .into_iter()
-        .map(|domain| domain.trim().to_string())
-        .filter(|domain| !domain.is_empty())
-        .collect();
+    components[index].allowed_domains = normalized_domains;
     components[index].last_seen_at = Utc::now().to_rfc3339();
 
     let component = components[index].clone();

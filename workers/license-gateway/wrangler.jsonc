@@ -31,10 +31,25 @@
       "fallthrough": false
     }
   ],
+  "ratelimits": [
+    {
+      "name": "CLIENT_PROXY_TOKEN_RATE_LIMITER",
+      "namespace_id": "2002",
+      "simple": {
+        "limit": 20,
+        "period": 60
+      }
+    }
+  ],
   "vars": {
     "LICENSE_GATEWAY_ADMIN_USERNAME": "admin",
     "CREEM_STRICT_BILLING_RESOLUTION": "1",
     "CREEM_SKU_BILLING_MAP_JSON": "{\"AGSH_PRO_30D\":\"monthly\",\"AGSH_PRO_365D\":\"yearly\",\"AGSH_PRO_LIFETIME\":\"lifetime\"}",
-    "CREEM_PRODUCT_BILLING_MAP_JSON": "{\"prod_2T8qrIwLHQ3AlG4KtTB849\":\"monthly\",\"prod_7kbjugsRm1gGN6lKXOR1NG\":\"yearly\",\"prod_4rh2nT74Cqk4IQ5EfvcjbH\":\"lifetime\"}"
+    "CREEM_PRODUCT_BILLING_MAP_JSON": "{\"prod_2T8qrIwLHQ3AlG4KtTB849\":\"monthly\",\"prod_7kbjugsRm1gGN6lKXOR1NG\":\"yearly\",\"prod_4rh2nT74Cqk4IQ5EfvcjbH\":\"lifetime\"}",
+    "AI_PROXY_TOKEN_ISSUER": "agentshield-license-gateway",
+    "AI_PROXY_TOKEN_AUDIENCE": "agentshield-ai-proxy",
+    "AI_PROXY_TOKEN_TTL_SECONDS": "300",
+    "AI_PROXY_TOKEN_CLOCK_SKEW_SECONDS": "60",
+    "AI_PROXY_TOKEN_KID": "v1"
   }
 }

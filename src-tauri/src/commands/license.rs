@@ -332,6 +332,10 @@ fn resolve_license_gateway_base_url() -> Option<String> {
     None
 }
 
+pub fn resolved_license_gateway_base_url() -> Option<String> {
+    resolve_license_gateway_base_url()
+}
+
 fn cache_key_for_license(raw_key: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(raw_key.as_bytes());

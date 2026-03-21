@@ -292,9 +292,13 @@ export async function runRuntimeGuardPollNow(): Promise<RuntimeGuardStatus | nul
   }
 }
 
-export async function updateRuntimeGuardPolicy(policy: RuntimeGuardPolicy) {
+export async function updateRuntimeGuardPolicy(policy: RuntimeGuardPolicy, approvalTicket?: string) {
   try {
-    return await invoke<RuntimeGuardPolicy>('update_runtime_guard_policy', { policy });
+    return await invoke<RuntimeGuardPolicy>('update_runtime_guard_policy', {
+      policy,
+      approvalTicket: approvalTicket ?? null,
+      approval_ticket: approvalTicket ?? null,
+    });
   } catch (error) {
     console.error('Failed to update runtime guard policy:', error);
     throw Object.assign(new Error(`Failed to update runtime guard policy: ${String(error)}`), {
@@ -332,12 +336,19 @@ export async function requestRuntimeGuardActionApproval(input: RuntimeActionAppr
   }
 }
 
-export async function updateComponentTrustState(componentId: string, trustState: string, reason?: string) {
+export async function updateComponentTrustState(
+  componentId: string,
+  trustState: string,
+  reason?: string,
+  approvalTicket?: string,
+) {
   try {
     return await invoke<RuntimeGuardComponent>('update_component_trust_state', {
       componentId,
       trustState,
       reason: reason ?? null,
+      approvalTicket: approvalTicket ?? null,
+      approval_ticket: approvalTicket ?? null,
     });
   } catch (error) {
     console.error('Failed to update component trust state:', error);
@@ -351,12 +362,15 @@ export async function updateComponentNetworkPolicy(
   componentId: string,
   allowedDomains: string[],
   networkMode?: string,
+  approvalTicket?: string,
 ) {
   try {
     return await invoke<RuntimeGuardComponent>('update_component_network_policy', {
       componentId,
       allowedDomains,
       networkMode: networkMode ?? null,
+      approvalTicket: approvalTicket ?? null,
+      approval_ticket: approvalTicket ?? null,
     });
   } catch (error) {
     console.error('Failed to update component network policy:', error);

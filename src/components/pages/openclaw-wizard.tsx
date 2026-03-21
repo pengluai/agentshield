@@ -381,6 +381,7 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
   const [channelToken, setChannelToken] = useState('');
 
   const [setupBusy, setSetupBusy] = useState(false);
+  const workflowBusy = setupBusy || actionInProgress !== null;
   const [stepStatuses, setStepStatuses] = useState<Record<SetupStepId, SetupStepStatus>>(createInitialStepMap());
   const [setupLogs, setSetupLogs] = useState<SetupLogEntry[]>([]);
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -539,7 +540,7 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
             return keep;
           }
         }
-        return installTargets.map((tool) => tool.id);
+        return [];
       });
 
       if (
@@ -891,18 +892,14 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
       return true;
     }
 
-    // Pause the wizard when channel token is not yet filled — let the user
-    // enter it in the channel config section below, then click "开始一键配置" to resume.
+    // Channel configuration is optional: do not block the core install path
+    // when no token is provided.
     if (step.id === 'configure_channel' && channelToken.trim().length === 0) {
-      markStepStatus(step.id, 'pending', tr(
-        '请在下方「通知渠道」区域选择渠道（如飞书/钉钉/Telegram），填入 Bot Token，然后再次点击「开始一键配置」继续。',
-        'Please select a channel below (e.g. Feishu/DingTalk/Telegram), enter a Bot Token, then click "Start one-click setup" to continue.',
+      markStepStatus(step.id, 'skipped', tr(
+        '未填写通知渠道授权信息，已跳过。你可以稍后补填并单独执行。',
+        'Channel token not provided. This optional step was skipped and can be completed later.',
       ));
-      setSetupError(tr(
-        '请先在下方配置通知渠道后，再点击「开始一键配置」继续完成剩余步骤。',
-        'Please configure a notification channel below, then click "Start one-click setup" to complete the remaining steps.',
-      ));
-      return false;
+      return true;
     }
 
     let approvalTicket: string | undefined;
@@ -981,7 +978,11 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
   };
 
   const runSmartSetup = async () => {
-    if (setupBusy) {
+    if (workflowBusy) {
+      setSetupError(tr(
+        '当前已有安装或配置任务在执行，请等待完成后再试。',
+        'Another install/setup task is currently running. Please wait until it finishes.',
+      ));
       return;
     }
     if (!oneClickOpsUnlocked) {
@@ -1017,8 +1018,8 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
       }
 
       setActionMessage(tr(
-        'OpenClaw 一键配置已完成！如需配置通知渠道，请在上方选择渠道并填入 Token，然后重新点击「开始一键配置」。',
-        'OpenClaw one-click setup completed! To configure a notification channel, select one above, enter a token, then click "Start one-click setup" again.',
+        'OpenClaw 一键配置已完成。若要接入通知渠道，可在下方补填授权信息后再次执行。',
+        'OpenClaw one-click setup completed. You can add a notification channel later by entering token details and running setup again.',
       ));
       await loadData();
     } catch (error) {
@@ -1031,6 +1032,13 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
   const handleAction = async (action: 'install' | 'uninstall' | 'update') => {
     if (!oneClickOpsUnlocked) {
       setManualGateState({ open: true, action });
+      return;
+    }
+    if (workflowBusy) {
+      setActionError(tr(
+        '当前已有任务在执行，请等待后再进行安装/更新/卸载。',
+        'A task is already running. Wait for it to finish before install/update/uninstall.',
+      ));
       return;
     }
 
@@ -1334,7 +1342,7 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
                 }
                 color="#14B8A6"
                 loading={actionInProgress === 'install'}
-                disabled={browserShell || (oneClickOpsUnlocked && !status?.node_installed) || !!actionInProgress}
+                disabled={browserShell || (oneClickOpsUnlocked && !status?.node_installed) || !!actionInProgress || setupBusy}
                 onClick={() => {
                   void handleAction('install');
                 }}
@@ -1348,7 +1356,7 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
                 }
                 color="#14B8A6"
                 loading={actionInProgress === 'update'}
-                disabled={!!actionInProgress || !isInstalled}
+                disabled={!!actionInProgress || !isInstalled || setupBusy}
                 onClick={() => {
                   void handleAction('update');
                 }}
@@ -1359,7 +1367,7 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
                 color="#DC2626"
                 variant="solid"
                 loading={actionInProgress === 'uninstall'}
-                disabled={!!actionInProgress || !isInstalled}
+                disabled={!!actionInProgress || !isInstalled || setupBusy}
                 onClick={() => {
                   void handleAction('uninstall');
                 }}
@@ -1564,18 +1572,18 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
                 onClick={() => {
                   void runSmartSetup();
                 }}
-                disabled={setupBusy}
+                disabled={workflowBusy}
                 className={cn(
                   'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors',
-                  setupBusy
+                  workflowBusy
                     ? 'cursor-not-allowed bg-teal-400/30 text-teal-100/70'
                     : 'bg-teal-400 text-slate-950 hover:bg-teal-300'
                 )}
               >
-                {setupBusy ? (
+                {workflowBusy ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    {tr('正在执行...', 'Running...')}
+                    {tr('任务进行中...', 'Task in progress...')}
                   </>
                 ) : (
                   <>
@@ -1601,10 +1609,11 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
                 <button
                   type="button"
                   onClick={() => setShowAiChat((prev) => !prev)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-teal-400/25 bg-teal-500/10 px-3 py-2 text-xs font-medium text-teal-300 hover:bg-teal-500/20 transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-amber-400/30 bg-amber-500/15 px-3 py-2 text-xs font-medium text-amber-200 hover:bg-amber-500/25 transition-colors"
                 >
                   <Bot className="h-3.5 w-3.5" />
-                  {showAiChat ? tr('收起 AI 助手', 'Hide AI Assistant') : tr('AI 智能引导', 'AI Guided Setup')}
+                  {showAiChat ? tr('收起 AI 助手', 'Hide AI Assistant') : tr('AI 一键安装', 'AI Auto-Install')}
+                  {isPro && <span className="ml-1 rounded bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">Pro</span>}
                 </button>
               )}
             </div>

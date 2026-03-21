@@ -563,7 +563,7 @@ function ScanningAnimation({
 export function SecurityScanDetail({ onBack, onOpenInstalledManagement, cachedIssues, categoryTitle }: SecurityScanDetailProps) {
   const { isPro, isTrial } = useProGate();
   const batchFixUnlocked = isPro || isTrial;
-  const useCached = cachedIssues && cachedIssues.length >= 0;
+  const useCached = cachedIssues !== undefined;
   const [issues, setIssues] = useState<SecurityIssue[]>(useCached ? cachedIssues : []);
   const [selectedIssue, setSelectedIssue] = useState<SecurityIssue | null>(
     useCached && cachedIssues.length > 0 ? cachedIssues[0] : null

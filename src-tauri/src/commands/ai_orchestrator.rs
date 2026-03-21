@@ -1,11 +1,12 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use rand::random;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::path::PathBuf;
 use std::process::{Command, Output};
+use std::sync::{LazyLock, Mutex};
 
 use crate::commands::license;
 use crate::commands::platform::{npm_command, openclaw_command, preferred_openclaw_config_dir};
@@ -14,7 +15,48 @@ use crate::commands::store::{get_mcp_config_for_platform, write_server_to_config
 
 const CHANNEL_KEYRING_SERVICE: &str = "com.agentshield.openclaw.channels";
 const DEFAULT_AI_PROXY_URL: &str = "https://agentshield-ai-proxy.pengluailll.workers.dev";
-const SIGNING_SECRET: &[u8] = b"FFBpb3wDPTy9hEsII41KBd7zYNkXhsszcS3KcrXmlvE=";
+const LEGACY_PROXY_AUTH_ENV: &str = "AGENTSHIELD_ALLOW_LEGACY_PROXY_AUTH";
+const PROXY_ACCESS_TOKEN_REFRESH_SKEW_SECONDS: i64 = 30;
+const PROXY_ACCESS_TOKEN_FALLBACK_TTL_SECONDS: i64 = 300;
+
+#[derive(Clone)]
+struct ProxyLegacyAuthHeaders {
+    license_id: String,
+    activation_code: String,
+    signature: String,
+}
+
+#[derive(Clone)]
+struct ProxyAuthHeaders {
+    bearer_token: Option<String>,
+    legacy: ProxyLegacyAuthHeaders,
+}
+
+#[derive(Clone)]
+struct CachedProxyAccessToken {
+    license_id: String,
+    token: String,
+    expires_at: DateTime<Utc>,
+}
+
+#[derive(Serialize)]
+struct ProxyTokenIssueRequest {
+    activation_code: String,
+}
+
+#[derive(Deserialize)]
+struct ProxyTokenIssueResponse {
+    ok: bool,
+    #[serde(default)]
+    access_token: Option<String>,
+    #[serde(default)]
+    expires_at: Option<String>,
+    #[serde(default)]
+    expires_in: Option<i64>,
+}
+
+static PROXY_ACCESS_TOKEN_CACHE: LazyLock<Mutex<Option<CachedProxyAccessToken>>> =
+    LazyLock::new(|| Mutex::new(None));
 
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone)]
@@ -463,21 +505,172 @@ fn resolve_ai_proxy_url() -> String {
         .unwrap_or_else(|_| DEFAULT_AI_PROXY_URL.to_string())
 }
 
-fn sign_proxy_request(license_id: &str) -> Result<String, String> {
+fn legacy_proxy_auth_allowed() -> bool {
+    match std::env::var(LEGACY_PROXY_AUTH_ENV) {
+        Ok(value) => {
+            let normalized = value.trim().to_ascii_lowercase();
+            !(normalized == "0"
+                || normalized == "false"
+                || normalized == "off"
+                || normalized == "no")
+        }
+        Err(_) => true,
+    }
+}
+
+fn sign_proxy_request(license_id: &str, activation_code: &str) -> Result<String, String> {
     let timestamp = Utc::now().timestamp();
     let nonce: u64 = random();
     let payload = format!("{license_id}{timestamp}{nonce}");
-    let mut mac = Hmac::<Sha256>::new_from_slice(SIGNING_SECRET)
+    let mut mac = Hmac::<Sha256>::new_from_slice(activation_code.as_bytes())
         .map_err(|error| format!("Failed to initialize request signer: {error}"))?;
     mac.update(payload.as_bytes());
     let signature = URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes());
     Ok(format!("{timestamp}-{nonce}-{signature}"))
 }
 
-async fn build_proxy_auth_headers() -> Result<(String, String, String), String> {
+fn read_cached_proxy_access_token(license_id: &str) -> Option<String> {
+    let guard = PROXY_ACCESS_TOKEN_CACHE.lock().ok()?;
+    let cached = guard.as_ref()?;
+    if cached.license_id != license_id {
+        return None;
+    }
+    let refresh_deadline = Utc::now() + chrono::Duration::seconds(PROXY_ACCESS_TOKEN_REFRESH_SKEW_SECONDS);
+    if refresh_deadline >= cached.expires_at {
+        return None;
+    }
+    Some(cached.token.clone())
+}
+
+fn cache_proxy_access_token(license_id: &str, token: String, expires_at: DateTime<Utc>) {
+    if let Ok(mut guard) = PROXY_ACCESS_TOKEN_CACHE.lock() {
+        *guard = Some(CachedProxyAccessToken {
+            license_id: license_id.to_string(),
+            token,
+            expires_at,
+        });
+    }
+}
+
+fn clear_cached_proxy_access_token(license_id: &str) {
+    if let Ok(mut guard) = PROXY_ACCESS_TOKEN_CACHE.lock() {
+        if let Some(cached) = guard.as_ref() {
+            if cached.license_id == license_id {
+                *guard = None;
+            }
+        }
+    }
+}
+
+fn resolve_proxy_token_expiry(payload: &ProxyTokenIssueResponse) -> DateTime<Utc> {
+    let now = Utc::now();
+    if let Some(expires_at) = payload.expires_at.as_deref() {
+        if let Ok(parsed) = DateTime::parse_from_rfc3339(expires_at) {
+            let utc = parsed.with_timezone(&Utc);
+            if utc > now {
+                return utc;
+            }
+        }
+    }
+
+    if let Some(expires_in) = payload.expires_in {
+        if expires_in > 0 {
+            let bounded = expires_in.min(3600);
+            return now + chrono::Duration::seconds(bounded);
+        }
+    }
+
+    now + chrono::Duration::seconds(PROXY_ACCESS_TOKEN_FALLBACK_TTL_SECONDS)
+}
+
+async fn fetch_proxy_access_token(
+    context: &license::ProAiLicenseContext,
+) -> Result<String, String> {
+    if let Some(cached) = read_cached_proxy_access_token(&context.license_id) {
+        return Ok(cached);
+    }
+
+    let gateway_base_url = license::resolved_license_gateway_base_url()
+        .ok_or_else(|| "License gateway URL is unavailable.".to_string())?;
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("{gateway_base_url}/client/proxy-token"))
+        .header("Content-Type", "application/json")
+        .json(&ProxyTokenIssueRequest {
+            activation_code: context.activation_code.clone(),
+        })
+        .timeout(std::time::Duration::from_secs(20))
+        .send()
+        .await
+        .map_err(|error| format!("Failed to issue proxy access token: {error}"))?;
+
+    if !response.status().is_success() {
+        let status = response.status().as_u16();
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!(
+            "Proxy access token endpoint error {status}: {}",
+            text.chars().take(200).collect::<String>()
+        ));
+    }
+
+    let payload: ProxyTokenIssueResponse = response
+        .json()
+        .await
+        .map_err(|error| format!("Invalid proxy token response payload: {error}"))?;
+    if !payload.ok {
+        return Err("Proxy access token request was rejected.".to_string());
+    }
+    let token = payload
+        .access_token
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "Proxy access token response missing access_token.".to_string())?;
+
+    let expires_at = resolve_proxy_token_expiry(&payload);
+    cache_proxy_access_token(&context.license_id, token.clone(), expires_at);
+    Ok(token)
+}
+
+async fn build_proxy_auth_headers() -> Result<ProxyAuthHeaders, String> {
     let context = license::get_pro_ai_license_context().await?;
-    let signature = sign_proxy_request(&context.license_id)?;
-    Ok((context.license_id, context.activation_code, signature))
+    let signature = sign_proxy_request(&context.license_id, &context.activation_code)?;
+    let allow_legacy = legacy_proxy_auth_allowed();
+    let bearer_token = match fetch_proxy_access_token(&context).await {
+        Ok(token) => Some(token),
+        Err(error) => {
+            if allow_legacy {
+                eprintln!("proxy bearer token unavailable, fallback to legacy headers: {error}");
+                None
+            } else {
+                return Err(format!(
+                    "Proxy bearer token unavailable and legacy auth disabled: {error}"
+                ));
+            }
+        }
+    };
+
+    Ok(ProxyAuthHeaders {
+        bearer_token,
+        legacy: ProxyLegacyAuthHeaders {
+            license_id: context.license_id,
+            activation_code: context.activation_code,
+            signature,
+        },
+    })
+}
+
+fn apply_legacy_proxy_headers(
+    builder: reqwest::RequestBuilder,
+    legacy: &ProxyLegacyAuthHeaders,
+) -> reqwest::RequestBuilder {
+    builder
+        .header("X-License-ID", &legacy.license_id)
+        .header("X-Activation-Code", &legacy.activation_code)
+        .header("X-Signature", &legacy.signature)
+}
+
+fn should_retry_proxy_with_legacy(status: reqwest::StatusCode) -> bool {
+    status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN
 }
 
 fn parse_quota_headers(headers: &reqwest::header::HeaderMap) -> Option<ProAiQuotaStatus> {
@@ -499,7 +692,7 @@ fn parse_quota_headers(headers: &reqwest::header::HeaderMap) -> Option<ProAiQuot
 #[tauri::command]
 pub async fn pro_ai_chat(messages: Vec<serde_json::Value>) -> Result<String, String> {
     let proxy_url = resolve_ai_proxy_url();
-    let (license_id, activation_code, signature) = build_proxy_auth_headers().await?;
+    let auth = build_proxy_auth_headers().await?;
 
     let body = serde_json::json!({
         "model": "MiniMax-M2.7",
@@ -509,25 +702,56 @@ pub async fn pro_ai_chat(messages: Vec<serde_json::Value>) -> Result<String, Str
     });
 
     let client = reqwest::Client::new();
-    let resp = client
-        .post(format!("{proxy_url}/v1/chat/completions"))
-        .header("Content-Type", "application/json")
-        .header("X-License-ID", &license_id)
-        .header("X-Activation-Code", &activation_code)
-        .header("X-Signature", &signature)
-        .json(&body)
-        .timeout(std::time::Duration::from_secs(60))
+    let chat_url = format!("{proxy_url}/v1/chat/completions");
+    let mut response = if let Some(token) = auth.bearer_token.as_ref() {
+        client
+            .post(&chat_url)
+            .header("Content-Type", "application/json")
+            .bearer_auth(token)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(60))
+            .send()
+            .await
+            .map_err(|error| format!("AI proxy request failed: {error}"))?
+    } else {
+        apply_legacy_proxy_headers(
+            client
+                .post(&chat_url)
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .timeout(std::time::Duration::from_secs(60)),
+            &auth.legacy,
+        )
         .send()
         .await
-        .map_err(|e| format!("AI proxy request failed: {e}"))?;
+        .map_err(|error| format!("AI proxy request failed: {error}"))?
+    };
 
-    if !resp.status().is_success() {
-        let status = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
+    if auth.bearer_token.is_some()
+        && legacy_proxy_auth_allowed()
+        && should_retry_proxy_with_legacy(response.status())
+    {
+        clear_cached_proxy_access_token(&auth.legacy.license_id);
+        response = apply_legacy_proxy_headers(
+            client
+                .post(&chat_url)
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .timeout(std::time::Duration::from_secs(60)),
+            &auth.legacy,
+        )
+        .send()
+        .await
+        .map_err(|error| format!("AI proxy legacy retry failed: {error}"))?;
+    }
+
+    if !response.status().is_success() {
+        let status = response.status().as_u16();
+        let text = response.text().await.unwrap_or_default();
         return Err(format!("AI proxy error {status}: {text}"));
     }
 
-    let json: serde_json::Value = resp
+    let json: serde_json::Value = response
         .json()
         .await
         .map_err(|e| format!("Failed to parse AI response: {e}"))?;
@@ -550,30 +774,57 @@ pub async fn pro_ai_chat(messages: Vec<serde_json::Value>) -> Result<String, Str
 #[tauri::command]
 pub async fn pro_ai_quota_status() -> Result<ProAiQuotaStatus, String> {
     let proxy_url = resolve_ai_proxy_url();
-    let (license_id, activation_code, signature) = build_proxy_auth_headers().await?;
+    let auth = build_proxy_auth_headers().await?;
 
     let client = reqwest::Client::new();
-    let resp = client
-        .get(format!("{proxy_url}/v1/quota"))
-        .header("X-License-ID", &license_id)
-        .header("X-Activation-Code", &activation_code)
-        .header("X-Signature", &signature)
-        .timeout(std::time::Duration::from_secs(30))
+    let quota_url = format!("{proxy_url}/v1/quota");
+    let mut response = if let Some(token) = auth.bearer_token.as_ref() {
+        client
+            .get(&quota_url)
+            .bearer_auth(token)
+            .timeout(std::time::Duration::from_secs(30))
+            .send()
+            .await
+            .map_err(|error| format!("AI quota request failed: {error}"))?
+    } else {
+        apply_legacy_proxy_headers(
+            client
+                .get(&quota_url)
+                .timeout(std::time::Duration::from_secs(30)),
+            &auth.legacy,
+        )
         .send()
         .await
-        .map_err(|e| format!("AI quota request failed: {e}"))?;
+        .map_err(|error| format!("AI quota request failed: {error}"))?
+    };
 
-    if !resp.status().is_success() {
-        let status = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
+    if auth.bearer_token.is_some()
+        && legacy_proxy_auth_allowed()
+        && should_retry_proxy_with_legacy(response.status())
+    {
+        clear_cached_proxy_access_token(&auth.legacy.license_id);
+        response = apply_legacy_proxy_headers(
+            client
+                .get(&quota_url)
+                .timeout(std::time::Duration::from_secs(30)),
+            &auth.legacy,
+        )
+        .send()
+        .await
+        .map_err(|error| format!("AI quota legacy retry failed: {error}"))?;
+    }
+
+    if !response.status().is_success() {
+        let status = response.status().as_u16();
+        let text = response.text().await.unwrap_or_default();
         return Err(format!("AI quota request error {status}: {text}"));
     }
 
-    if let Some(quota) = parse_quota_headers(resp.headers()) {
+    if let Some(quota) = parse_quota_headers(response.headers()) {
         return Ok(quota);
     }
 
-    let json: serde_json::Value = resp
+    let json: serde_json::Value = response
         .json()
         .await
         .map_err(|e| format!("Failed to parse AI quota response: {e}"))?;

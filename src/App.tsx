@@ -730,7 +730,9 @@ function AppContent() {
     if (showSecurityDetail && currentModule === 'securityScan') {
       // Determine which issues to show
       const cachedIssues = selectedCardId
-        ? lastScanByCategory[selectedCardId] ?? []
+        ? (Object.prototype.hasOwnProperty.call(lastScanByCategory, selectedCardId)
+            ? lastScanByCategory[selectedCardId]
+            : undefined)
         : undefined;
       const title = selectedCardId
         ? CARD_TITLES[selectedCardId]

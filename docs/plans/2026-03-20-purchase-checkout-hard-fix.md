@@ -148,7 +148,7 @@
 1. `pnpm test -- src/components/pages/__tests__/upgrade-pro.test.tsx`：通过。
 2. `pnpm run lint`：通过。
 3. `pnpm run typecheck`：通过。
-4. Playwright 线上验证：访问 `https://agentshield-storefront.pengluailll.workers.dev`，点击 `Buy Pro Yearly` 后弹窗 URL 为 `https://www.creem.io/checkout/...`，确认可跳转真实 Creem checkout。
+4. Playwright 线上验证：访问 `https://app.51silu.com`，点击 `Buy Pro Yearly` 后弹窗 URL 为 `https://www.creem.io/checkout/...`，确认可跳转真实 Creem checkout。
 
 ### 9.3 与方案逐项对齐
 1. 目标 1（App 可用）：已达成（fallback + 测试通过，避免 example.com 占位跳转）。

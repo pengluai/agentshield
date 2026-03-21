@@ -13,7 +13,11 @@
   "vars": {
     "MINIMAX_BASE_URL": "https://api.minimax.chat/v1",
     "MINIMAX_DEFAULT_MODEL": "MiniMax-M2.7",
-    "LICENSE_GATEWAY_URL": "https://agentshield-license-gateway.pengluailll.workers.dev"
+    "LICENSE_GATEWAY_URL": "https://api.51silu.com",
+    "AI_PROXY_TOKEN_ISSUER": "agentshield-license-gateway",
+    "AI_PROXY_TOKEN_AUDIENCE": "agentshield-ai-proxy",
+    "AI_PROXY_TOKEN_TYP": "at+jwt",
+    "ALLOW_LEGACY_AUTH": "1"
   },
   "ratelimits": [
     {

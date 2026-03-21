@@ -152,13 +152,20 @@ fn canonical_manifest_payload(raw_json: &str) -> Result<Vec<u8>, String> {
 
 /// Verify the ed25519 signature on a remote rule manifest.
 ///
-/// Returns `Ok(())` when verification passes or when the manifest is unsigned
-/// (backward compatibility — a warning is printed in the latter case).
-/// Returns `Err` when the signature is present but verification fails.
+/// Returns `Ok(())` when verification passes.
+/// Returns `Err` when the manifest is unsigned, when signature verification
+/// fails, or when public key configuration is invalid/missing.
 fn verify_manifest_signature(raw_manifest_json: &str, manifest: &RemoteRuleManifest) -> Result<(), String> {
     let Some(ref sig_b64) = manifest.signature else {
-        eprintln!("[AgentShield] WARNING: remote rule manifest is unsigned — signature verification skipped");
-        return Ok(());
+        if std::env::var("AGENTSHIELD_ALLOW_UNSIGNED_RULE_MANIFEST")
+            .ok()
+            .map(|value| value == "1")
+            .unwrap_or(false)
+        {
+            eprintln!("[AgentShield] WARNING: remote rule manifest is unsigned but ALLOW_UNSIGNED override is enabled");
+            return Ok(());
+        }
+        return Err("Remote rule manifest is missing signature — update rejected".to_string());
     };
 
     let key_bytes = rule_signing_public_key_bytes().ok_or_else(|| {
@@ -546,15 +553,31 @@ mod tests {
     }
 
     #[test]
-    fn verify_manifest_signature_allows_unsigned_with_warning() {
+    fn verify_manifest_signature_rejects_unsigned_by_default() {
         let _guard = TEST_RULES_ENV_LOCK.lock().expect("rules env lock");
         std::env::remove_var("AGENTSHIELD_RULE_SIGNING_PUBLIC_KEY");
+        std::env::remove_var("AGENTSHIELD_ALLOW_UNSIGNED_RULE_MANIFEST");
 
         let raw = r#"{"version":"1.0.0","bundle_url":"https://example.com/b.json"}"#;
         let manifest: RemoteRuleManifest = serde_json::from_str(raw).expect("parse manifest");
 
         let result = verify_manifest_signature(raw, &manifest);
-        assert!(result.is_ok(), "unsigned manifests should be allowed for backward compat");
+        assert!(result.is_err(), "unsigned manifests should be rejected by default");
+        assert!(result.unwrap_err().contains("missing signature"));
+    }
+
+    #[test]
+    fn verify_manifest_signature_allows_unsigned_when_override_enabled() {
+        let _guard = TEST_RULES_ENV_LOCK.lock().expect("rules env lock");
+        std::env::remove_var("AGENTSHIELD_RULE_SIGNING_PUBLIC_KEY");
+        std::env::set_var("AGENTSHIELD_ALLOW_UNSIGNED_RULE_MANIFEST", "1");
+
+        let raw = r#"{"version":"1.0.0","bundle_url":"https://example.com/b.json"}"#;
+        let manifest: RemoteRuleManifest = serde_json::from_str(raw).expect("parse manifest");
+
+        let result = verify_manifest_signature(raw, &manifest);
+        assert!(result.is_ok(), "override should allow unsigned manifest");
+        std::env::remove_var("AGENTSHIELD_ALLOW_UNSIGNED_RULE_MANIFEST");
     }
 
     #[test]

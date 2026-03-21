@@ -415,6 +415,7 @@ interface Translations {
   proFeature5: string;
   proFeature6: string;
   proFeature7: string;
+  proFeature8: string;
   freeBasicProtection: string;
   proFullProtection: string;
   currentPlan: string;
@@ -955,6 +956,7 @@ const zhCN: Translations = {
   proFeature5: '优先技术支持',
   proFeature6: '规则库自动更新',
   proFeature7: '批量操作',
+  proFeature8: 'AI 一键安装助手（优先通道）',
   freeBasicProtection: '基础安全防护',
   proFullProtection: '完整安全防护 + 高级功能',
   currentPlan: '当前方案',
@@ -1495,6 +1497,7 @@ const enUS: Translations = {
   proFeature5: 'Priority support',
   proFeature6: 'Auto rule updates',
   proFeature7: 'Batch operations',
+  proFeature8: 'AI auto-install assistant (priority access)',
   freeBasicProtection: 'Basic security protection',
   proFullProtection: 'Full protection + advanced features',
   currentPlan: 'Current Plan',

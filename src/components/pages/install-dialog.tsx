@@ -11,7 +11,11 @@ import { RoundCTAButton, GhostButton } from '@/components/round-cta-button';
 import { PLATFORM_CONFIG } from '@/constants/colors';
 import { detectAiTools } from '@/services/scanner';
 import { openExternalUrl } from '@/services/runtime-settings';
-import { requestRuntimeGuardActionApproval } from '@/services/runtime-guard';
+import {
+  listenRuntimeGuardApprovals,
+  requestRuntimeGuardActionApproval,
+  type RuntimeApprovalRequest,
+} from '@/services/runtime-guard';
 import type { DetectedTool } from '@/services/scanner';
 import type { StoreCatalogItem, Platform, InstallResult } from '@/types/domain';
 import { useProGate } from '@/hooks/useProGate';
@@ -47,6 +51,47 @@ interface InstallTargetPath {
   platform: Platform;
   config_path: string;
   exists: boolean;
+}
+
+function waitForApprovalResolution(requestId: string, timeoutMs = 120_000): Promise<'approved' | 'denied' | 'timeout'> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let unlistenFn: (() => void) | undefined;
+
+    const timer = window.setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      unlistenFn?.();
+      resolve('timeout');
+    }, timeoutMs);
+
+    listenRuntimeGuardApprovals((approval: RuntimeApprovalRequest) => {
+      if (settled) {
+        return;
+      }
+      if (approval.id !== requestId || approval.status === 'pending') {
+        return;
+      }
+      settled = true;
+      window.clearTimeout(timer);
+      unlistenFn?.();
+      resolve(approval.status === 'approved' ? 'approved' : 'denied');
+    }).then((fn) => {
+      unlistenFn = fn;
+      if (settled) {
+        fn();
+      }
+    }).catch(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      window.clearTimeout(timer);
+      resolve('timeout');
+    });
+  });
 }
 
 export function InstallDialog({ item, open, onClose, onConfirm }: InstallDialogProps) {
@@ -153,7 +198,7 @@ export function InstallDialog({ item, open, onClose, onConfirm }: InstallDialogP
       const approvalTargets = resolvedTargets.length > 0
         ? resolvedTargets.map((target) => target.config_path)
         : [...selectedPlatforms].sort();
-      const approval = await requestRuntimeGuardActionApproval({
+      const approvalInput = {
         component_id: `agentshield:store:${item.id}`,
         component_name: item.name,
         platform_id: selectedPlatforms.join(','),
@@ -169,12 +214,31 @@ export function InstallDialog({ item, open, onClose, onConfirm }: InstallDialogP
         sensitive_capabilities: buildInstallCapabilities(item),
         is_destructive: false,
         is_batch: selectedPlatforms.length > 1,
-      });
+      };
+      let approval = await requestRuntimeGuardActionApproval(approvalInput);
 
       if (approval.status !== 'approved' || !approval.approval_ticket) {
-        setIsInstalling(false);
-        setInstallSummary(tr('已弹出安装审批。请先确认，再次点击安装。', 'Approval request sent. Confirm it, then click install again.'));
-        return;
+        setInstallSummary(tr(
+          '等待你在安全提示中确认安装…',
+          'Waiting for your approval in the security prompt…',
+        ));
+        const resolution = await waitForApprovalResolution(approval.request.id);
+        if (resolution !== 'approved') {
+          setIsInstalling(false);
+          setInstallSummary(resolution === 'timeout'
+            ? tr('审批等待超时，请重试安装。', 'Approval timed out. Please retry installation.')
+            : tr('你已拒绝本次安装。', 'You denied this installation request.'));
+          return;
+        }
+        approval = await requestRuntimeGuardActionApproval(approvalInput);
+        if (approval.status !== 'approved' || !approval.approval_ticket) {
+          setIsInstalling(false);
+          setInstallError(tr(
+            '审批已通过，但未获取到可执行票据，请重试。',
+            'Approval was granted but no execution ticket was issued. Please retry.',
+          ));
+          return;
+        }
       }
 
       const result = await invoke<InstallResult>('install_store_item', {

@@ -94,6 +94,10 @@ export class LicenseGatewayDurableObject {
       return this.handleClientLicenseVerify(request);
     }
 
+    if (request.method === 'POST' && pathname === '/client/proxy-token') {
+      return this.handleClientProxyToken(request);
+    }
+
     if (!pathname.startsWith('/admin/')) {
       return this.json(404, { error: 'Not Found' });
     }
@@ -175,16 +179,18 @@ export class LicenseGatewayDurableObject {
       return this.json(400, { error: String(error) });
     }
 
-    if (extracted.event_id && this.hasProcessedWebhookEvent(extracted.event_id)) {
+    const webhookEventKey = this.resolveWebhookEventKey(extracted, rawBody);
+    if (webhookEventKey && this.hasProcessedWebhookEvent(webhookEventKey)) {
       this.data.metrics.webhook_duplicate_total += 1;
       this.addAuditLog({
         actor: 'creem:webhook',
         action: 'event.duplicate',
         target_type: 'event',
-        target_id: extracted.event_id,
+        target_id: extracted.event_id || webhookEventKey,
         payload: {
           event_name: extracted.event_name,
           provider_order_id: extracted.provider_order_id,
+          event_key: webhookEventKey,
         },
       });
       await this.saveState();
@@ -192,6 +198,7 @@ export class LicenseGatewayDurableObject {
         ok: true,
         duplicate: true,
         event_id: extracted.event_id,
+        event_key: webhookEventKey,
         event_name: extracted.event_name,
       });
     }
@@ -211,19 +218,26 @@ export class LicenseGatewayDurableObject {
       });
     }
 
-    this.markWebhookEventProcessed(extracted, rawBody);
+    if (response.status < 500) {
+      this.markWebhookEventProcessed(extracted, rawBody, webhookEventKey);
+    }
     await this.saveState();
     return response;
   }
 
   async handleCheckoutCompletedWebhook(extracted, rawBody) {
-    const existingOrder = this.data.orders.find(
+    let order = this.data.orders.find(
       (order) =>
         order.provider === 'creem' &&
         order.provider_order_id === extracted.provider_order_id,
     );
 
-    if (existingOrder) {
+    const existingLicense = this.data.licenses.find(
+      (license) =>
+        license.provider_order_id === extracted.provider_order_id &&
+        license.status !== 'revoked',
+    );
+    if (order && existingLicense) {
       this.data.metrics.webhook_duplicate_total += 1;
       this.addAuditLog({
         actor: 'creem:webhook',
@@ -236,29 +250,45 @@ export class LicenseGatewayDurableObject {
         ok: true,
         duplicate: true,
         provider_order_id: extracted.provider_order_id,
+        license_id: existingLicense.license_id,
       });
     }
 
-    const order = {
-      id: this.createId('ord'),
-      provider: 'creem',
-      provider_order_id: extracted.provider_order_id,
-      provider_subscription_id: extracted.provider_subscription_id,
-      provider_customer_id: extracted.provider_customer_id,
-      customer_email: extracted.customer_email,
-      sku_code: extracted.sku_code,
-      product_id: extracted.product_id,
-      product_billing_type: extracted.product_billing_type,
-      product_billing_period: extracted.product_billing_period,
-      currency: extracted.currency,
-      amount_total: extracted.amount_total,
-      payment_status: extracted.payment_status,
-      raw_event_hash: this.sha256Hex(rawBody),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    this.data.orders.push(order);
-    this.data.metrics.orders_created_total += 1;
+    if (!order) {
+      order = {
+        id: this.createId('ord'),
+        provider: 'creem',
+        provider_order_id: extracted.provider_order_id,
+        provider_subscription_id: extracted.provider_subscription_id,
+        provider_customer_id: extracted.provider_customer_id,
+        customer_email: extracted.customer_email,
+        sku_code: extracted.sku_code,
+        product_id: extracted.product_id,
+        product_billing_type: extracted.product_billing_type,
+        product_billing_period: extracted.product_billing_period,
+        currency: extracted.currency,
+        amount_total: extracted.amount_total,
+        payment_status: extracted.payment_status,
+        raw_event_hash: this.sha256Hex(rawBody),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      this.data.orders.push(order);
+      this.data.metrics.orders_created_total += 1;
+    } else {
+      order.provider_subscription_id = extracted.provider_subscription_id || order.provider_subscription_id || null;
+      order.provider_customer_id = extracted.provider_customer_id || order.provider_customer_id || null;
+      order.customer_email = extracted.customer_email || order.customer_email || null;
+      order.sku_code = extracted.sku_code || order.sku_code || null;
+      order.product_id = extracted.product_id || order.product_id || null;
+      order.product_billing_type = extracted.product_billing_type || order.product_billing_type || null;
+      order.product_billing_period = extracted.product_billing_period || order.product_billing_period || null;
+      order.currency = extracted.currency || order.currency || 'USD';
+      order.amount_total = extracted.amount_total || order.amount_total || 0;
+      order.payment_status = extracted.payment_status || order.payment_status || 'paid';
+      order.raw_event_hash = this.sha256Hex(rawBody);
+      order.updated_at = new Date().toISOString();
+    }
 
     try {
       const issuedAt = new Date().toISOString();
@@ -327,47 +357,167 @@ export class LicenseGatewayDurableObject {
       return this.json(400, { ok: false, error: 'Invalid JSON payload' });
     }
 
-    const activationCode = String(payload?.activation_code ?? '').trim();
-    if (!activationCode) {
-      return this.json(400, { ok: false, error: 'Missing activation_code.' });
+    const activationCode = String(payload?.activation_code ?? '');
+    const resolved = await this.resolveClientLicenseByActivationCode(activationCode);
+    if (!resolved.ok) {
+      return resolved.response;
     }
 
-    const licenseId = this.extractLicenseIdFromActivationCode(activationCode) ?? '';
-    if (!licenseId) {
-      return this.json(400, { ok: false, error: 'Invalid activation_code.' });
+    if (resolved.stateUpdated) {
+      await this.saveState();
     }
 
-    // --- ed25519 signature verification ---
-    const sigValid = await this.verifyActivationCodeSignature(activationCode);
-    if (!sigValid) {
-      // Return the same shape as "not found" to avoid leaking info
-      return this.json(200, {
-        ok: true,
-        found: false,
-        checked_at: new Date().toISOString(),
-        license: null,
+    return this.json(200, {
+      ok: true,
+      found: true,
+      checked_at: resolved.checkedAt,
+      license: this.serializeClientLicense(resolved.license),
+    });
+  }
+
+  async handleClientProxyToken(request) {
+    let payload;
+    try {
+      payload = await request.json();
+    } catch {
+      return this.json(400, { ok: false, error: 'Invalid JSON payload' });
+    }
+
+    const activationCode = String(payload?.activation_code ?? '');
+    const rateLimit = await this.checkClientProxyTokenRateLimit(request, activationCode);
+    if (!rateLimit.ok) {
+      return this.json(rateLimit.status, {
+        ok: false,
+        error: rateLimit.error,
+        retry_after_seconds: rateLimit.retryAfterSeconds,
       });
     }
-    // --- end signature verification ---
 
-    const now = new Date().toISOString();
+    const resolved = await this.resolveClientLicenseByActivationCode(activationCode, {
+      preserveUnknownAsNotFound: false,
+    });
+    if (!resolved.ok) {
+      return resolved.response;
+    }
+
+    const license = resolved.license;
+    if (license.status !== 'active') {
+      if (resolved.stateUpdated) {
+        await this.saveState();
+      }
+      return this.json(403, {
+        ok: false,
+        error: 'License is not active.',
+        status: license.status,
+      });
+    }
+
+    const plan = String(license.plan ?? '').trim().toLowerCase();
+    if (plan !== 'pro' && plan !== 'enterprise') {
+      return this.json(403, {
+        ok: false,
+        error: 'AI features require Pro license.',
+      });
+    }
+
+    let token;
+    try {
+      token = this.issueProxyAccessToken(license);
+    } catch (error) {
+      return this.json(503, {
+        ok: false,
+        error: 'Proxy token service unavailable.',
+      });
+    }
+
+    this.addAuditLog({
+      actor: 'client:token',
+      action: 'proxy_token.issue',
+      target_type: 'license',
+      target_id: license.license_id,
+      payload: {
+        jti: token.jti,
+        exp: token.exp,
+      },
+    });
+    await this.saveState();
+
+    return this.json(200, {
+      ok: true,
+      token_type: 'Bearer',
+      access_token: token.accessToken,
+      expires_in: token.expiresIn,
+      expires_at: token.expiresAtIso,
+      checked_at: resolved.checkedAt,
+      license: this.serializeClientLicense(license),
+    });
+  }
+
+  async resolveClientLicenseByActivationCode(activationCode, options = {}) {
+    const preserveUnknownAsNotFound = options.preserveUnknownAsNotFound !== false;
+    const normalizedCode = String(activationCode ?? '').trim();
+    if (!normalizedCode) {
+      return {
+        ok: false,
+        response: this.json(400, { ok: false, error: 'Missing activation_code.' }),
+      };
+    }
+
+    const licenseId = this.extractLicenseIdFromActivationCode(normalizedCode) ?? '';
+    if (!licenseId) {
+      return {
+        ok: false,
+        response: this.json(400, { ok: false, error: 'Invalid activation_code.' }),
+      };
+    }
+
+    const sigValid = await this.verifyActivationCodeSignature(normalizedCode);
+    if (!sigValid) {
+      if (!preserveUnknownAsNotFound) {
+        return {
+          ok: false,
+          response: this.json(403, { ok: false, error: 'Invalid activation_code.' }),
+        };
+      }
+      return {
+        ok: false,
+        response: this.json(200, {
+          ok: true,
+          found: false,
+          checked_at: new Date().toISOString(),
+          license: null,
+        }),
+      };
+    }
+
+    const checkedAt = new Date().toISOString();
     const license = this.data.licenses.find((item) => item.license_id === licenseId);
     if (!license) {
-      return this.json(200, {
-        ok: true,
-        found: false,
-        checked_at: now,
-        license: null,
-      });
+      if (!preserveUnknownAsNotFound) {
+        return {
+          ok: false,
+          response: this.json(404, { ok: false, error: 'License not found.' }),
+        };
+      }
+      return {
+        ok: false,
+        response: this.json(200, {
+          ok: true,
+          found: false,
+          checked_at: checkedAt,
+          license: null,
+        }),
+      };
     }
 
     const order = this.data.orders.find(
       (item) => item.provider_order_id === license.provider_order_id,
     );
 
+    let stateUpdated = false;
     if (order?.payment_status === 'refunded' && license.status === 'active') {
       license.status = 'revoked';
-      license.revoked_at = now;
+      license.revoked_at = checkedAt;
       license.notes = 'revoked_by:client_reconcile_refund';
       this.data.metrics.licenses_revoked_total += 1;
       this.data.metrics.licenses_revoked_by_refund_total += 1;
@@ -378,24 +528,151 @@ export class LicenseGatewayDurableObject {
         target_id: license.license_id,
         payload: { provider_order_id: license.provider_order_id },
       });
-      await this.saveState();
+      stateUpdated = true;
     }
 
-    return this.json(200, {
+    const expiresAtMs = Date.parse(String(license.expires_at ?? ''));
+    const checkedAtMs = Date.parse(checkedAt);
+    if (
+      license.status === 'active' &&
+      Number.isFinite(expiresAtMs) &&
+      Number.isFinite(checkedAtMs) &&
+      expiresAtMs <= checkedAtMs
+    ) {
+      license.status = 'expired';
+      license.revoked_at = checkedAt;
+      license.notes = 'revoked_by:client_reconcile_expired';
+      this.addAuditLog({
+        actor: 'client:verify',
+        action: 'license.reconcile_expired',
+        target_type: 'license',
+        target_id: license.license_id,
+        payload: { expires_at: license.expires_at },
+      });
+      stateUpdated = true;
+    }
+
+    return {
       ok: true,
-      found: true,
-      checked_at: now,
-      license: {
-        license_id: license.license_id,
-        provider_order_id: license.provider_order_id,
-        plan: license.plan,
-        billing_cycle: license.billing_cycle,
-        status: license.status,
-        expires_at: license.expires_at,
-        revoked_at: license.revoked_at,
-        customer_email: license.customer_email,
-      },
-    });
+      checkedAt,
+      license,
+      stateUpdated,
+    };
+  }
+
+  serializeClientLicense(license) {
+    return {
+      license_id: license.license_id,
+      provider_order_id: license.provider_order_id,
+      plan: license.plan,
+      billing_cycle: license.billing_cycle,
+      status: license.status,
+      expires_at: license.expires_at,
+      revoked_at: license.revoked_at,
+      customer_email: license.customer_email,
+    };
+  }
+
+  issueProxyAccessToken(license) {
+    const secret =
+      this.readEnvString('PROXY_TOKEN_SIGNING_SECRET') ||
+      this.readEnvString('AI_PROXY_TOKEN_SIGNING_SECRET');
+    if (!secret) {
+      throw new Error('Missing PROXY_TOKEN_SIGNING_SECRET');
+    }
+
+    const issuer = this.readEnvString('AI_PROXY_TOKEN_ISSUER', 'agentshield-license-gateway');
+    const audience = this.readEnvString('AI_PROXY_TOKEN_AUDIENCE', 'agentshield-ai-proxy');
+    const keyId = this.readEnvString('AI_PROXY_TOKEN_KID', 'v1');
+    const ttlSeconds = this.parseIntegerInRange(
+      this.readEnvString('AI_PROXY_TOKEN_TTL_SECONDS', '300'),
+      300,
+      60,
+      1800,
+    );
+    const skewSeconds = this.parseIntegerInRange(
+      this.readEnvString('AI_PROXY_TOKEN_CLOCK_SKEW_SECONDS', '60'),
+      60,
+      0,
+      300,
+    );
+
+    const now = Math.floor(Date.now() / 1000);
+    const exp = now + ttlSeconds;
+    const payload = {
+      iss: issuer,
+      aud: audience,
+      sub: license.license_id,
+      iat: now,
+      nbf: Math.max(0, now - skewSeconds),
+      exp,
+      jti: crypto.randomBytes(16).toString('hex'),
+      plan: license.plan,
+      billing_cycle: license.billing_cycle,
+    };
+    const header = {
+      alg: 'HS256',
+      typ: 'at+jwt',
+      kid: keyId,
+    };
+
+    const encodedHeader = Buffer.from(JSON.stringify(header), 'utf8').toString('base64url');
+    const encodedPayload = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+    const signingInput = `${encodedHeader}.${encodedPayload}`;
+    const signature = crypto
+      .createHmac('sha256', Buffer.from(secret, 'utf8'))
+      .update(signingInput)
+      .digest('base64url');
+
+    return {
+      accessToken: `${signingInput}.${signature}`,
+      expiresIn: ttlSeconds,
+      expiresAtIso: new Date(exp * 1000).toISOString(),
+      jti: payload.jti,
+      exp,
+    };
+  }
+
+  parseIntegerInRange(rawValue, fallback, min, max) {
+    const parsed = Number.parseInt(String(rawValue ?? '').trim(), 10);
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
+    return Math.min(max, Math.max(min, parsed));
+  }
+
+  async checkClientProxyTokenRateLimit(request, activationCode) {
+    const limiter =
+      this.env?.CLIENT_PROXY_TOKEN_RATE_LIMITER ?? this.env?.PROXY_TOKEN_RATE_LIMITER ?? null;
+    if (!limiter || typeof limiter.limit !== 'function') {
+      return { ok: true };
+    }
+
+    const ipRaw =
+      request.headers.get('CF-Connecting-IP') ??
+      request.headers.get('cf-connecting-ip') ??
+      request.headers.get('X-Forwarded-For') ??
+      request.headers.get('x-forwarded-for') ??
+      '';
+    const clientIp = String(ipRaw).split(',')[0]?.trim() || 'unknown';
+    const licenseHint = this.extractLicenseIdFromActivationCode(activationCode) ?? 'unknown';
+    const key = `proxy-token:${clientIp}:${licenseHint}`;
+
+    try {
+      const limited = await limiter.limit({ key });
+      if (limited?.success) {
+        return { ok: true };
+      }
+      return {
+        ok: false,
+        status: 429,
+        error: 'Too many proxy token requests. Please retry in one minute.',
+        retryAfterSeconds: 60,
+      };
+    } catch {
+      // Fail open to avoid accidental auth outage if rate-limit service is temporarily unavailable.
+      return { ok: true };
+    }
   }
 
   async handleRefundWebhook(extracted, rawBody) {
@@ -527,6 +804,28 @@ export class LicenseGatewayDurableObject {
     );
 
     if (extracted.event_name === 'subscription.paid') {
+      const renewalMarker =
+        extracted.subscription_period_end_at ||
+        extracted.event_id ||
+        `hash:${this.sha256Hex(rawBody)}`;
+      if (order.last_subscription_paid_marker === renewalMarker) {
+        this.data.metrics.webhook_duplicate_total += 1;
+        this.addAuditLog({
+          actor: 'creem:webhook',
+          action: 'subscription.paid_duplicate_marker',
+          target_type: 'order',
+          target_id: extracted.provider_order_id,
+          payload: { marker: renewalMarker },
+        });
+        this.data.metrics.subscription_events_total += 1;
+        return this.json(200, {
+          ok: true,
+          duplicate: true,
+          event_name: extracted.event_name,
+          provider_order_id: extracted.provider_order_id,
+        });
+      }
+
       if (activeLicenses.length === 0) {
         this.data.metrics.subscription_events_without_license_total += 1;
         this.addAuditLog({
@@ -543,6 +842,34 @@ export class LicenseGatewayDurableObject {
           reason: 'subscription_paid_without_active_license',
           provider_order_id: extracted.provider_order_id,
         });
+      }
+
+      const periodEndMs = Date.parse(String(extracted.subscription_period_end_at ?? ''));
+      if (Number.isFinite(periodEndMs)) {
+        const alreadyCovered = activeLicenses.every((license) => {
+          const expiresAtMs = Date.parse(String(license.expires_at ?? ''));
+          return Number.isFinite(expiresAtMs) && expiresAtMs >= periodEndMs;
+        });
+        if (alreadyCovered) {
+          this.data.metrics.webhook_duplicate_total += 1;
+          this.addAuditLog({
+            actor: 'creem:webhook',
+            action: 'subscription.paid_period_already_covered',
+            target_type: 'order',
+            target_id: extracted.provider_order_id,
+            payload: {
+              subscription_period_end_at: extracted.subscription_period_end_at,
+            },
+          });
+          this.data.metrics.subscription_events_total += 1;
+          return this.json(200, {
+            ok: true,
+            duplicate: true,
+            event_name: extracted.event_name,
+            provider_order_id: extracted.provider_order_id,
+            subscription_period_end_at: extracted.subscription_period_end_at,
+          });
+        }
       }
 
       const resolvedCycle = this.resolveBillingCycle(extracted, activeLicenses[0].billing_cycle);
@@ -568,6 +895,7 @@ export class LicenseGatewayDurableObject {
       }
 
       order.payment_status = 'paid';
+      order.last_subscription_paid_marker = renewalMarker;
       order.updated_at = now;
       this.data.metrics.subscription_events_total += 1;
       this.data.metrics.licenses_extended_total += activeLicenses.length;
@@ -1206,16 +1534,28 @@ export class LicenseGatewayDurableObject {
     return new Date(parsed).toISOString();
   }
 
-  hasProcessedWebhookEvent(eventId) {
-    if (!eventId) return false;
-    return this.data.processed_webhook_events.some((item) => item.event_id === eventId);
+  resolveWebhookEventKey(extracted, rawBody) {
+    if (extracted?.event_id) {
+      return `id:${extracted.event_id}`;
+    }
+    if (!rawBody) return null;
+    return `hash:${this.sha256Hex(rawBody)}`;
   }
 
-  markWebhookEventProcessed(extracted, rawBody) {
-    const eventId = extracted.event_id;
-    if (!eventId) return;
+  hasProcessedWebhookEvent(eventKey) {
+    if (!eventKey) return false;
+    return this.data.processed_webhook_events.some(
+      (item) => item.event_key === eventKey || (item.event_id && `id:${item.event_id}` === eventKey),
+    );
+  }
+
+  markWebhookEventProcessed(extracted, rawBody, eventKey = null) {
+    const eventId = extracted.event_id || null;
+    const resolvedKey = eventKey ?? this.resolveWebhookEventKey(extracted, rawBody);
+    if (!eventId && !resolvedKey) return;
     this.data.processed_webhook_events.push({
       event_id: eventId,
+      event_key: resolvedKey,
       event_name: extracted.event_name,
       provider_order_id: extracted.provider_order_id,
       raw_event_hash: this.sha256Hex(rawBody),
@@ -1323,8 +1663,11 @@ export class LicenseGatewayDurableObject {
     try {
       const pubKeyB64 = this.readEnvString('AGENTSHIELD_LICENSE_PUBLIC_KEY');
       if (!pubKeyB64) {
-        // If no public key is configured, skip verification (backward compat)
-        return true;
+        const allowUnsigned = String(this.env?.AGENTSHIELD_ALLOW_UNSIGNED_ACTIVATION_CODES ?? '').trim() === '1';
+        if (allowUnsigned) {
+          return true;
+        }
+        return false;
       }
 
       const parts = activationCode.trim().split('.');
@@ -1332,7 +1675,7 @@ export class LicenseGatewayDurableObject {
         return false;
       }
 
-      const payloadBytes = new TextEncoder().encode(parts[1]);
+      const payloadBytes = this.decodeBase64UrlToBytes(parts[1]);
       const signatureBytes = this.decodeBase64UrlToBytes(parts[2]);
 
       const keyBytes = this.decodeBase64UrlToBytes(pubKeyB64);

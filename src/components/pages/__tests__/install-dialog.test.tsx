@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InstallDialog } from '../install-dialog';
-import { mockInvoke, invoke } from '@/test/__mocks__/tauri';
+import { emitTauriEvent, mockInvoke, invoke } from '@/test/__mocks__/tauri';
 import { t } from '@/constants/i18n';
 import type { StoreCatalogItem } from '@/types/domain';
 import { useLicenseStore } from '@/stores/licenseStore';
@@ -173,5 +173,131 @@ describe('InstallDialog', () => {
 
     expect(await screen.findByText('Codex CLI')).toBeInTheDocument();
     expect(screen.queryByText('Cursor')).not.toBeInTheDocument();
+  });
+
+  it('continues installation automatically after pending approval is granted', async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+
+    mockInvoke('detect_ai_tools', [
+      {
+        id: 'cursor',
+        name: 'Cursor',
+        icon: '⚡',
+        detected: true,
+        host_detected: true,
+        install_target_ready: true,
+        detection_sources: ['app'],
+        path: '/Applications/Cursor.app',
+        version: '1.0.0',
+        has_mcp_config: true,
+        mcp_config_path: '/tmp/cursor.json',
+        mcp_config_paths: ['/tmp/cursor.json'],
+      },
+    ]);
+    mockInvoke('resolve_install_target_paths', [{ platform: 'cursor', config_path: '/tmp/cursor.config', exists: true }]);
+    let approvalCalls = 0;
+    mockInvoke('request_runtime_guard_action_approval', () => {
+      approvalCalls += 1;
+      if (approvalCalls === 1) {
+        return {
+          status: 'pending',
+          request: {
+            id: 'approval-pending-1',
+            created_at: '2026-03-11T00:00:00Z',
+            updated_at: '2026-03-11T00:00:00Z',
+            status: 'pending',
+            component_id: 'agentshield:store:playwright',
+            component_name: 'Playwright',
+            platform_id: 'cursor',
+            platform_name: 'Cursor',
+            request_kind: 'component_install',
+            trigger_event: 'store_item_install_request',
+            title: '安装审批',
+            summary: '安装预览',
+            approval_label: '允许这一次',
+            deny_label: '继续拦住',
+            action_kind: 'component_install',
+            action_source: 'user_requested_install',
+            action_targets: ['/tmp/cursor.config'],
+            action_preview: [],
+            is_destructive: false,
+            is_batch: false,
+            approval_scope_key: 'scope-1',
+            requested_host: null,
+            sensitive_capabilities: [],
+            consequence_lines: [],
+            launch_after_approval: false,
+            session_id: null,
+          },
+          approval_ticket: null,
+        };
+      }
+      return {
+        status: 'approved',
+        request: {
+          id: 'approval-pending-1',
+          created_at: '2026-03-11T00:00:00Z',
+          updated_at: '2026-03-11T00:00:01Z',
+          status: 'approved',
+          component_id: 'agentshield:store:playwright',
+          component_name: 'Playwright',
+          platform_id: 'cursor',
+          platform_name: 'Cursor',
+          request_kind: 'component_install',
+          trigger_event: 'store_item_install_request',
+          title: '安装审批',
+          summary: '安装预览',
+          approval_label: '允许这一次',
+          deny_label: '继续拦住',
+          action_kind: 'component_install',
+          action_source: 'user_requested_install',
+          action_targets: ['/tmp/cursor.config'],
+          action_preview: [],
+          is_destructive: false,
+          is_batch: false,
+          approval_scope_key: 'scope-1',
+          requested_host: null,
+          sensitive_capabilities: [],
+          consequence_lines: [],
+          launch_after_approval: false,
+          session_id: null,
+        },
+        approval_ticket: 'ticket-auto-1',
+      };
+    });
+    mockInvoke('install_store_item', {
+      success: true,
+      message: '安装完成',
+      installed_platforms: ['cursor'],
+      errors: [],
+    });
+
+    render(
+      <InstallDialog
+        item={item}
+        open
+        onClose={() => {}}
+        onConfirm={onConfirm}
+      />,
+    );
+
+    await screen.findByText('Cursor');
+    await user.click(screen.getByRole('button', { name: t.install }));
+    await screen.findByText('等待你在安全提示中确认安装…');
+
+    emitTauriEvent('runtime-guard-approval', {
+      id: 'approval-pending-1',
+      status: 'approved',
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith('install_store_item', {
+        itemId: 'playwright',
+        platforms: ['cursor'],
+        approvalTicket: 'ticket-auto-1',
+      });
+    });
+    expect(onConfirm).toHaveBeenCalledWith(['cursor']);
   });
 });

@@ -142,7 +142,7 @@ Out of scope:
 ## 11. Post-Implementation Reconciliation
 
 1. `2026-03-20 16:49 CST`，Creem 后台已从“请求更改”切换为“审核中”，说明重新审核请求已成功提交。
-2. `2026-03-20 16:53 CST`，Creem `Settings -> General -> Website URL` 已从旧的 `https://agentshield-storefront.pengluailll.workers.dev` 更新为 `https://app.51silu.com`。
+2. `2026-03-20 16:53 CST`，Creem `Settings -> General -> Website URL` 已从旧的 `https://app.51silu.com` 更新为 `https://app.51silu.com`。
 3. `2026-03-20 16:50 CST`，本地 DNS 查询 `51silu.com NS` 仍返回旧值 `canary.dnspod.net` / `big.dnspod.net`，表明 nameserver 切换仍在全球传播中；该状态需要继续观察，直到全网稳定指向 Cloudflare。
 4. 当前对外关键链路已可访问：
    - `https://app.51silu.com`

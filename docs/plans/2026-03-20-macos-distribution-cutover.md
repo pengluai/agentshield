@@ -48,7 +48,7 @@ Out of scope:
 1. 构建成功：存在 `src-tauri/target/release/bundle/dmg/AgentShield_1.0.1_aarch64.dmg`。
 2. Release 资产更新成功：`gh release view` 可见目标资产更新。
 3. 下载链路可用：
-   - `https://agentshield-storefront.pengluailll.workers.dev/download/macos` 返回可下载内容。
+   - `https://app.51silu.com/download/macos` 返回可下载内容。
    - 文件名为 `AgentShield-pilot-1.0.1-macos-arm64.dmg`。
 
 ## 6. Reverse Review Pass 1

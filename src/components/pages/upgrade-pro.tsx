@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { tauriInvoke as invoke } from '@/services/tauri';
 import { motion } from "framer-motion";
-import { Crown, Zap, Shield, Key, Bell, Star, ArrowRight } from "lucide-react";
+import { Crown, Zap, Shield, Key, Bell, Star, ArrowRight, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLicenseStore } from "@/stores/licenseStore";
 import { isEnglishLocale, t } from '@/constants/i18n';
@@ -128,6 +128,7 @@ const PRO_FEATURES = [
   { icon: Star, textKey: 'proFeature5' as const },
   { icon: Crown, textKey: 'proFeature6' as const },
   { icon: Shield, textKey: 'proFeature7' as const },
+  { icon: Bot, textKey: 'proFeature8' as const },
 ];
 
 

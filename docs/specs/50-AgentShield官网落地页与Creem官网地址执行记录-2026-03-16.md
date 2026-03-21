@@ -74,7 +74,7 @@ Cloudflare 官方推荐的最小静态站部署方式：
 
 已成功部署到 Cloudflare Workers 静态站：
 
-- <https://agentshield-storefront.pengluailll.workers.dev>
+- <https://app.51silu.com>
 
 公网验证结果：
 
@@ -116,7 +116,7 @@ Cloudflare 官方推荐的最小静态站部署方式：
 
 - `https://agentshield.51silu.com`
 - `https://shield.51silu.com`
-- `https://download.51silu.com`
+- `https://app.51silu.com/download`
 
 然后把这个正式域名填入 `Creem Product Website URL`。
 
@@ -124,7 +124,7 @@ Cloudflare 官方推荐的最小静态站部署方式：
 
 先用下面这个预览地址确认官网内容是否满意：
 
-- <https://agentshield-storefront.pengluailll.workers.dev>
+- <https://app.51silu.com>
 
 确认后，再接入自定义域名。
 
