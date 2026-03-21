@@ -302,6 +302,7 @@ function buildApprovalRequestForStep(
 interface AiInstallChatProps {
   onClose: () => void;
   isPro: boolean;
+  isTrial?: boolean;
 }
 
 function TrialQueueCard({ onClose }: { onClose: () => void }) {
@@ -788,8 +789,8 @@ function AutoInstallPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function AiInstallChat({ onClose, isPro }: AiInstallChatProps) {
-  if (!isPro) {
+export function AiInstallChat({ onClose, isPro, isTrial }: AiInstallChatProps) {
+  if (!isPro && !isTrial) {
     return <TrialQueueCard onClose={onClose} />;
   }
 

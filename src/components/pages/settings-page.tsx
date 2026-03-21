@@ -23,6 +23,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { isEnglishLocale, t } from '@/constants/i18n';
+import { localizedDynamicText, translateBackendText } from '@/lib/locale-text';
 
 const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -134,6 +135,42 @@ function getLegalCopy(): Record<Exclude<DialogKey, 'updates' | null>, { title: s
       ],
     },
   };
+}
+
+function formatStartupTimelineStatus(status: StartupTimelineEvent['status']): string {
+  switch (status) {
+    case 'completed':
+      return tr('已完成', 'Completed');
+    case 'failed':
+      return tr('失败', 'Failed');
+    case 'skipped':
+      return tr('已跳过', 'Skipped');
+    case 'started':
+      return tr('进行中', 'In progress');
+    default:
+      return status;
+  }
+}
+
+function formatStartupTimelineStep(step: string): string {
+  const labels: Record<string, string> = {
+    app_boot: tr('应用启动', 'App boot'),
+    license_status: tr('许可证状态', 'License status'),
+    realtime_protection: tr('实时防护', 'Realtime protection'),
+    protection_listener: tr('防护监听', 'Protection listener'),
+    window_lifecycle: tr('窗口生命周期', 'Window lifecycle'),
+    approval_center: tr('审批中心', 'Approval center'),
+    approval_stream: tr('审批事件流', 'Approval stream'),
+    update_audit: tr('更新审计', 'Update audit'),
+    rule_hot_update: tr('规则热更新', 'Rule hot update'),
+    weekly_report: tr('每周报告', 'Weekly report'),
+    background_scan: tr('后台扫描', 'Background scan'),
+    ui_crash: tr('界面异常', 'UI crash'),
+  };
+  if (labels[step]) {
+    return labels[step];
+  }
+  return step.replace(/_/g, ' ');
 }
 
 export function SettingsPage() {
@@ -1011,7 +1048,9 @@ export function SettingsPage() {
                     startupTimeline.slice(0, 8).map((event) => (
                       <div key={event.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
                         <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-medium text-white">{event.summary}</p>
+                          <p className="text-sm font-medium text-white">
+                            {localizedDynamicText(event.summary, translateBackendText(event.summary))}
+                          </p>
                           <span
                             className={cn(
                               'rounded-full px-2 py-0.5 text-[11px] font-medium uppercase',
@@ -1024,11 +1063,11 @@ export function SettingsPage() {
                                     : 'bg-sky-500/15 text-sky-300'
                             )}
                           >
-                            {event.status}
+                            {formatStartupTimelineStatus(event.status)}
                           </span>
                         </div>
                         <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-white/35">
-                          {event.step.replace(/_/g, ' ')}
+                          {formatStartupTimelineStep(event.step)}
                         </p>
                         <p className="mt-2 text-[11px] text-white/40">
                           {new Date(event.timestamp).toLocaleString()}

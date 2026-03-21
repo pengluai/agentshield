@@ -19,7 +19,7 @@ import { useProGate } from '@/hooks/useProGate';
 import type { ScanCardState } from '@/types/domain';
 import { createBufferedPhaseVisualizer } from '@/lib/buffered-phase-visualizer';
 import { requestRuntimeGuardActionApproval, listenRuntimeGuardApprovals } from '@/services/runtime-guard';
-import { containsCjk } from '@/lib/locale-text';
+import { containsCjk, localizedDynamicText, translateBackendText } from '@/lib/locale-text';
 
 const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
 
@@ -52,13 +52,22 @@ function getScanPhaseLabels(): Record<(typeof SCAN_PHASE_ORDER)[number], string>
 }
 
 function localizeProgressLabel(phaseId: string, label: string): string {
-  if (!isEnglishLocale || !containsCjk(label)) {
-    return label;
-  }
   const labels = getScanPhaseLabels();
-  const base = labels[phaseId as (typeof SCAN_PHASE_ORDER)[number]] ?? 'Running security checks';
+  const base = labels[phaseId as (typeof SCAN_PHASE_ORDER)[number]]
+    ?? tr('正在执行安全检查', 'Running security checks');
+  const localized = translateBackendText(label);
+  if (localized !== label) {
+    return localized;
+  }
   const detail = label.split('·').slice(1).join('·').trim();
-  return detail ? `${base} · ${detail}` : base;
+  if (detail) {
+    const localizedDetail = translateBackendText(detail);
+    return `${base} · ${localizedDetail}`;
+  }
+  if ((isEnglishLocale && containsCjk(label)) || (!isEnglishLocale && !containsCjk(label))) {
+    return base;
+  }
+  return label;
 }
 
 const MIN_SCAN_PHASE_VISIBLE_MS = 900;
@@ -509,7 +518,12 @@ export function SmartGuardHome({ onViewScanDetail }: SmartGuardHomeProps) {
                   )
                 );
               } catch (error) {
-                setFixAllMessage(String(error));
+                setFixAllMessage(
+                  localizedDynamicText(
+                    String(error),
+                    tr('一键修复失败，请稍后重试。', 'Fix-all failed. Please retry.'),
+                  )
+                );
               } finally {
                 fixAllInFlightRef.current = false;
                 setFixAllBusy(false);

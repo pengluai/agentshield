@@ -41,14 +41,15 @@ import { MODULE_THEMES } from './constants/colors';
 
 const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
 
-// Card ID to display name mapping
-const CARD_TITLES: Record<string, string> = {
-  'mcp-security': t.cardMcpSecurity,
-  'key-security': t.cardKeySecurity,
-  'env-config': t.cardEnvConfig,
-  'skill-security': t.cardInstalledRisk,
-  'system-protection': t.cardSystemProtection,
-};
+function getCardTitles(): Record<string, string> {
+  return {
+    'mcp-security': t.cardMcpSecurity,
+    'key-security': t.cardKeySecurity,
+    'env-config': t.cardEnvConfig,
+    'skill-security': t.cardInstalledRisk,
+    'system-protection': t.cardSystemProtection,
+  };
+}
 
 const UPDATE_AUDIT_INTERVAL_MS = 60 * 60 * 1000;
 const AUTO_RULE_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -69,7 +70,7 @@ class ErrorBoundary extends Component<{ children: ReactNode; onReset?: () => voi
     return { hasError: true, error };
   }
   componentDidCatch(error: Error, info: ErrorInfo) {
-    recordStartupTimelineEvent('ui_crash', 'failed', `界面渲染异常: ${error.message}`);
+    recordStartupTimelineEvent('ui_crash', 'failed', tr(`界面渲染异常: ${error.message}`, `UI render exception: ${error.message}`));
     console.error('[AgentShield ErrorBoundary]', error, info.componentStack);
   }
   render() {
@@ -159,12 +160,12 @@ function AppContent() {
   // Load persisted license & notifications from backend on startup
   useEffect(() => {
     if (!isTauriEnvironment()) {
-      recordStartupStepOnce('license_status', 'skipped', '浏览器预览模式，跳过许可证状态 IPC 初始化。');
+      recordStartupStepOnce('license_status', 'skipped', tr('浏览器预览模式，跳过许可证状态 IPC 初始化。', 'Browser preview mode: skipping license IPC initialization.'));
       void useNotificationStore.getState().loadNotifications();
       return;
     }
 
-    recordStartupStepOnce('license_status', 'started', '开始加载许可证状态与通知中心。');
+    recordStartupStepOnce('license_status', 'started', tr('开始加载许可证状态与通知中心。', 'Loading license status and notification center.'));
     tauriInvoke<{ plan: string; status: string; expires_at: string | null; trial_days_left: number | null }>('check_license_status')
       .then((info) => {
         useLicenseStore.getState().setLicenseInfo({
@@ -174,10 +175,10 @@ function AppContent() {
           trialDaysLeft: info.trial_days_left ?? undefined,
           features: [],
         });
-        recordStartupStepOnce('license_status', 'completed', `许可证状态已加载: ${info.status}`);
+        recordStartupStepOnce('license_status', 'completed', tr(`许可证状态已加载: ${info.status}`, `License status loaded: ${info.status}`));
       })
       .catch((e) => {
-        recordStartupStepOnce('license_status', 'failed', `许可证状态加载失败: ${String(e)}`);
+        recordStartupStepOnce('license_status', 'failed', tr(`许可证状态加载失败: ${String(e)}`, `License status loading failed: ${String(e)}`));
         console.error('Failed to load license status:', e);
       });
 
@@ -186,16 +187,16 @@ function AppContent() {
 
   useEffect(() => {
     if (safeMode) {
-      recordStartupStepOnce('realtime_protection', 'started', '安全模式正在暂停实时主动防护。');
+      recordStartupStepOnce('realtime_protection', 'started', tr('安全模式正在暂停实时主动防护。', 'Safe mode is pausing realtime active protection.'));
       void configureProtection(false, false)
         .then(() => {
-          recordStartupStepOnce('realtime_protection', 'completed', '安全模式已启用，实时主动防护已暂停。');
+          recordStartupStepOnce('realtime_protection', 'completed', tr('安全模式已启用，实时主动防护已暂停。', 'Safe mode enabled, realtime active protection is paused.'));
         })
         .catch((error) => {
           recordStartupStepOnce(
             'realtime_protection',
             'failed',
-            `安全模式暂停实时主动防护失败: ${String(error)}`
+            tr(`安全模式暂停实时主动防护失败: ${String(error)}`, `Failed to pause realtime protection in safe mode: ${String(error)}`)
           );
           console.error('Failed to pause realtime protection in safe mode:', error);
         });
@@ -205,21 +206,25 @@ function AppContent() {
     recordStartupStepOnce(
       'realtime_protection',
       'started',
-      settings.realTimeProtection ? '开始配置实时主动防护。' : '开始同步关闭实时主动防护。'
+      settings.realTimeProtection
+        ? tr('开始配置实时主动防护。', 'Configuring realtime active protection.')
+        : tr('开始同步关闭实时主动防护。', 'Syncing realtime active protection as disabled.')
     );
     void configureProtection(settings.realTimeProtection, settings.autoQuarantine)
       .then((status) => {
         recordStartupStepOnce(
           'realtime_protection',
           'completed',
-          status.enabled ? '实时主动防护已启用。' : '实时主动防护当前保持关闭。'
+          status.enabled
+            ? tr('实时主动防护已启用。', 'Realtime active protection is enabled.')
+            : tr('实时主动防护当前保持关闭。', 'Realtime active protection remains disabled.')
         );
       })
       .catch((error) => {
         recordStartupStepOnce(
           'realtime_protection',
           'failed',
-          `实时主动防护配置失败: ${String(error)}`
+          tr(`实时主动防护配置失败: ${String(error)}`, `Failed to configure realtime active protection: ${String(error)}`)
         );
         console.error('Failed to configure realtime protection:', error);
       });
@@ -227,7 +232,7 @@ function AppContent() {
 
   useEffect(() => {
     if (safeMode) {
-      recordStartupStepOnce('protection_listener', 'skipped', '安全模式已开启，本次不绑定实时防护事件监听。');
+      recordStartupStepOnce('protection_listener', 'skipped', tr('安全模式已开启，本次不绑定实时防护事件监听。', 'Safe mode enabled: skipping realtime protection listener binding.'));
       return;
     }
 
@@ -240,9 +245,9 @@ function AppContent() {
       }
     }).then((dispose) => {
       unlisten = dispose;
-      recordStartupStepOnce('protection_listener', 'completed', '实时防护事件监听已就绪。');
+      recordStartupStepOnce('protection_listener', 'completed', tr('实时防护事件监听已就绪。', 'Realtime protection listener is ready.'));
     }).catch((error) => {
-      recordStartupStepOnce('protection_listener', 'failed', `实时防护监听绑定失败: ${String(error)}`);
+      recordStartupStepOnce('protection_listener', 'failed', tr(`实时防护监听绑定失败: ${String(error)}`, `Failed to bind protection listener: ${String(error)}`));
     });
 
     return () => {
@@ -310,10 +315,10 @@ function AppContent() {
       })
       .then((dispose) => {
         unlisten = dispose;
-        recordStartupStepOnce('window_lifecycle', 'completed', '窗口关闭事件已绑定。');
+        recordStartupStepOnce('window_lifecycle', 'completed', tr('窗口关闭事件已绑定。', 'Window close lifecycle handler is ready.'));
       })
       .catch((error) => {
-        recordStartupStepOnce('window_lifecycle', 'failed', `窗口关闭事件绑定失败: ${String(error)}`);
+        recordStartupStepOnce('window_lifecycle', 'failed', tr(`窗口关闭事件绑定失败: ${String(error)}`, `Failed to bind window close lifecycle handler: ${String(error)}`));
         console.error('Failed to bind close handler:', error);
       });
 
@@ -380,11 +385,13 @@ function AppContent() {
         recordStartupStepOnce(
           'approval_center',
           'completed',
-          pending.length > 0 ? `已恢复 ${pending.length} 个待处理审批。` : '审批中心已就绪，当前没有待处理审批。'
+          pending.length > 0
+            ? tr(`已恢复 ${pending.length} 个待处理审批。`, `Restored ${pending.length} pending approvals.`)
+            : tr('审批中心已就绪，当前没有待处理审批。', 'Approval center is ready with no pending approvals.')
         );
       })
       .catch((error) => {
-        recordStartupStepOnce('approval_center', 'failed', `审批中心初始化失败: ${String(error)}`);
+        recordStartupStepOnce('approval_center', 'failed', tr(`审批中心初始化失败: ${String(error)}`, `Approval center initialization failed: ${String(error)}`));
         console.error('Failed to load runtime approvals:', error);
       });
 
@@ -392,9 +399,9 @@ function AppContent() {
       void upsertApproval(approval);
     }).then((dispose) => {
       unlisten = dispose;
-      recordStartupStepOnce('approval_stream', 'completed', '审批事件监听已就绪。');
+      recordStartupStepOnce('approval_stream', 'completed', tr('审批事件监听已就绪。', 'Approval event stream listener is ready.'));
     }).catch((error) => {
-      recordStartupStepOnce('approval_stream', 'failed', `审批事件监听绑定失败: ${String(error)}`);
+      recordStartupStepOnce('approval_stream', 'failed', tr(`审批事件监听绑定失败: ${String(error)}`, `Failed to bind approval event stream listener: ${String(error)}`));
     });
 
     return () => {
@@ -405,11 +412,11 @@ function AppContent() {
 
   useEffect(() => {
     if (safeMode) {
-      recordStartupStepOnce('update_audit', 'skipped', '安全模式已开启，本次不执行自动更新检查。');
+      recordStartupStepOnce('update_audit', 'skipped', tr('安全模式已开启，本次不执行自动更新检查。', 'Safe mode enabled: skipping automatic update audit.'));
       return;
     }
     if (!settings.checkUpdatesAuto) {
-      recordStartupStepOnce('update_audit', 'skipped', '你已关闭自动更新检查。');
+      recordStartupStepOnce('update_audit', 'skipped', tr('你已关闭自动更新检查。', 'Automatic update audit is disabled by settings.'));
       return;
     }
 
@@ -458,9 +465,9 @@ function AppContent() {
     };
 
     void runAudit().then(() => {
-      recordStartupStepOnce('update_audit', 'completed', '自动更新检查计划已启动。');
+      recordStartupStepOnce('update_audit', 'completed', tr('自动更新检查计划已启动。', 'Automatic update audit schedule started.'));
     }).catch((error) => {
-      recordStartupStepOnce('update_audit', 'failed', `自动更新检查启动失败: ${String(error)}`);
+      recordStartupStepOnce('update_audit', 'failed', tr(`自动更新检查启动失败: ${String(error)}`, `Failed to start automatic update audit schedule: ${String(error)}`));
     });
     const interval = window.setInterval(() => {
       void runAudit();
@@ -474,12 +481,12 @@ function AppContent() {
 
   useEffect(() => {
     if (safeMode) {
-      recordStartupStepOnce('rule_hot_update', 'skipped', '安全模式已开启，本次不执行规则热更新。');
+      recordStartupStepOnce('rule_hot_update', 'skipped', tr('安全模式已开启，本次不执行规则热更新。', 'Safe mode enabled: skipping rule hot update.'));
       return;
     }
 
     if (!autoRuleUpdatesUnlocked) {
-      recordStartupStepOnce('rule_hot_update', 'skipped', '当前方案为手动规则同步。');
+      recordStartupStepOnce('rule_hot_update', 'skipped', tr('当前方案为手动规则同步。', 'Current plan uses manual rule sync.'));
       return;
     }
 
@@ -533,9 +540,9 @@ function AppContent() {
     };
 
     void maybeSyncRules().then(() => {
-      recordStartupStepOnce('rule_hot_update', 'completed', '规则热更新任务已启动。');
+      recordStartupStepOnce('rule_hot_update', 'completed', tr('规则热更新任务已启动。', 'Rule hot-update task started.'));
     }).catch((error) => {
-      recordStartupStepOnce('rule_hot_update', 'failed', `规则热更新任务启动失败: ${String(error)}`);
+      recordStartupStepOnce('rule_hot_update', 'failed', tr(`规则热更新任务启动失败: ${String(error)}`, `Failed to start rule hot-update task: ${String(error)}`));
     });
 
     const interval = window.setInterval(() => {
@@ -550,11 +557,11 @@ function AppContent() {
 
   useEffect(() => {
     if (safeMode) {
-      recordStartupStepOnce('weekly_report', 'skipped', '安全模式已开启，本次不生成每周摘要。');
+      recordStartupStepOnce('weekly_report', 'skipped', tr('安全模式已开启，本次不生成每周摘要。', 'Safe mode enabled: skipping weekly summary.'));
       return;
     }
     if (!settings.weeklyReport) {
-      recordStartupStepOnce('weekly_report', 'skipped', '你已关闭每周安全摘要。');
+      recordStartupStepOnce('weekly_report', 'skipped', tr('你已关闭每周安全摘要。', 'Weekly security summary is disabled by settings.'));
       return;
     }
 
@@ -601,9 +608,9 @@ function AppContent() {
     };
 
     void maybeSendWeeklyReport().then(() => {
-      recordStartupStepOnce('weekly_report', 'completed', '每周安全摘要计划已启动。');
+      recordStartupStepOnce('weekly_report', 'completed', tr('每周安全摘要计划已启动。', 'Weekly summary schedule started.'));
     }).catch((error) => {
-      recordStartupStepOnce('weekly_report', 'failed', `每周安全摘要计划启动失败: ${String(error)}`);
+      recordStartupStepOnce('weekly_report', 'failed', tr(`每周安全摘要计划启动失败: ${String(error)}`, `Failed to start weekly summary schedule: ${String(error)}`));
     });
     const interval = window.setInterval(() => {
       void maybeSendWeeklyReport();
@@ -617,11 +624,11 @@ function AppContent() {
 
   useEffect(() => {
     if (safeMode) {
-      recordStartupStepOnce('background_scan', 'skipped', '安全模式已开启，本次不执行后台自动扫描。');
+      recordStartupStepOnce('background_scan', 'skipped', tr('安全模式已开启，本次不执行后台自动扫描。', 'Safe mode enabled: skipping background automatic scan.'));
       return;
     }
     if (!settings.scanAutoStart || settings.scanFrequency === 'manual') {
-      recordStartupStepOnce('background_scan', 'skipped', '后台自动扫描当前未启用。');
+      recordStartupStepOnce('background_scan', 'skipped', tr('后台自动扫描当前未启用。', 'Background automatic scan is currently disabled.'));
       return;
     }
 
@@ -683,9 +690,9 @@ function AppContent() {
     };
 
     void maybeRunBackgroundScan().then(() => {
-      recordStartupStepOnce('background_scan', 'completed', '后台自动扫描计划已启动。');
+      recordStartupStepOnce('background_scan', 'completed', tr('后台自动扫描计划已启动。', 'Background automatic scan schedule started.'));
     }).catch((error) => {
-      recordStartupStepOnce('background_scan', 'failed', `后台自动扫描计划启动失败: ${String(error)}`);
+      recordStartupStepOnce('background_scan', 'failed', tr(`后台自动扫描计划启动失败: ${String(error)}`, `Failed to start background automatic scan schedule: ${String(error)}`));
     });
     const interval = window.setInterval(() => {
       void maybeRunBackgroundScan();
@@ -735,7 +742,7 @@ function AppContent() {
             : undefined)
         : undefined;
       const title = selectedCardId
-        ? CARD_TITLES[selectedCardId]
+        ? getCardTitles()[selectedCardId]
         : undefined;
 
       return (

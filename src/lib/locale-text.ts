@@ -9,14 +9,32 @@ export function containsCjk(value: string | null | undefined): boolean {
   return CJK_REGEX.test(value);
 }
 
-export function localizedDynamicText(value: string, englishFallback: string): string {
-  if (!isEnglishLocale) {
-    return value;
+function replaceAllLiteral(input: string, search: string, replacement: string): string {
+  if (!search) {
+    return input;
   }
-  if (containsCjk(value)) {
-    return englishFallback;
+  return input.split(search).join(replacement);
+}
+
+export function localizedDynamicText(value: string, localeFallback: string): string {
+  const normalized = (value ?? '').trim();
+  if (!normalized) {
+    return localeFallback;
   }
-  return value;
+
+  const translated = translateBackendText(normalized);
+  if (translated !== normalized) {
+    return translated;
+  }
+
+  if (isEnglishLocale) {
+    return containsCjk(normalized) ? localeFallback : normalized;
+  }
+
+  if (!containsCjk(normalized) && containsCjk(localeFallback)) {
+    return localeFallback;
+  }
+  return normalized;
 }
 
 /**
@@ -70,6 +88,9 @@ const BILINGUAL_TABLE: Array<[string, string]> = [
   ['这类技能可能把文件、表单数据、上下文或凭据上传到外部服务，存在敏感信息外发风险。', 'This skill may upload files, form data, or credentials to external services — risk of sensitive data leakage.'],
   ['这类技能会读取环境变量、钥匙串或密钥文件，来源不明时存在 API Key、令牌和账户凭据泄露风险。', 'This skill reads environment variables, keychains, or key files — unknown sources risk leaking API keys and credentials.'],
   ['当前命中了高危恶意模式，建议立即停用并核对来源。', 'Matched a high-risk malicious pattern — recommend disabling immediately and verifying the source.'],
+  ['未知工具', 'Unknown tool'],
+  ['未知 AI 工具', 'Unknown AI Tool'],
+  ['发现的工具 #', 'Discovered #'],
 
   // scan.rs — scan progress steps
   ['检测 AI 工具与配置入口', 'Detecting AI tools and config entries'],
@@ -86,6 +107,32 @@ const BILINGUAL_TABLE: Array<[string, string]> = [
   ['已拦下可疑邮件发送', 'Blocked suspicious email send'],
   ['已拦下可疑支付操作', 'Blocked suspicious payment action'],
   ['已拦下可疑浏览器提交', 'Blocked suspicious browser submission'],
+
+  // startup timeline summaries
+  ['浏览器预览模式，跳过许可证状态 IPC 初始化。', 'Browser preview mode: skipping license IPC initialization.'],
+  ['开始加载许可证状态与通知中心。', 'Loading license status and notification center.'],
+  ['审批中心已就绪，当前没有待处理审批。', 'Approval center is ready, with no pending approvals.'],
+  ['审批事件监听已就绪。', 'Approval event listener is ready.'],
+  ['自动更新检查计划已启动。', 'Automatic update audit schedule started.'],
+  ['规则热更新任务已启动。', 'Rule hot-update task started.'],
+  ['每周安全摘要计划已启动。', 'Weekly security summary schedule started.'],
+  ['后台自动扫描计划已启动。', 'Background automatic scan schedule started.'],
+  ['窗口关闭事件已绑定。', 'Window close handler is ready.'],
+  ['实时防护事件监听已就绪。', 'Realtime protection event listener is ready.'],
+  ['应用正常启动，开始初始化本地防护与审批能力。', 'App started normally. Initializing local protection and approval capabilities.'],
+  ['应用以安全模式启动，本次会跳过后台扫描、自动更新检查和主动防护。', 'App started in safe mode. Background scans, auto-update checks, and active protection are skipped.'],
+
+  // OpenClaw backend fragments
+  ['14 天试用已结束', 'The 14-day trial has ended'],
+  ['该步骤为一键自动化能力', 'This step is a one-click automation capability'],
+  ['缺少渠道或 Token', 'Missing channel or token'],
+  ['安装成功', 'OpenClaw installed successfully'],
+  ['安装失败', 'OpenClaw installation failed'],
+  ['初始化完成', 'OpenClaw initialization completed'],
+  ['初始化失败', 'OpenClaw initialization failed'],
+  ['配置完成', 'Configuration completed'],
+  ['验证通过', 'Verification passed'],
+  ['安装验证失败', 'OpenClaw verification failed'],
 ];
 
 /**
@@ -94,33 +141,51 @@ const BILINGUAL_TABLE: Array<[string, string]> = [
  * When Chinese locale: English → Chinese.
  */
 export function translateBackendText(value: string): string {
+  if (!value) {
+    return value;
+  }
+
   if (isEnglishLocale) {
     // CN → EN
-    if (!containsCjk(value)) return value; // already English
     // Dynamic: "发现 N 个高风险安全问题"
     const critCn = value.match(/发现 (\d+) 个高风险安全问题/);
-    if (critCn) return `${critCn[1]} critical security issues detected`;
+    if (critCn) {
+      return `${critCn[1]} critical security issues detected`;
+    }
     // Static exact match
     for (const [cn, en] of BILINGUAL_TABLE) {
-      if (value === cn) return en;
+      if (value === cn) {
+        return en;
+      }
     }
     // Partial replacement
     let result = value;
     for (const [cn, en] of BILINGUAL_TABLE) {
-      if (result.includes(cn)) result = result.replace(cn, en);
+      if (result.includes(cn)) {
+        result = replaceAllLiteral(result, cn, en);
+      }
     }
     return result;
   } else {
     // EN → CN
-    if (containsCjk(value)) return value; // already Chinese
     // Dynamic: "N critical security issues detected"
     const critEn = value.match(/^(\d+) critical security issues? detected$/);
-    if (critEn) return `发现 ${critEn[1]} 个高风险安全问题`;
+    if (critEn) {
+      return `发现 ${critEn[1]} 个高风险安全问题`;
+    }
     // Static exact match
     for (const [cn, en] of BILINGUAL_TABLE) {
-      if (value === en) return cn;
+      if (value === en) {
+        return cn;
+      }
     }
-    // No match — return as-is
-    return value;
+    // Partial replacement
+    let result = value;
+    for (const [cn, en] of BILINGUAL_TABLE) {
+      if (result.includes(en)) {
+        result = replaceAllLiteral(result, en, cn);
+      }
+    }
+    return result;
   }
 }

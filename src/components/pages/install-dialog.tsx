@@ -29,6 +29,7 @@ interface InstallDialogProps {
 }
 
 const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
+const joinLocalized = (values: string[]) => values.join(isEnglishLocale ? ', ' : '、');
 
 /** Map scanner tool IDs to Platform type values */
 const TOOL_ID_TO_PLATFORM: Record<string, Platform> = {
@@ -204,7 +205,7 @@ export function InstallDialog({ item, open, onClose, onConfirm }: InstallDialogP
         platform_id: selectedPlatforms.join(','),
         platform_name: selectedPlatforms
           .map((platform) => PLATFORM_CONFIG[platform]?.name ?? platform)
-          .join('、'),
+          .join(isEnglishLocale ? ', ' : '、'),
         request_kind: 'component_install',
         trigger_event: 'store_item_install_request',
         action_kind: 'component_install',
@@ -252,7 +253,7 @@ export function InstallDialog({ item, open, onClose, onConfirm }: InstallDialogP
       }
 
       setInstallSummary(result.errors?.length
-        ? `${result.message}${tr('。成功平台：', '. Succeeded targets: ')}${result.installed_platforms?.join('、') || tr('无', 'None')}`
+        ? `${result.message}${tr('。成功平台：', '. Succeeded targets: ')}${(result.installed_platforms && result.installed_platforms.length > 0) ? joinLocalized(result.installed_platforms) : tr('无', 'None')}`
         : result.message
       );
       onConfirm(selectedPlatforms);
@@ -314,7 +315,7 @@ export function InstallDialog({ item, open, onClose, onConfirm }: InstallDialogP
                   <SafetyBadge level={item.safety_level} size="small" />
                   <p className="mt-1 text-xs text-white/55">
                     {t.installTo}: {selectedPlatforms.length > 0
-                      ? selectedPlatforms.map((platform) => PLATFORM_CONFIG[platform]?.name ?? platform).join('、')
+                      ? joinLocalized(selectedPlatforms.map((platform) => PLATFORM_CONFIG[platform]?.name ?? platform))
                       : tr('请选择目标 AI 工具', 'Select target AI tools')}
                   </p>
                 </div>
@@ -333,7 +334,7 @@ export function InstallDialog({ item, open, onClose, onConfirm }: InstallDialogP
                       )}
                     </p>
                     <p className="mt-3 text-xs text-white/40">
-                      {tr('目标：', 'Targets: ')}{selectedPlatforms.map((platform) => PLATFORM_CONFIG[platform]?.name ?? platform).join('、')}
+                      {tr('目标：', 'Targets: ')}{joinLocalized(selectedPlatforms.map((platform) => PLATFORM_CONFIG[platform]?.name ?? platform))}
                     </p>
                   </div>
 
@@ -354,7 +355,12 @@ export function InstallDialog({ item, open, onClose, onConfirm }: InstallDialogP
                           '该条目首次安装会写入凭据占位字段',
                           'This item writes credential placeholders on first install'
                         )}
-                        {item.auth_headers?.length ? `（${item.auth_headers.join('、')}）` : ''}。
+                        {item.auth_headers?.length
+                          ? (isEnglishLocale
+                              ? ` (${joinLocalized(item.auth_headers)})`
+                              : `（${joinLocalized(item.auth_headers)}）`)
+                          : ''}
+                        {tr('。', '.')}
                         {tr(
                           '为避免误填密钥，AgentShield 不会自动注入真实凭据，请在宿主配置中手动补全。',
                           'To avoid credential mistakes, AgentShield never auto-injects real secrets. Fill them manually in host config.'
@@ -601,7 +607,7 @@ function buildInstallPreview(item: StoreCatalogItem, targets: InstallTargetPath[
     if (item.auth_headers?.length) {
       lines.push(tr(
         `首次安装会写入凭据占位字段: ${item.auth_headers.join('、')}`,
-        `Credential placeholders written on first install: ${item.auth_headers.join(', ')}`
+        `Credential placeholders written on first install: ${joinLocalized(item.auth_headers)}`
       ));
     } else {
       lines.push(tr(
@@ -613,8 +619,8 @@ function buildInstallPreview(item: StoreCatalogItem, targets: InstallTargetPath[
 
   if (targets.length > 0) {
     lines.push(tr(
-      `写入目标: ${targets.map((target) => PLATFORM_CONFIG[target.platform]?.name ?? target.platform).join('、')}`,
-      `Write targets: ${targets.map((target) => PLATFORM_CONFIG[target.platform]?.name ?? target.platform).join(', ')}`
+      `写入目标: ${joinLocalized(targets.map((target) => PLATFORM_CONFIG[target.platform]?.name ?? target.platform))}`,
+      `Write targets: ${joinLocalized(targets.map((target) => PLATFORM_CONFIG[target.platform]?.name ?? target.platform))}`
     ));
   }
 

@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import type { ReactNode } from 'react';
 import { t } from '@/constants/i18n';
+import { localizedDynamicText, translateBackendText } from '@/lib/locale-text';
 
 interface GlassmorphicCardProps {
   children?: ReactNode;
@@ -103,11 +104,16 @@ export function ScanResultCard({
   onViewClick,
 }: ScanResultCardProps) {
   const hasIssues = result && result.issueCount > 0;
-  const headline = result?.headline
+  const headlineRaw = result?.headline
     ?? (hasIssues ? `${result.issueCount} ${t.warning}` : t.allPassed);
-  const detail = result?.detail
+  const detailRaw = result?.detail
     ?? (hasIssues && result?.canFix ? t.canFix : result?.message ?? '');
-  const actionLabel = result?.actionLabel ?? t.view;
+  const actionLabelRaw = result?.actionLabel ?? t.view;
+  const headline = localizedDynamicText(headlineRaw, translateBackendText(headlineRaw));
+  const detail = detailRaw
+    ? localizedDynamicText(detailRaw, translateBackendText(detailRaw))
+    : '';
+  const actionLabel = localizedDynamicText(actionLabelRaw, translateBackendText(actionLabelRaw));
 
   return (
     <GlassmorphicCard

@@ -508,7 +508,7 @@ function formatSensitiveCapability(value: string): string {
     case '删除扩展配置':
       return tr('删除扩展配置', 'Delete extension config');
     default:
-      return localizedDynamicText(value, tr('Sensitive capability', 'Sensitive capability'));
+      return localizedDynamicText(value, tr('敏感能力', 'Sensitive capability'));
   }
 }
 

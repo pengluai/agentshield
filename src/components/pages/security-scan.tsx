@@ -192,7 +192,7 @@ function inferComponentName(issue: RustSecurityIssue, componentType: SecurityIss
 function formatComponentTypeLabel(componentType?: SecurityIssue['componentType']): string {
   switch (componentType) {
     case 'skill':
-      return 'Skill';
+      return tr('技能', 'Skill');
     case 'mcp':
       return 'MCP';
     case 'config':
@@ -215,14 +215,14 @@ export function mapRustIssue(ri: RustSecurityIssue): SecurityIssue {
 
   const fallbackTitle =
     severity === 'critical'
-      ? 'Critical security issue detected'
+      ? tr('发现严重安全风险', 'Critical security issue detected')
       : severity === 'warning'
-        ? 'Security warning detected'
-        : 'Security finding detected';
+        ? tr('发现安全警告', 'Security warning detected')
+        : tr('发现安全提示', 'Security finding detected');
   const fallbackDescription =
     severity === 'critical'
-      ? 'A high-risk behavior was detected. Please review the file path and suggested fix.'
-      : 'A potential risk was detected. Please review the related configuration.';
+      ? tr('检测到高风险行为，请检查文件路径和修复建议。', 'A high-risk behavior was detected. Please review the file path and suggested fix.')
+      : tr('检测到潜在风险，请检查相关配置。', 'A potential risk was detected. Please review the related configuration.');
   const hostNameHint = extractHostName(ri);
   const platform = hostNameHint
     ? (inferPlatformFromText(hostNameHint) ?? extractPlatform(ri))
@@ -250,15 +250,36 @@ export function mapRustIssue(ri: RustSecurityIssue): SecurityIssue {
     filePath: ri.file_path ?? undefined,
     semanticReview: ri.semantic_review
       ? {
-          verdict: localizedDynamicText(ri.semantic_review.verdict, 'needs_review'),
+          verdict: localizedDynamicText(ri.semantic_review.verdict, tr('待确认', 'needs_review')),
           confidence: ri.semantic_review.confidence,
           summary: localizedDynamicText(
             ri.semantic_review.summary,
-            'Semantic guard flagged this item for additional review.',
+            tr('语义护栏将该项标记为需要进一步复核。', 'Semantic guard flagged this item for additional review.'),
           ),
           recommendedAction: localizedDynamicText(
             ri.semantic_review.recommended_action,
-            'Review this item and apply the recommended secure configuration.',
+            tr('请复核该项并应用推荐的安全配置。', 'Review this item and apply the recommended secure configuration.'),
+          ),
+        }
+      : undefined,
+  };
+}
+
+function localizeIssueForCurrentLocale(issue: SecurityIssue): SecurityIssue {
+  return {
+    ...issue,
+    title: localizedDynamicText(issue.title, translateBackendText(issue.title)),
+    description: localizedDynamicText(issue.description, translateBackendText(issue.description)),
+    hostName: issue.hostName ? translateBackendText(issue.hostName) : issue.hostName,
+    ownershipLabel: issue.ownershipLabel ? translateBackendText(issue.ownershipLabel) : issue.ownershipLabel,
+    semanticReview: issue.semanticReview
+      ? {
+          ...issue.semanticReview,
+          verdict: localizedDynamicText(issue.semanticReview.verdict, tr('待确认', 'needs_review')),
+          summary: localizedDynamicText(issue.semanticReview.summary, tr('需要进一步复核。', 'Needs additional review.')),
+          recommendedAction: localizedDynamicText(
+            issue.semanticReview.recommendedAction,
+            tr('请复核并采用推荐安全配置。', 'Please review and apply recommended secure configuration.'),
           ),
         }
       : undefined,
@@ -325,7 +346,10 @@ function platformDisplayName(platform: Platform): string {
     openclaw: 'OpenClaw',
   };
   if (platform.startsWith('unknown_ai_tool_')) {
-    return `Unknown AI Tool (${platform.replace('unknown_ai_tool_', '')})`;
+    return tr(
+      `未知 AI 工具（${platform.replace('unknown_ai_tool_', '')}）`,
+      `Unknown AI Tool (${platform.replace('unknown_ai_tool_', '')})`,
+    );
   }
   return mapping[platform] || platform;
 }
@@ -404,13 +428,22 @@ function getScanPhaseLabels(): Record<(typeof SCAN_PHASE_ORDER)[number], string>
 }
 
 function localizeProgressLabel(phaseId: string, label: string): string {
-  if (!isEnglishLocale || !containsCjk(label)) {
-    return label;
-  }
   const labels = getScanPhaseLabels();
-  const base = labels[phaseId as (typeof SCAN_PHASE_ORDER)[number]] ?? 'Running security checks';
+  const base = labels[phaseId as (typeof SCAN_PHASE_ORDER)[number]]
+    ?? tr('正在执行安全检查', 'Running security checks');
+  const localized = translateBackendText(label);
+  if (localized !== label) {
+    return localized;
+  }
   const detail = label.split('·').slice(1).join('·').trim();
-  return detail ? `${base} · ${detail}` : base;
+  if (detail) {
+    const localizedDetail = translateBackendText(detail);
+    return `${base} · ${localizedDetail}`;
+  }
+  if ((isEnglishLocale && containsCjk(label)) || (!isEnglishLocale && !containsCjk(label))) {
+    return base;
+  }
+  return label;
 }
 
 const MIN_SCAN_PHASE_VISIBLE_MS = 900;
@@ -564,9 +597,12 @@ export function SecurityScanDetail({ onBack, onOpenInstalledManagement, cachedIs
   const { isPro, isTrial } = useProGate();
   const batchFixUnlocked = isPro || isTrial;
   const useCached = cachedIssues !== undefined;
-  const [issues, setIssues] = useState<SecurityIssue[]>(useCached ? cachedIssues : []);
+  const currentLanguage = useSettingsStore((state) => state.language);
+  const [issues, setIssues] = useState<SecurityIssue[]>(
+    useCached ? cachedIssues.map(localizeIssueForCurrentLocale) : []
+  );
   const [selectedIssue, setSelectedIssue] = useState<SecurityIssue | null>(
-    useCached && cachedIssues.length > 0 ? cachedIssues[0] : null
+    useCached && cachedIssues.length > 0 ? localizeIssueForCurrentLocale(cachedIssues[0]) : null
   );
   const [severityFilter, setSeverityFilter] = useState<Severity | 'all'>('all');
   const [platformFilter, setPlatformFilter] = useState<Platform | 'all'>('all');
@@ -585,6 +621,20 @@ export function SecurityScanDetail({ onBack, onOpenInstalledManagement, cachedIs
   const pushNotification = useNotificationStore((state) => state.pushNotification);
   const shouldRunScan = !useCached || scanAttempt > 0;
   const previewScanMessage = t.desktopOnlyInBrowserShell.replace('{feature}', t.moduleSecurityScan);
+
+  useEffect(() => {
+    if (!useCached) {
+      return;
+    }
+    const localizedCached = cachedIssues.map(localizeIssueForCurrentLocale);
+    setIssues(localizedCached);
+    setSelectedIssue((current) => {
+      if (!current) {
+        return localizedCached[0] ?? null;
+      }
+      return localizedCached.find((issue) => issue.id === current.id) ?? localizedCached[0] ?? null;
+    });
+  }, [currentLanguage, useCached, cachedIssues]);
 
   useEffect(() => {
     if (!shouldRunScan) {
@@ -646,7 +696,7 @@ export function SecurityScanDetail({ onBack, onOpenInstalledManagement, cachedIs
     }).then(result => {
       if (cancelled) return;
       if (result) {
-        const allIssues = result.categories.flatMap(cat => cat.issues).map(mapRustIssue);
+        const allIssues = result.categories.flatMap(cat => cat.issues).map(mapRustIssue).map(localizeIssueForCurrentLocale);
         setIssues(allIssues);
         setTotalLoaded(allIssues.length);
         setSemanticGuard(result.semantic_guard);
@@ -1025,7 +1075,7 @@ export function SecurityScanDetail({ onBack, onOpenInstalledManagement, cachedIs
   return (
     <>
       <ThreeColumnLayout
-        title={categoryTitle || t.scanResults}
+        title={categoryTitle ? translateBackendText(categoryTitle) : t.scanResults}
         subtitle={subtitle}
         onBack={handleBack}
         accentColor={MODULE_THEMES.securityScan.accent}
