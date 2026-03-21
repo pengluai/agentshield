@@ -20,6 +20,8 @@ import type { DetectedTool } from '@/services/scanner';
 import type { StoreCatalogItem, Platform, InstallResult } from '@/types/domain';
 import { useProGate } from '@/hooks/useProGate';
 import { useAppStore } from '@/stores/appStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { localizedDynamicText, translateBackendText } from '@/lib/locale-text';
 
 interface InstallDialogProps {
   item: StoreCatalogItem;
@@ -98,6 +100,7 @@ function waitForApprovalResolution(requestId: string, timeoutMs = 120_000): Prom
 export function InstallDialog({ item, open, onClose, onConfirm }: InstallDialogProps) {
   const { isPro, isTrial } = useProGate();
   const oneClickInstallUnlocked = isPro || isTrial;
+  const currentLanguage = useSettingsStore((state) => state.language);
   const setCurrentModule = useAppStore((state) => state.setCurrentModule);
   const [detectedPlatforms, setDetectedPlatforms] = useState<Array<{
     platform: Platform;
@@ -140,7 +143,7 @@ export function InstallDialog({ item, open, onClose, onConfirm }: InstallDialogP
     return () => {
       cancelled = true;
     };
-  }, [open, item.compatible_platforms]);
+  }, [open, item.compatible_platforms, currentLanguage]);
 
   const [isInstalling, setIsInstalling] = useState(false);
 
@@ -252,14 +255,17 @@ export function InstallDialog({ item, open, onClose, onConfirm }: InstallDialogP
         throw new Error(result.errors?.length ? `${result.message}：${result.errors.join('；')}` : result.message);
       }
 
+      const localizedResultMessage = localizedDynamicText(result.message, translateBackendText(result.message));
       setInstallSummary(result.errors?.length
-        ? `${result.message}${tr('。成功平台：', '. Succeeded targets: ')}${(result.installed_platforms && result.installed_platforms.length > 0) ? joinLocalized(result.installed_platforms) : tr('无', 'None')}`
-        : result.message
+        ? `${localizedResultMessage}${tr('。成功平台：', '. Succeeded targets: ')}${(result.installed_platforms && result.installed_platforms.length > 0) ? joinLocalized(result.installed_platforms) : tr('无', 'None')}`
+        : localizedResultMessage
       );
       onConfirm(selectedPlatforms);
     } catch (e) {
       setIsInstalling(false);
-      setInstallError(`${t.installFailed}: ${String(e)}`);
+      const errorText = String(e);
+      const localizedError = localizedDynamicText(errorText, translateBackendText(errorText));
+      setInstallError(`${t.installFailed}: ${localizedError}`);
     }
   };
 

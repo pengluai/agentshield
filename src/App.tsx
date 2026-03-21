@@ -38,6 +38,7 @@ import { runFullScan } from './services/scanner';
 import { beginStartupTimelineSession, recordStartupTimelineEvent } from './services/startup-timeline';
 import { isTauriEnvironment, tauriInvoke } from './services/tauri';
 import { MODULE_THEMES } from './constants/colors';
+import { localizedDynamicText, translateBackendText } from './lib/locale-text';
 
 const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
 
@@ -241,7 +242,9 @@ function AppContent() {
     void listenProtectionIncidents(async (incident) => {
       await useNotificationStore.getState().loadNotifications();
       if (useSettingsStore.getState().notificationsEnabled) {
-        await sendDesktopNotification(incident.title, incident.description);
+        const localizedTitle = localizedDynamicText(incident.title, translateBackendText(incident.title));
+        const localizedDescription = localizedDynamicText(incident.description, translateBackendText(incident.description));
+        await sendDesktopNotification(localizedTitle, localizedDescription);
       }
     }).then((dispose) => {
       unlisten = dispose;
@@ -368,7 +371,8 @@ function AppContent() {
       }
 
       if (useSettingsStore.getState().notificationsEnabled) {
-        await sendDesktopNotification(tr('AgentShield 需要你点头', 'AgentShield needs your approval'), approval.title);
+        const localizedApprovalTitle = localizedDynamicText(approval.title, translateBackendText(approval.title));
+        await sendDesktopNotification(tr('AgentShield 需要你点头', 'AgentShield needs your approval'), localizedApprovalTitle);
       }
     };
 

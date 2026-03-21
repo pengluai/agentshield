@@ -623,17 +623,19 @@ export function SecurityScanDetail({ onBack, onOpenInstalledManagement, cachedIs
   const previewScanMessage = t.desktopOnlyInBrowserShell.replace('{feature}', t.moduleSecurityScan);
 
   useEffect(() => {
-    if (!useCached) {
+    if (useCached) {
+      const localizedCached = cachedIssues.map(localizeIssueForCurrentLocale);
+      setIssues(localizedCached);
+      setSelectedIssue((current) => {
+        if (!current) {
+          return localizedCached[0] ?? null;
+        }
+        return localizedCached.find((issue) => issue.id === current.id) ?? localizedCached[0] ?? null;
+      });
       return;
     }
-    const localizedCached = cachedIssues.map(localizeIssueForCurrentLocale);
-    setIssues(localizedCached);
-    setSelectedIssue((current) => {
-      if (!current) {
-        return localizedCached[0] ?? null;
-      }
-      return localizedCached.find((issue) => issue.id === current.id) ?? localizedCached[0] ?? null;
-    });
+    setIssues((prev) => prev.map(localizeIssueForCurrentLocale));
+    setSelectedIssue((current) => (current ? localizeIssueForCurrentLocale(current) : current));
   }, [currentLanguage, useCached, cachedIssues]);
 
   useEffect(() => {
@@ -1006,7 +1008,10 @@ export function SecurityScanDetail({ onBack, onOpenInstalledManagement, cachedIs
       setFixAllMessage(
         localizeRuntimeMessage(
           msg,
-          'Bulk fix did not complete. Review the message and retry.'
+          tr(
+            '批量修复未完成，请查看提示后重试。',
+            'Bulk fix did not complete. Review the message and retry.',
+          )
         )
       );
     } finally {

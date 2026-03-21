@@ -73,3 +73,67 @@
   - 对策：全量改为 `tr/t`。
 - 回滚缺口：一次性改动过多难定位回归。
   - 对策：按页面模块分批提交验证（scan -> smart-guard -> 其他页面）。
+
+## 10. 实施结果（已完成）
+- 核心翻译引擎：
+  - `src/lib/locale-text.ts` 改为双向动态本地化：
+    - `localizedDynamicText` 支持中<->英双向兜底；
+    - `translateBackendText` 增加 EN->ZH 局部替换能力；
+    - 补充运行时/启动/OpenClaw 常见动态文案映射。
+- 安全扫描链路：
+  - `src/components/pages/security-scan.tsx`
+    - 修复 `skill` 组件标签本地化；
+    - 扫描进度标签改为双向本地化；
+    - `cachedIssues` 与实时扫描 `issues` 在语言切换时统一重本地化；
+    - 分类标题 `categoryTitle` 渲染时翻译；
+    - 多处 fallback 改为双语 `tr(...)`。
+- 智能守护首页：
+  - `src/components/pages/smart-guard-home.tsx`
+    - 进度标签双向本地化；
+    - 修复 `fix-all` 错误提示直接透传；
+    - 扫描结果卡片不再缓存语言相关 `message`，避免切语言残留旧文案。
+- 结果卡片渲染层：
+  - `src/components/glassmorphic-card.tsx`
+    - `headline/detail/actionLabel` 渲染时统一走动态本地化。
+- 设置页：
+  - `src/components/pages/settings-page.tsx`
+    - 修复多个 `useMemo` 语言切换依赖缺失；
+    - 启动时间线 status/step/summary 本地化；
+    - 保护事件标题与描述改为动态本地化；
+    - AI 连接测试/语义状态消息本地化；
+    - about 页英文硬编码改为双语。
+- 安装与已安装管理：
+  - `src/components/pages/install-dialog.tsx`
+    - 目标列表分隔符按语言显示（EN `, ` / ZH `、`）；
+    - 目标状态标签在语言切换时重算（effect 依赖加入语言）；
+    - 安装结果/异常信息动态本地化。
+  - `src/components/pages/installed-management.tsx`
+    - 更新原因与运行时事件标题/描述 fallback 改为双语；
+    - 透传原因改为动态本地化。
+- OpenClaw：
+  - `src/components/pages/openclaw-wizard.tsx`
+    - 后端文案本地化统一改走双向动态管线；
+    - 选中渠道信息在语言切换时重算。
+- App 入口层：
+  - `src/App.tsx`
+    - `CARD_TITLES` 改为动态函数，修复切语言后分类标题残留；
+    - 启动时间线记录改为 `tr(...)` 双语写入；
+    - 运行时通知标题/描述发送前做动态本地化。
+
+## 11. 验证结果（2026-03-21）
+- 自动化校验全部通过：
+  - `pnpm -s lint` ✅
+  - `pnpm -s typecheck` ✅
+  - `pnpm -s test` ✅（`22` 个测试文件、`82` 个测试通过）
+- 子代理复核：
+  - Agent `Curie`：最终复核结论“无 S1 级混语问题”；
+  - Agent `Dalton`：补齐最后一处 `install-dialog` 语言依赖后，最终复核结论“无”。
+
+## 12. 交付前对齐结论
+- 与目标对齐：
+  - 选中文 -> 页面关键文案统一中文；
+  - 选英文 -> 页面关键文案统一英文；
+  - `Smart Guard` / `Security Scan` / `Settings` / `Install Dialog` / `Installed Management` / `OpenClaw` 已覆盖修复。
+- 与约束对齐：
+  - 未改业务判定逻辑，仅修复 i18n 与显示一致性；
+  - 改动后通过 lint/typecheck/test，满足交付门槛。

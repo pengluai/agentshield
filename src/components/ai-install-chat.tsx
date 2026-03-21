@@ -191,6 +191,7 @@ function buildApprovalRequestForStep(
   detectedPlatforms: DetectedTool[],
 ) {
   const base = {
+    component_id: 'agentshield:openclaw:setup',
     component_name: 'OpenClaw',
     platform_id: 'agentshield',
     platform_name: 'AgentShield',

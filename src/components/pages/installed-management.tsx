@@ -7,7 +7,7 @@ import { MODULE_THEMES, PLATFORM_CONFIG } from '@/constants/colors';
 import { isEnglishLocale, t } from '@/constants/i18n';
 import { ThreeColumnLayout } from '@/components/three-column-layout';
 import { SafetyBadge } from '@/components/safety-badge';
-import { localizedDynamicText } from '@/lib/locale-text';
+import { localizedDynamicText, translateBackendText } from '@/lib/locale-text';
 import { ManualFixGuide } from '@/components/manual-fix-guide';
 import { getManualFixGuide, type ManualFixStep } from '@/services/scanner';
 
@@ -849,7 +849,7 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
           && (result.source_path || selectedItem.sourceUrl || '') === (selectedItem.sourceUrl || '')
         );
         if (selectedResult && !selectedResult.tracked) {
-          setUpdateStatus(selectedResult.reason);
+          setUpdateStatus(localizedDynamicText(selectedResult.reason, translateBackendText(selectedResult.reason)));
           return;
         }
         if (!selectedResult && !selectedItem.managedByAgentShield) {
@@ -2131,7 +2131,7 @@ function InstalledItemDetail({
         : tr('当前已是最新版本', 'Already up to date')
       : localizedDynamicText(
           pendingUpdate.reason,
-          tr('Auto-update is unavailable for this extension. Review source details and handle manually.', 'Auto-update is unavailable for this extension. Review source details and handle manually.'),
+          tr('该扩展暂不支持自动更新。请检查来源详情并手动处理。', 'Auto-update is unavailable for this extension. Review source details and handle manually.'),
         )
     : updateStatus;
 
@@ -2531,7 +2531,7 @@ function InstalledItemDetail({
                       <div key={event.id} className="rounded-xl border border-slate-200 p-3">
                         <div className="flex items-center justify-between gap-3">
                           <div className="text-sm font-medium text-slate-900">
-                            {localizedDynamicText(event.title, tr('Security event detected', 'Security event detected'))}
+                            {localizedDynamicText(event.title, tr('发现安全事件', 'Security event detected'))}
                           </div>
                           <div className={cn(
                             'rounded-full px-2 py-0.5 text-[11px]',
@@ -2545,7 +2545,7 @@ function InstalledItemDetail({
                         <div className="mt-1 text-xs text-slate-500">
                           {localizedDynamicText(
                             event.description,
-                            tr('A guarded operation was blocked or flagged.', 'A guarded operation was blocked or flagged.'),
+                            tr('守卫已拦截或标记该操作。', 'A guarded operation was blocked or flagged.'),
                           )}
                         </div>
                         <div className="mt-2 text-[11px] text-slate-400">

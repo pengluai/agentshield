@@ -205,7 +205,6 @@ export function SmartGuardHome({ onViewScanDetail }: SmartGuardHomeProps) {
         result: {
           issueCount: category.issue_count,
           canFix: category.issues.some((issue) => issue.auto_fixable),
-          message: category.issue_count > 0 ? `${category.issue_count} ${t.warning}` : t.allPassed,
         },
       });
       byCategory[cardId] = category.issues.map(mapRustIssue);
@@ -218,7 +217,7 @@ export function SmartGuardHome({ onViewScanDetail }: SmartGuardHomeProps) {
 
       updateScanCard(card.id, {
         status: 'completed',
-        result: { issueCount: 0, canFix: false, message: t.allPassed },
+        result: { issueCount: 0, canFix: false },
       });
     }
 

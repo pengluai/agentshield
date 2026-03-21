@@ -202,7 +202,7 @@ export function SettingsPage() {
   const riskCopyVariant = useMemo(() => getRiskCopyVariant(), []);
   const ruleUpdatesCopy = useMemo(
     () => getRiskCopyPayload('rule_updates', riskCopyVariant),
-    [riskCopyVariant]
+    [riskCopyVariant, settings.language]
   );
 
   useEffect(() => {
@@ -385,7 +385,7 @@ export function SettingsPage() {
       title: tr(`发现 ${updateAudit.updates.length} 个可用更新`, `${updateAudit.updates.length} updates available`),
       description: tr(`应用版本 ${updateAudit.appVersion}，可前往”已安装管理”处理托管组件升级`, `App version ${updateAudit.appVersion}. Go to Installed Management to handle managed component upgrades.`),
     };
-  }, [updateAudit]);
+  }, [updateAudit, settings.language]);
 
   const ruleSummary = useMemo(() => {
     if (!ruleUpdateStatus) {
@@ -409,7 +409,7 @@ export function SettingsPage() {
       title: t.syncRules,
       description: t.syncRulesUpToDate.replace('{version}', ruleUpdateStatus.active_version),
     };
-  }, [ruleUpdateStatus]);
+  }, [ruleUpdateStatus, settings.language]);
 
   const rulePlanSummary = useMemo(() => {
     const now = Date.now();
@@ -442,14 +442,14 @@ export function SettingsPage() {
         : tr('尚未执行过手动同步。', 'No manual sync has been performed yet.'),
       cta: ruleUpdatesCopy.ctaLine ?? tr('升级完整版可开启自动热更新和更快防御策略下发。', 'Upgrade to full version to enable auto hot-updates and faster defense policy delivery.'),
     };
-  }, [autoRuleSyncAt, autoRuleUpdatesUnlocked, freeRuleSyncAt, ruleUpdatesCopy]);
+  }, [autoRuleSyncAt, autoRuleUpdatesUnlocked, freeRuleSyncAt, ruleUpdatesCopy, settings.language]);
 
   const aiConnectionSummary = useMemo(() => {
     if (!settings.aiConnectionTested) {
       return tr('未完成连接测试', 'Connection test not completed');
     }
     return aiConnectionMessage ?? tr('连接测试通过，可用于安装失败自动诊断。', 'Connection test passed. Available for auto-diagnosis on install failures.');
-  }, [aiConnectionMessage, settings.aiConnectionTested]);
+  }, [aiConnectionMessage, settings.aiConnectionTested, settings.language]);
 
   const protectionScopeSummary = useMemo(() => {
     if (!protectionStatus?.enabled) {
@@ -461,7 +461,7 @@ export function SettingsPage() {
     }
 
     return tr(`仅监听 ${protectionStatus.watched_paths.length} 条已发现的 AI 工具配置与 Skill 路径`, `Monitoring ${protectionStatus.watched_paths.length} discovered AI tool config and Skill paths only`);
-  }, [protectionStatus]);
+  }, [protectionStatus, settings.language]);
 
   const protectionScopePreview = useMemo(
     () => protectionStatus?.watched_paths.slice(0, 5) ?? [],
@@ -760,9 +760,10 @@ export function SettingsPage() {
         settings.aiBaseUrl.trim() || undefined
       );
 
+      const localizedMessage = localizedDynamicText(result.message, translateBackendText(result.message));
       settings.setAiConnectionTested(result.success);
-      setAiConnectionMessage(result.message);
-      setFeedbackMessage(result.success ? 'success' : 'error', result.message);
+      setAiConnectionMessage(localizedMessage);
+      setFeedbackMessage(result.success ? 'success' : 'error', localizedMessage);
     });
   };
 
@@ -772,7 +773,7 @@ export function SettingsPage() {
       setSemanticGuardStatus(status);
       setSemanticDialogOpen(false);
       setSemanticAccessKey('');
-      setFeedbackMessage('success', status.message);
+      setFeedbackMessage('success', localizedDynamicText(status.message, translateBackendText(status.message)));
     });
   };
 
@@ -910,7 +911,12 @@ export function SettingsPage() {
                     </p>
                     <p className="mt-2 text-xs text-white/60">
                       {semanticUnlocked
-                        ? semanticGuardStatus?.message ?? tr('检查高级语义研判状态中', 'Checking advanced semantic analysis status')
+                        ? (semanticGuardStatus?.message
+                            ? localizedDynamicText(
+                                semanticGuardStatus.message,
+                                translateBackendText(semanticGuardStatus.message),
+                              )
+                            : tr('检查高级语义研判状态中', 'Checking advanced semantic analysis status'))
                         : tr('仅 Pro / 试用版可用。升级后默认启用内置 AI 语义研判，也可按需切换到自定义密钥模式。', 'Available for Pro / trial only. Upgrade to enable built-in semantic analysis by default, with optional custom key mode.')}
                     </p>
                   </div>
@@ -977,7 +983,13 @@ export function SettingsPage() {
                     </p>
                     {protectionStatus?.last_incident && (
                       <p className="mt-2 text-xs text-rose-300">
-                        {t.protectionLastEvent.replace('{time}', protectionStatus.last_incident.title)}
+                        {t.protectionLastEvent.replace(
+                          '{time}',
+                          localizedDynamicText(
+                            protectionStatus.last_incident.title,
+                            translateBackendText(protectionStatus.last_incident.title),
+                          )
+                        )}
                       </p>
                     )}
                   </div>
@@ -1103,7 +1115,9 @@ export function SettingsPage() {
                     protectionIncidents.slice(0, 3).map((incident) => (
                       <div key={incident.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
                         <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-medium text-white">{incident.title}</p>
+                          <p className="text-sm font-medium text-white">
+                            {localizedDynamicText(incident.title, translateBackendText(incident.title))}
+                          </p>
                           <span
                             className={cn(
                               'rounded-full px-2 py-0.5 text-[11px] font-medium',
@@ -1115,7 +1129,9 @@ export function SettingsPage() {
                             {incident.action.startsWith('quarantined') || incident.action === 'blocked' ? tr('已拦截', 'Blocked') : tr('已记录', 'Logged')}
                           </span>
                         </div>
-                        <p className="mt-1 text-xs leading-5 text-white/60">{incident.description}</p>
+                        <p className="mt-1 text-xs leading-5 text-white/60">
+                          {localizedDynamicText(incident.description, translateBackendText(incident.description))}
+                        </p>
                         <p className="mt-2 text-[11px] text-white/40">
                           {new Date(incident.timestamp).toLocaleString()}
                         </p>
@@ -1366,7 +1382,9 @@ export function SettingsPage() {
                 </div>
                 <h3 className="text-xl font-semibold text-white">{tr('AgentShield 智盾', 'AgentShield')}</h3>
                 <p className="mt-1 text-sm text-white/60">
-                  {updateAudit ? `Version ${updateAudit.appVersion}` : t.versionInfo}
+                  {updateAudit
+                    ? tr(`版本 ${updateAudit.appVersion}`, `Version ${updateAudit.appVersion}`)
+                    : t.versionInfo}
                 </p>
               </div>
               <SettingLink
@@ -1413,8 +1431,8 @@ export function SettingsPage() {
                 onClick={() => setDialogKey('terms')}
               />
               <div className="pt-4 text-center text-sm text-white/40">
-                <p>Made with care by AgentShield Team</p>
-                <p className="mt-1">© 2025 AgentShield. All rights reserved.</p>
+                <p>{tr('由 AgentShield 团队用心打造', 'Made with care by AgentShield Team')}</p>
+                <p className="mt-1">{tr('© 2025 AgentShield。保留所有权利。', '© 2025 AgentShield. All rights reserved.')}</p>
               </div>
             </div>
           </div>
@@ -1672,7 +1690,7 @@ function SettingLink({
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
-    return error.message;
+    return localizedDynamicText(error.message, translateBackendText(error.message));
   }
   return tr('未知错误', 'Unknown error');
 }
