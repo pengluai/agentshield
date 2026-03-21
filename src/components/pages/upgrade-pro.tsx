@@ -563,7 +563,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
               </div>
             )}
 
-            {/* License key input */}
+            {/* Activation code input */}
             <button
               onClick={() => setShowKeyInput(!showKeyInput)}
               className="w-full py-2.5 rounded-xl border border-white/20 text-white/80 hover:bg-white/10 transition-colors flex items-center justify-center gap-2 text-sm"

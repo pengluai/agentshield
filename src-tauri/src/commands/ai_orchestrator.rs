@@ -64,6 +64,7 @@ pub struct EnvDetectionResult {
     pub npm_version: Option<String>,
     pub git_version: Option<String>,
     pub openclaw_version: Option<String>,
+    pub brew_version: Option<String>,  // macOS only
     pub os: String,
     pub arch: String,
     pub region: String,
@@ -723,6 +724,22 @@ pub async fn detect_env_and_region() -> Result<EnvDetectionResult, String> {
         None
     };
 
+    // Detect brew version (macOS only)
+    let brew_version = if cfg!(target_os = "macos") && (which::which("brew").is_ok()) {
+        let mut cmd = Command::new("brew");
+        cmd.arg("--version");
+        command_output_async(cmd)
+            .await
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|v| {
+                let trimmed = v.trim();
+                trimmed.lines().next().unwrap_or(trimmed).to_string()
+            })
+    } else {
+        None
+    };
+
     // 5. OS and arch
     let os = std::env::consts::OS.to_string();
     let arch = std::env::consts::ARCH.to_string();
@@ -767,6 +784,7 @@ pub async fn detect_env_and_region() -> Result<EnvDetectionResult, String> {
         npm_version,
         git_version,
         openclaw_version,
+        brew_version,
         os,
         arch,
         region,
@@ -785,28 +803,24 @@ pub async fn auto_install_prerequisite(
     match component.as_str() {
         "node" => {
             if cfg!(target_os = "macos") {
-                // Check if brew is available
-                if which::which("brew").is_err() {
-                    return Ok(StepResult {
-                        success: false,
-                        step_id,
-                        message: "需要先安装 Homebrew / Homebrew is required first".to_string(),
-                        output: None,
-                        error: Some(
-                            "需要先安装 Homebrew。请先安装 brew 组件。\nHomebrew is required. Please install the brew component first."
-                                .to_string(),
-                        ),
-                        needs_ai_help: true,
-                    });
-                }
+                // Download Node.js .pkg installer and install with osascript for admin privileges
+                let pkg_url = if region == "cn" {
+                    "https://npmmirror.com/mirrors/node/v22.12.0/node-v22.12.0.pkg"
+                } else {
+                    "https://nodejs.org/dist/v22.12.0/node-v22.12.0.pkg"
+                };
+                let download_script = format!(
+                    "curl -fsSL -o /tmp/agentshield-node.pkg '{}' && osascript -e 'do shell script \"installer -pkg /tmp/agentshield-node.pkg -target /\" with administrator privileges' && rm -f /tmp/agentshield-node.pkg",
+                    pkg_url
+                );
                 let mut cmd = Command::new("/bin/bash");
-                cmd.args(["-c", "brew install node@22"]);
+                cmd.args(["-c", &download_script]);
                 let output = command_output_async(cmd)
                     .await
-                    .map_err(|e| format!("Failed to run brew: {e}"))?;
+                    .map_err(|e| format!("Failed to install Node.js: {e}"))?;
                 if output.status.success() {
-                    // Verify installation
-                    let mut verify_cmd = Command::new("node");
+                    // Verify
+                    let mut verify_cmd = Command::new("/usr/local/bin/node");
                     verify_cmd.arg("--version");
                     let version = command_output_async(verify_cmd)
                         .await

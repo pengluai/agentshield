@@ -1,13 +1,13 @@
-# 2026-03-21 文案修复：License Key -> Activation Code（中英文）
+# 2026-03-21 文案修复：Activation Code -> Activation Code（中英文）
 
 ## 1. Objective and Scope
-- 目标：将升级页“输入许可证密钥 / Enter license key”统一替换为“输入激活码 / Enter activation code”。
+- 目标：将升级页“输入激活码 / Enter activation code”统一替换为“输入激活码 / Enter activation code”。
 - 范围：
   - `src/constants/i18n.ts` 中对应中英文文案
   - 保持现有 i18n key 不变，仅改显示文本
 
 ## 2. Assumptions and Constraints
-- 假设：当前产品对用户暴露的核心概念是“激活码（AGSH.*）”，不是“许可证密钥”。
+- 假设：当前产品对用户暴露的核心概念是“激活码（AGSH.*）”，不是“激活码”。
 - 约束：最小改动，不影响现有调用链与测试。
 
 ## 3. Official Basis (2026-03-21)
@@ -24,7 +24,7 @@
 - `pnpm test -- src/components/pages/__tests__/upgrade-pro.test.tsx`
 
 ## 6. Reverse Review Pass 1
-- 假设风险：只改一个键值可能导致其他页面仍显示“许可证密钥”。  
+- 假设风险：只改一个键值可能导致其他页面仍显示“激活码”。  
   处理：同时覆盖 `enterLicenseKey` 与 `licenseKey`。
 - 依赖风险：重命名 key 会引发连锁。  
   处理：不改 key 名，仅改 value。

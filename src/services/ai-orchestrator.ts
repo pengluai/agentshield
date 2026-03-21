@@ -21,6 +21,7 @@ export interface EnvDetectionResult {
   npm_version: string | null;
   git_version: string | null;
   openclaw_version: string | null;
+  brew_version: string | null;
   os: string;
   arch: string;
   region: string;

@@ -23,6 +23,12 @@ import {
   executeInstallStep,
   type EnvDetectionResult,
 } from '@/services/ai-orchestrator';
+import {
+  requestRuntimeGuardActionApproval,
+  listenRuntimeGuardApprovals,
+  type RuntimeApprovalRequest,
+} from '@/services/runtime-guard';
+import { detectAiTools, type DetectedTool } from '@/services/scanner';
 
 const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
 
@@ -43,7 +49,6 @@ interface InstallStep {
 }
 
 const STEP_LABELS: Record<string, string> = {
-  auto_install_brew: tr('安装 Homebrew', 'Install Homebrew'),
   auto_install_node: tr('安装 Node.js', 'Install Node.js'),
   auto_install_git: tr('安装 Git', 'Install Git'),
   install_openclaw: tr('安装 OpenClaw', 'Install OpenClaw'),
@@ -52,6 +57,14 @@ const STEP_LABELS: Record<string, string> = {
   harden_permissions: tr('加固权限', 'Harden Permissions'),
   verify_install: tr('验证安装', 'Verify Installation'),
 };
+
+const PAID_STEPS = new Set([
+  'install_openclaw',
+  'run_onboard',
+  'setup_mcp',
+  'harden_permissions',
+  'configure_channel',
+]);
 
 function buildDetectedItems(env: EnvDetectionResult): DetectedItem[] {
   const osLabel = `${env.os} ${env.arch}`;
@@ -93,14 +106,7 @@ function buildDetectedItems(env: EnvDetectionResult): DetectedItem[] {
 function buildInstallSteps(env: EnvDetectionResult): InstallStep[] {
   const steps: InstallStep[] = [];
 
-  // macOS prerequisite: Homebrew
-  if (env.os.toLowerCase().includes('mac') && !env.node_version) {
-    steps.push({
-      id: 'auto_install_brew',
-      label: STEP_LABELS['auto_install_brew'],
-      status: 'pending',
-    });
-  }
+  // Node.js is now installed via .pkg on macOS — no Homebrew step needed.
 
   if (!env.node_version) {
     steps.push({
@@ -144,6 +150,153 @@ function DetectionIcon({ itemKey }: { itemKey: string }) {
     default:
       return <Cpu className="w-4 h-4 text-white/50" />;
   }
+}
+
+/**
+ * Wait for a specific approval request to be resolved (approved or denied).
+ * Listens for Tauri runtime-guard-approval events and resolves once the
+ * matching request ID transitions out of 'pending' status.
+ * Times out after 120 seconds.
+ */
+function waitForApprovalResolution(requestId: string): Promise<'approved' | 'denied' | 'timeout'> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let unlistenFn: (() => void) | undefined;
+
+    const timer = window.setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        unlistenFn?.();
+        resolve('timeout');
+      }
+    }, 120_000);
+
+    listenRuntimeGuardApprovals((approval: RuntimeApprovalRequest) => {
+      if (settled) return;
+      if (approval.id === requestId && approval.status !== 'pending') {
+        settled = true;
+        window.clearTimeout(timer);
+        unlistenFn?.();
+        resolve(approval.status === 'approved' ? 'approved' : 'denied');
+      }
+    }).then((fn) => {
+      unlistenFn = fn;
+      if (settled) fn();
+    });
+  });
+}
+
+function buildApprovalRequestForStep(
+  stepId: string,
+  detectedPlatforms: DetectedTool[],
+) {
+  const base = {
+    component_name: 'OpenClaw',
+    platform_id: 'agentshield',
+    platform_name: 'AgentShield',
+    is_destructive: false,
+    is_batch: false,
+  };
+
+  if (stepId === 'install_openclaw') {
+    return {
+      ...base,
+      request_kind: 'shell_exec',
+      trigger_event: 'openclaw_setup_install_request',
+      action_kind: 'shell_exec',
+      action_source: 'user_requested_setup_install',
+      action_targets: ['npm install -g openclaw@latest'],
+      action_preview: [
+        tr('将通过 npm 在本机真实安装 OpenClaw', 'Will install OpenClaw locally through npm'),
+        tr('命令: npm install -g openclaw@latest', 'Command: npm install -g openclaw@latest'),
+        tr('放行后会真实执行命令，不是模拟进度', 'Approval will execute a real command, not simulated progress'),
+      ],
+      sensitive_capabilities: [
+        tr('命令执行', 'Shell command execution'),
+        tr('读写本地文件', 'Read and write local files'),
+        tr('联网下载依赖', 'Download dependencies from network'),
+      ],
+    };
+  }
+
+  if (stepId === 'run_onboard') {
+    return {
+      ...base,
+      request_kind: 'shell_exec',
+      trigger_event: 'openclaw_setup_onboard_request',
+      action_kind: 'shell_exec',
+      action_source: 'user_requested_setup_onboard',
+      action_targets: ['openclaw onboard --install-daemon'],
+      action_preview: [
+        tr('将执行 OpenClaw 初始化命令', 'Will run the OpenClaw onboarding command'),
+        tr('命令: openclaw onboard --install-daemon', 'Command: openclaw onboard --install-daemon'),
+        tr('放行后会真实执行命令，不是模拟进度', 'Approval will execute a real command, not simulated progress'),
+      ],
+      sensitive_capabilities: [
+        tr('命令执行', 'Shell command execution'),
+        tr('读写本地文件', 'Read and write local files'),
+      ],
+    };
+  }
+
+  if (stepId === 'setup_mcp') {
+    const platformIds = detectedPlatforms
+      .filter((t) => t.install_target_ready)
+      .map((t) => t.id);
+    const platformNames = detectedPlatforms
+      .filter((t) => t.install_target_ready)
+      .map((t) => t.name);
+    return {
+      ...base,
+      request_kind: 'file_modify',
+      trigger_event: 'openclaw_setup_mcp_request',
+      action_kind: 'file_modify',
+      action_source: 'user_requested_setup_mcp',
+      action_targets: platformIds.map((id) => `platform:${id}`).sort(),
+      action_preview: [
+        tr('将把 OpenClaw MCP 写入已选宿主配置', 'Will write OpenClaw MCP into selected host configs'),
+        tr(`目标宿主: ${platformNames.join(', ')}`, `Target hosts: ${platformNames.join(', ')}`),
+        tr('放行后会真实改写配置文件', 'Approval will modify real config files'),
+      ],
+      sensitive_capabilities: [tr('读写本地文件', 'Read and write local files')],
+      is_batch: true,
+    };
+  }
+
+  if (stepId === 'harden_permissions') {
+    return {
+      ...base,
+      request_kind: 'file_modify',
+      trigger_event: 'openclaw_setup_harden_request',
+      action_kind: 'file_modify',
+      action_source: 'user_requested_setup_permissions',
+      action_targets: ['openclaw-config-permissions'],
+      action_preview: [
+        tr('将收紧 OpenClaw 配置文件权限', 'Will harden OpenClaw config file permissions'),
+        tr('仅影响 OpenClaw 配置目录', 'Only affects OpenClaw configuration directories'),
+      ],
+      sensitive_capabilities: [tr('读写本地文件', 'Read and write local files')],
+      is_batch: true,
+    };
+  }
+
+  if (stepId === 'configure_channel') {
+    return {
+      ...base,
+      request_kind: 'file_modify',
+      trigger_event: 'openclaw_setup_channel_request',
+      action_kind: 'file_modify',
+      action_source: 'user_requested_setup_channel',
+      action_targets: ['channel:default'],
+      action_preview: [
+        tr('将写入通知渠道配置', 'Will write channel configuration'),
+        tr('配置仅落地到 OpenClaw 本机目录', 'Configuration will only be written to local OpenClaw directory'),
+      ],
+      sensitive_capabilities: [tr('读写本地文件', 'Read and write local files')],
+    };
+  }
+
+  return null;
 }
 
 interface AiInstallChatProps {
@@ -256,13 +409,19 @@ function AutoInstallPanel({ onClose }: { onClose: () => void }) {
   const [detectedItems, setDetectedItems] = useState<DetectedItem[]>([]);
   const [steps, setSteps] = useState<InstallStep[]>([]);
   const [errorMsg, setErrorMsg] = useState('');
+  const [detectedPlatforms, setDetectedPlatforms] = useState<DetectedTool[]>([]);
+  const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
 
   const detect = useCallback(async () => {
     setPhase('detecting');
     setErrorMsg('');
     try {
-      const result = await detectEnvAndRegion();
+      const [result, tools] = await Promise.all([
+        detectEnvAndRegion(),
+        detectAiTools(),
+      ]);
       setEnv(result);
+      setDetectedPlatforms(tools);
       setDetectedItems(buildDetectedItems(result));
       setSteps(buildInstallSteps(result));
       setPhase('detected');
@@ -282,6 +441,50 @@ function AutoInstallPanel({ onClose }: { onClose: () => void }) {
     setSteps((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   };
 
+  const obtainApprovalTicket = useCallback(async (
+    stepId: string,
+    actionLabel: string,
+  ): Promise<{ ticket: string } | { cancelled: true; reason: string }> => {
+    const approvalInput = buildApprovalRequestForStep(stepId, detectedPlatforms);
+    if (!approvalInput) {
+      return { cancelled: true, reason: tr('无法构建审批请求', 'Unable to build approval request') };
+    }
+
+    const approval = await requestRuntimeGuardActionApproval(approvalInput);
+
+    if (approval.status === 'approved' && approval.approval_ticket) {
+      return { ticket: approval.approval_ticket };
+    }
+
+    // Approval is pending — wait for user to approve/deny in the modal
+    setApprovalMessage(
+      tr(
+        `请在弹出的审批窗口中确认${actionLabel}操作，等待你点头...`,
+        `Please confirm the ${actionLabel} action in the approval dialog. Waiting for your approval...`,
+      ),
+    );
+
+    const decision = await waitForApprovalResolution(approval.request.id);
+    setApprovalMessage(null);
+
+    if (decision !== 'approved') {
+      return {
+        cancelled: true,
+        reason: decision === 'timeout'
+          ? tr('审批等待超时，请重新操作。', 'Approval timed out. Please try again.')
+          : tr('你已拒绝此操作。', 'You denied this action.'),
+      };
+    }
+
+    // Grant has been stored — re-request to consume it and get the ticket
+    const retry = await requestRuntimeGuardActionApproval(approvalInput);
+    if (retry.status === 'approved' && retry.approval_ticket) {
+      return { ticket: retry.approval_ticket };
+    }
+
+    return { cancelled: true, reason: tr('审批已通过但未能获取执行票据，请重试。', 'Approval succeeded but failed to obtain execution ticket. Please retry.') };
+  }, [detectedPlatforms]);
+
   const runInstall = useCallback(async () => {
     if (!env) return;
     setPhase('installing');
@@ -293,20 +496,41 @@ function AutoInstallPanel({ onClose }: { onClose: () => void }) {
       try {
         let result;
 
-        if (step.id === 'auto_install_brew') {
-          result = await autoInstallPrerequisite('brew', env.region);
-        } else if (step.id === 'auto_install_node') {
+        // For paid steps, obtain an approval ticket first
+        let approvalTicket: string | undefined;
+        if (PAID_STEPS.has(step.id)) {
+          const approvalResult = await obtainApprovalTicket(
+            step.id,
+            STEP_LABELS[step.id] ?? step.id,
+          );
+          if ('cancelled' in approvalResult) {
+            updateStep(step.id, { status: 'failed', message: approvalResult.reason });
+            setPhase('error');
+            setErrorMsg(approvalResult.reason);
+            return;
+          }
+          approvalTicket = approvalResult.ticket;
+        }
+
+        if (step.id === 'auto_install_node') {
           result = await autoInstallPrerequisite('node', env.region);
         } else if (step.id === 'auto_install_git') {
           result = await autoInstallPrerequisite('git', env.region);
         } else if (step.id === 'install_openclaw') {
           result = await executeInstallStep('install_openclaw', {
             registry: env.recommended_registry ?? undefined,
+            approvalTicket,
           });
         } else if (step.id === 'setup_mcp') {
-          result = await executeInstallStep('setup_mcp', { platformIds: [] });
+          const platformIds = detectedPlatforms
+            .filter((t) => t.install_target_ready)
+            .map((t) => t.id);
+          result = await executeInstallStep('setup_mcp', {
+            platformIds: platformIds.length > 0 ? platformIds : undefined,
+            approvalTicket,
+          });
         } else {
-          result = await executeInstallStep(step.id);
+          result = await executeInstallStep(step.id, { approvalTicket });
         }
 
         if (result.success) {
@@ -329,7 +553,7 @@ function AutoInstallPanel({ onClose }: { onClose: () => void }) {
     }
 
     setPhase('done');
-  }, [env, steps]);
+  }, [env, steps, obtainApprovalTicket, detectedPlatforms]);
 
   const retryFromFailed = useCallback(() => {
     setSteps((prev) =>
@@ -441,6 +665,18 @@ function AutoInstallPanel({ onClose }: { onClose: () => void }) {
                 ? tr('开始自动安装', 'Start Auto-install')
                 : tr('开始配置 OpenClaw', 'Start Configuring OpenClaw')}
             </button>
+          </motion.div>
+        )}
+
+        {/* Approval waiting banner */}
+        {approvalMessage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 flex items-center gap-2"
+          >
+            <Loader2 className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
+            <p className="text-xs text-amber-300">{approvalMessage}</p>
           </motion.div>
         )}
 

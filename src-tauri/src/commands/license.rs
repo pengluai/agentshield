@@ -178,7 +178,7 @@ fn to_license_info(data: &LicenseData) -> LicenseInfo {
 #[cfg(not(test))]
 fn license_secret_entry(key_id: &str) -> Result<keyring::Entry, String> {
     keyring::Entry::new(LICENSE_KEYRING_SERVICE, key_id)
-        .map_err(|error| format!("Failed to open system license keychain entry: {error}"))
+        .map_err(|error| format!("Failed to open system activation code keychain entry: {error}"))
 }
 
 #[cfg(not(test))]
