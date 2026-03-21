@@ -148,6 +148,9 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
   } | null>(null);
   const [validatingPromo, setValidatingPromo] = useState(false);
   const previewMessage = t.desktopOnlyInBrowserShell.replace('{feature}', t.moduleUpgradePro);
+  const checkoutCurrencyNote = isEnglishLocale
+    ? 'All paid plans are billed in USD at Creem checkout.'
+    : '所有付费档位在 Creem 结算时按 USD 显示与计费。';
   const purchaseOptions: PurchaseOption[] = [
     {
       id: 'monthly',
@@ -180,8 +183,23 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
   ];
 
   const validatePromo = useCallback(async () => {
-    const code = promoCode.trim().toUpperCase();
-    if (!code) { setPromoResult(null); return; }
+    const rawInput = promoCode.trim();
+    if (!rawInput) { setPromoResult(null); return; }
+
+    if (rawInput.toUpperCase().startsWith('AGSH.')) {
+      setPromoResult({
+        valid: false,
+        discount_pct: 0,
+        affiliate_id: '',
+        affiliate_name: null,
+        message: isEnglishLocale
+          ? 'This looks like an activation code. Please use "Enter Activation Code" below.'
+          : '这看起来是激活码，请在下方“输入激活码”区域粘贴。',
+      });
+      return;
+    }
+
+    const code = rawInput.toUpperCase();
     setValidatingPromo(true);
     try {
       const gatewayUrl = resolveLicenseGatewayBaseUrl(import.meta.env.VITE_LICENSE_GATEWAY_URL ?? '');
@@ -197,7 +215,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
     } finally {
       setValidatingPromo(false);
     }
-  }, [promoCode]);
+  }, [promoCode, isEnglishLocale]);
 
   const getDiscountedPrice = (price: number) => {
     if (promoResult?.valid && promoResult.discount_pct > 0) {
@@ -442,6 +460,11 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
                   {validatingPromo ? t.promoChecking : t.promoApply}
                 </button>
               </div>
+              <p className="mt-2 text-xs text-white/40">
+                {isEnglishLocale
+                  ? 'Promo code is for checkout discounts only. Activation codes (AGSH...) should be entered below.'
+                  : '优惠码仅用于折扣。AGSH 开头的是激活码，请在下方“输入激活码”区域填写。'}
+              </p>
               {promoResult && (
                 <div className={`mt-2 text-sm ${promoResult.valid ? 'text-emerald-400' : 'text-rose-400'}`}>
                   {promoResult.valid
@@ -513,7 +536,9 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
               ))}
             </div>
 
-            <p className="text-center text-xs text-white/40">{t.oneTimePaymentNoSubscription}</p>
+            <p className="text-center text-xs text-white/40">
+              {t.oneTimePaymentNoSubscription} {checkoutCurrencyNote}
+            </p>
 
             {/* Trial button */}
             {!isTrial && (

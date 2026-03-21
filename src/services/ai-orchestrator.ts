@@ -16,6 +16,18 @@ export interface AiDiagnosis {
   fix_command: string | null;
 }
 
+export interface EnvDetectionResult {
+  node_version: string | null;
+  npm_version: string | null;
+  git_version: string | null;
+  openclaw_version: string | null;
+  os: string;
+  arch: string;
+  region: string;
+  current_registry: string;
+  recommended_registry: string | null;
+}
+
 export interface AiConnectionResult {
   success: boolean;
   model_name: string;
@@ -55,6 +67,7 @@ export async function executeInstallStep(
     token?: string;
     platformIds?: string[];
     approvalTicket?: string;
+    registry?: string;
   },
 ): Promise<StepResult> {
   try {
@@ -64,6 +77,7 @@ export async function executeInstallStep(
       token: options?.token,
       platformIds: options?.platformIds,
       approvalTicket: options?.approvalTicket,
+      registry: options?.registry,
     });
   } catch (error) {
     console.error('Failed to execute install step:', error);
@@ -103,4 +117,12 @@ export async function getProAiQuotaStatus(): Promise<ProAiQuotaStatus> {
       cause: error,
     });
   }
+}
+
+export async function detectEnvAndRegion(): Promise<EnvDetectionResult> {
+  return invoke<EnvDetectionResult>('detect_env_and_region');
+}
+
+export async function autoInstallPrerequisite(component: string, region: string): Promise<StepResult> {
+  return invoke<StepResult>('auto_install_prerequisite', { component, region });
 }

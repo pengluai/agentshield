@@ -1,38 +1,150 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Send, X, Loader2, User, Sparkles, Crown, Clock, Zap } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { tauriInvoke as invoke } from '@/services/tauri';
+import {
+  X,
+  Loader2,
+  Sparkles,
+  Crown,
+  Clock,
+  Zap,
+  Check,
+  Play,
+  RefreshCw,
+  Globe,
+  Monitor,
+  Cpu,
+  Download,
+} from 'lucide-react';
 import { isEnglishLocale } from '@/constants/i18n';
 import { useAppStore } from '@/stores/appStore';
+import {
+  detectEnvAndRegion,
+  autoInstallPrerequisite,
+  executeInstallStep,
+  type EnvDetectionResult,
+} from '@/services/ai-orchestrator';
 
 const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
 
-interface ChatMessage {
-  id: string;
-  role: 'assistant' | 'user' | 'system';
-  content: string;
-  timestamp: number;
+type SetupPhase = 'detecting' | 'detected' | 'installing' | 'done' | 'error';
+
+interface DetectedItem {
+  key: string;
+  label: string;
+  value: string | null;
+  ok: boolean;
 }
 
-const SYSTEM_PROMPT = `你是 AgentShield 的 AI 安装助手。你的任务是引导用户完成 OpenClaw 的安装和配置。
+interface InstallStep {
+  id: string;
+  label: string;
+  status: 'pending' | 'running' | 'done' | 'failed';
+  message?: string;
+}
 
-规则：
-1. 用简短、友好的中文回答（如果用户用英文则用英文）
-2. 每次只问一个问题，不要一次给太多信息
-3. 能自动化的步骤直接告诉用户"我来帮你执行"
-4. 需要用户操作的给清晰的步骤说明
-5. 不要显示完整的 API Key，只显示前4位...后4位
-6. 遇到错误时解释原因并给出修复方案
+const STEP_LABELS: Record<string, string> = {
+  auto_install_brew: tr('安装 Homebrew', 'Install Homebrew'),
+  auto_install_node: tr('安装 Node.js', 'Install Node.js'),
+  auto_install_git: tr('安装 Git', 'Install Git'),
+  install_openclaw: tr('安装 OpenClaw', 'Install OpenClaw'),
+  run_onboard: tr('初始化 OpenClaw', 'Initialize OpenClaw'),
+  setup_mcp: tr('配置 MCP', 'Configure MCP'),
+  harden_permissions: tr('加固权限', 'Harden Permissions'),
+  verify_install: tr('验证安装', 'Verify Installation'),
+};
 
-安装流程：
-第0步：检测环境（Node.js 22+, npm, Git）
-第1步：npm install -g openclaw@latest
-第2步：配置 AI 模型（问用户选 Claude/OpenAI/Gemini/DeepSeek，输入 API Key）
-第3步：连接聊天工具（推荐 Telegram 或飞书）
-第4步：验证
+function buildDetectedItems(env: EnvDetectionResult): DetectedItem[] {
+  const osLabel = `${env.os} ${env.arch}`;
+  const regionLabel =
+    env.region === 'cn'
+      ? tr('中国 → 将使用国内源', 'China → will use domestic registry')
+      : tr('全球', 'Global');
 
-开场白：先自我介绍，然后说"让我先检查一下你的环境..."`;
+  return [
+    { key: 'os', label: tr('系统', 'System'), value: osLabel, ok: true },
+    { key: 'region', label: tr('网络', 'Network'), value: regionLabel, ok: true },
+    {
+      key: 'node',
+      label: 'Node.js',
+      value: env.node_version ?? tr('未安装', 'Not installed'),
+      ok: !!env.node_version,
+    },
+    {
+      key: 'npm',
+      label: 'npm',
+      value: env.npm_version ?? tr('未安装', 'Not installed'),
+      ok: !!env.npm_version,
+    },
+    {
+      key: 'git',
+      label: 'Git',
+      value: env.git_version ?? tr('未安装', 'Not installed'),
+      ok: !!env.git_version,
+    },
+    {
+      key: 'openclaw',
+      label: 'OpenClaw',
+      value: env.openclaw_version ?? tr('未安装', 'Not installed'),
+      ok: !!env.openclaw_version,
+    },
+  ];
+}
+
+function buildInstallSteps(env: EnvDetectionResult): InstallStep[] {
+  const steps: InstallStep[] = [];
+
+  // macOS prerequisite: Homebrew
+  if (env.os.toLowerCase().includes('mac') && !env.node_version) {
+    steps.push({
+      id: 'auto_install_brew',
+      label: STEP_LABELS['auto_install_brew'],
+      status: 'pending',
+    });
+  }
+
+  if (!env.node_version) {
+    steps.push({
+      id: 'auto_install_node',
+      label: STEP_LABELS['auto_install_node'],
+      status: 'pending',
+    });
+  }
+
+  if (!env.git_version) {
+    steps.push({
+      id: 'auto_install_git',
+      label: STEP_LABELS['auto_install_git'],
+      status: 'pending',
+    });
+  }
+
+  steps.push(
+    { id: 'install_openclaw', label: STEP_LABELS['install_openclaw'], status: 'pending' },
+    { id: 'run_onboard', label: STEP_LABELS['run_onboard'], status: 'pending' },
+    { id: 'setup_mcp', label: STEP_LABELS['setup_mcp'], status: 'pending' },
+    { id: 'harden_permissions', label: STEP_LABELS['harden_permissions'], status: 'pending' },
+    { id: 'verify_install', label: STEP_LABELS['verify_install'], status: 'pending' },
+  );
+
+  return steps;
+}
+
+function DetectionIcon({ itemKey }: { itemKey: string }) {
+  switch (itemKey) {
+    case 'os':
+      return <Monitor className="w-4 h-4 text-white/50" />;
+    case 'region':
+      return <Globe className="w-4 h-4 text-white/50" />;
+    case 'node':
+    case 'npm':
+    case 'git':
+      return <Cpu className="w-4 h-4 text-white/50" />;
+    case 'openclaw':
+      return <Download className="w-4 h-4 text-white/50" />;
+    default:
+      return <Cpu className="w-4 h-4 text-white/50" />;
+  }
+}
 
 interface AiInstallChatProps {
   onClose: () => void;
@@ -49,8 +161,10 @@ function TrialQueueCard({ onClose }: { onClose: () => void }) {
       exit={{ opacity: 0, y: 20 }}
       className="rounded-2xl border border-white/10 backdrop-blur-xl overflow-hidden"
       style={{
-        background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.08) 0%, rgba(4, 47, 46, 0.3) 100%)',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(20, 184, 166, 0.1)',
+        background:
+          'linear-gradient(135deg, rgba(20, 184, 166, 0.08) 0%, rgba(4, 47, 46, 0.3) 100%)',
+        boxShadow:
+          '0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(20, 184, 166, 0.1)',
       }}
     >
       {/* Header */}
@@ -136,107 +250,93 @@ function TrialQueueCard({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function AiInstallChat({ onClose, isPro }: AiInstallChatProps) {
-  if (!isPro) {
-    return <TrialQueueCard onClose={onClose} />;
-  }
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [initialized, setInitialized] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+function AutoInstallPanel({ onClose }: { onClose: () => void }) {
+  const [phase, setPhase] = useState<SetupPhase>('detecting');
+  const [env, setEnv] = useState<EnvDetectionResult | null>(null);
+  const [detectedItems, setDetectedItems] = useState<DetectedItem[]>([]);
+  const [steps, setSteps] = useState<InstallStep[]>([]);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const scrollToBottom = useCallback(() => {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-    });
-  }, []);
-
-  const addMessage = useCallback((role: ChatMessage['role'], content: string) => {
-    const msg: ChatMessage = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      role,
-      content,
-      timestamp: Date.now(),
-    };
-    setMessages((prev) => [...prev, msg]);
-    return msg;
-  }, []);
-
-  const callAI = useCallback(async (userMessages: ChatMessage[]) => {
-    const apiMessages = [
-      { role: 'system', content: SYSTEM_PROMPT },
-      ...userMessages.map((m) => ({ role: m.role, content: m.content })),
-    ];
-
+  const detect = useCallback(async () => {
+    setPhase('detecting');
+    setErrorMsg('');
     try {
-      const reply = await invoke<string>('pro_ai_chat', {
-        messages: apiMessages,
-      });
-      return reply;
-    } catch (error) {
-      return tr(
-        `AI 连接失败: ${String(error)}。请检查网络或稍后重试。`,
-        `AI connection failed: ${String(error)}. Please check your network.`,
-      );
+      const result = await detectEnvAndRegion();
+      setEnv(result);
+      setDetectedItems(buildDetectedItems(result));
+      setSteps(buildInstallSteps(result));
+      setPhase('detected');
+    } catch (err) {
+      setErrorMsg(String(err));
+      setPhase('error');
     }
   }, []);
 
-  // Auto-start conversation
   useEffect(() => {
-    if (initialized) return;
-    setInitialized(true);
+    void detect();
+  }, [detect]);
 
-    const init = async () => {
-      setLoading(true);
-      const greeting = addMessage('assistant', tr(
-        '你好！我是 AgentShield AI 安装助手 🤖\n让我先检查一下你的环境...',
-        'Hi! I\'m the AgentShield AI Install Assistant 🤖\nLet me check your environment first...',
-      ));
+  const hasMissing = detectedItems.some((d) => !d.ok);
 
-      // Call AI with initial context
+  const updateStep = (id: string, patch: Partial<InstallStep>) => {
+    setSteps((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  };
+
+  const runInstall = useCallback(async () => {
+    if (!env) return;
+    setPhase('installing');
+    setErrorMsg('');
+
+    for (const step of steps) {
+      updateStep(step.id, { status: 'running' });
+
       try {
-        const reply = await callAI([
-          { id: 'init', role: 'user', content: tr('用户刚打开了安装助手，请自我介绍并开始检测环境。', 'User just opened the install assistant. Introduce yourself and start checking the environment.'), timestamp: Date.now() },
-        ]);
-        addMessage('assistant', reply);
-      } catch {
-        addMessage('assistant', tr(
-          '环境检测功能需要网络连接。请确保网络正常后重试。',
-          'Environment check requires network. Please ensure connectivity and retry.',
-        ));
+        let result;
+
+        if (step.id === 'auto_install_brew') {
+          result = await autoInstallPrerequisite('brew', env.region);
+        } else if (step.id === 'auto_install_node') {
+          result = await autoInstallPrerequisite('node', env.region);
+        } else if (step.id === 'auto_install_git') {
+          result = await autoInstallPrerequisite('git', env.region);
+        } else if (step.id === 'install_openclaw') {
+          result = await executeInstallStep('install_openclaw', {
+            registry: env.recommended_registry ?? undefined,
+          });
+        } else if (step.id === 'setup_mcp') {
+          result = await executeInstallStep('setup_mcp', { platformIds: [] });
+        } else {
+          result = await executeInstallStep(step.id);
+        }
+
+        if (result.success) {
+          updateStep(step.id, { status: 'done', message: result.message });
+        } else {
+          updateStep(step.id, {
+            status: 'failed',
+            message: result.error ?? result.message,
+          });
+          setErrorMsg(result.error ?? result.message);
+          setPhase('error');
+          return;
+        }
+      } catch (err) {
+        updateStep(step.id, { status: 'failed', message: String(err) });
+        setErrorMsg(String(err));
+        setPhase('error');
+        return;
       }
-      setLoading(false);
-    };
-
-    void init();
-  }, [initialized, addMessage, callAI]);
-
-  useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
-
-  const handleSend = useCallback(async () => {
-    const text = input.trim();
-    if (!text || loading) return;
-
-    setInput('');
-    addMessage('user', text);
-    setLoading(true);
-
-    const allMessages = [...messages, { id: 'temp', role: 'user' as const, content: text, timestamp: Date.now() }];
-    const reply = await callAI(allMessages);
-    addMessage('assistant', reply);
-
-    setLoading(false);
-    inputRef.current?.focus();
-  }, [input, loading, messages, addMessage, callAI]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void handleSend();
     }
-  }, [handleSend]);
+
+    setPhase('done');
+  }, [env, steps]);
+
+  const retryFromFailed = useCallback(() => {
+    setSteps((prev) =>
+      prev.map((s) => (s.status === 'failed' ? { ...s, status: 'pending' as const, message: undefined } : s)),
+    );
+    void runInstall();
+  }, [runInstall]);
 
   return (
     <motion.div
@@ -245,8 +345,10 @@ export function AiInstallChat({ onClose, isPro }: AiInstallChatProps) {
       exit={{ opacity: 0, y: 20 }}
       className="rounded-2xl border border-white/10 backdrop-blur-xl overflow-hidden"
       style={{
-        background: 'linear-gradient(135deg, rgba(20, 184, 166, 0.08) 0%, rgba(4, 47, 46, 0.3) 100%)',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(20, 184, 166, 0.1)',
+        background:
+          'linear-gradient(135deg, rgba(20, 184, 166, 0.08) 0%, rgba(4, 47, 46, 0.3) 100%)',
+        boxShadow:
+          '0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(20, 184, 166, 0.1)',
       }}
     >
       {/* Header */}
@@ -259,7 +361,9 @@ export function AiInstallChat({ onClose, isPro }: AiInstallChatProps) {
             <h3 className="text-sm font-semibold text-white">
               {tr('AI 安装助手', 'AI Install Assistant')}
             </h3>
-            <p className="text-[11px] text-white/40">MiniMax M2.7 · Pro</p>
+            <p className="text-[11px] text-white/40">
+              {tr('自动安装模式', 'Auto-install Mode')}
+            </p>
           </div>
         </div>
         <button
@@ -270,95 +374,172 @@ export function AiInstallChat({ onClose, isPro }: AiInstallChatProps) {
         </button>
       </div>
 
-      {/* Messages */}
-      <div
-        ref={scrollRef}
-        className="h-[400px] overflow-y-auto px-4 py-3 space-y-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10"
-      >
-        <AnimatePresence>
-          {messages.filter((m) => m.role !== 'system').map((msg) => (
-            <motion.div
-              key={msg.id}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
-              className={cn('flex gap-2.5', msg.role === 'user' ? 'flex-row-reverse' : 'flex-row')}
-            >
-              {/* Avatar */}
-              <div className={cn(
-                'w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5',
-                msg.role === 'assistant' ? 'bg-teal-500/20' : 'bg-white/10',
-              )}>
-                {msg.role === 'assistant'
-                  ? <Bot className="w-3.5 h-3.5 text-teal-400" />
-                  : <User className="w-3.5 h-3.5 text-white/60" />}
-              </div>
-
-              {/* Bubble */}
-              <div className={cn(
-                'max-w-[80%] rounded-xl px-3 py-2 text-sm leading-relaxed',
-                msg.role === 'assistant'
-                  ? 'bg-white/5 text-white/90 border border-white/5'
-                  : 'bg-teal-500/15 text-white/90 border border-teal-500/10',
-              )}>
-                {msg.content.split('\n').map((line, i) => (
-                  <p key={i} className={i > 0 ? 'mt-1.5' : ''}>
-                    {line.startsWith('```') ? (
-                      <code className="bg-black/30 px-1.5 py-0.5 rounded text-xs font-mono text-teal-300">
-                        {line.replace(/```/g, '')}
-                      </code>
-                    ) : line}
-                  </p>
-                ))}
-              </div>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-
-        {/* Typing indicator */}
-        {loading && (
+      {/* Body */}
+      <div className="px-4 py-4 space-y-4 max-h-[480px] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
+        {/* Detecting spinner */}
+        {phase === 'detecting' && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex gap-2.5"
+            className="flex flex-col items-center py-8 gap-3"
           >
-            <div className="w-7 h-7 rounded-lg bg-teal-500/20 flex items-center justify-center shrink-0">
-              <Bot className="w-3.5 h-3.5 text-teal-400" />
+            <Loader2 className="w-8 h-8 text-teal-400 animate-spin" />
+            <p className="text-sm text-white/60">
+              {tr('正在检测环境...', 'Detecting environment...')}
+            </p>
+          </motion.div>
+        )}
+
+        {/* Detection results */}
+        {(phase === 'detected' || phase === 'installing' || phase === 'done') && (
+          <div className="space-y-2">
+            <h4 className="text-xs font-medium text-white/40 uppercase tracking-wider">
+              {tr('环境检测', 'Environment Detection')}
+            </h4>
+            <div className="space-y-1.5">
+              <AnimatePresence>
+                {detectedItems.map((item, i) => (
+                  <motion.div
+                    key={item.key}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="flex items-center gap-3 rounded-lg bg-white/5 border border-white/5 px-3 py-2"
+                  >
+                    <DetectionIcon itemKey={item.key} />
+                    <span className="text-sm text-white/70 w-20 shrink-0">{item.label}</span>
+                    <span className="text-sm text-white/90 flex-1 truncate">{item.value}</span>
+                    {item.ok ? (
+                      <Check className="w-4 h-4 text-teal-400 shrink-0" />
+                    ) : (
+                      <X className="w-4 h-4 text-red-400 shrink-0" />
+                    )}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
-            <div className="bg-white/5 border border-white/5 rounded-xl px-3 py-2 flex items-center gap-1.5">
-              <Loader2 className="w-3.5 h-3.5 text-teal-400 animate-spin" />
-              <span className="text-xs text-white/40">{tr('思考中...', 'Thinking...')}</span>
+          </div>
+        )}
+
+        {/* Action button for detected phase */}
+        {phase === 'detected' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pt-2">
+            {hasMissing && (
+              <p className="text-xs text-amber-400/80 mb-3">
+                {tr(
+                  '缺少部分依赖，点击下方按钮将自动安装。',
+                  'Some dependencies are missing. Click below to auto-install.',
+                )}
+              </p>
+            )}
+            <button
+              onClick={() => void runInstall()}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-teal-500/20 border border-teal-500/20 px-4 py-3 text-sm font-semibold text-teal-300 hover:bg-teal-500/30 transition-colors"
+            >
+              <Play className="w-4 h-4" />
+              {hasMissing
+                ? tr('开始自动安装', 'Start Auto-install')
+                : tr('开始配置 OpenClaw', 'Start Configuring OpenClaw')}
+            </button>
+          </motion.div>
+        )}
+
+        {/* Installation steps */}
+        {(phase === 'installing' || phase === 'done' || phase === 'error') && steps.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-xs font-medium text-white/40 uppercase tracking-wider">
+              {tr('安装步骤', 'Installation Steps')}
+            </h4>
+            <div className="space-y-1.5">
+              {steps.map((step) => (
+                <motion.div
+                  key={step.id}
+                  initial={{ opacity: 0.6 }}
+                  animate={{ opacity: 1 }}
+                  className="flex items-start gap-3 rounded-lg bg-white/5 border border-white/5 px-3 py-2"
+                >
+                  <div className="mt-0.5 shrink-0">
+                    {step.status === 'pending' && (
+                      <div className="w-4 h-4 rounded-full border border-white/20" />
+                    )}
+                    {step.status === 'running' && (
+                      <Loader2 className="w-4 h-4 text-teal-400 animate-spin" />
+                    )}
+                    {step.status === 'done' && (
+                      <Check className="w-4 h-4 text-teal-400" />
+                    )}
+                    {step.status === 'failed' && (
+                      <X className="w-4 h-4 text-red-400" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm text-white/90">{step.label}</span>
+                    {step.message && (
+                      <p className="text-xs text-white/40 mt-0.5 truncate">{step.message}</p>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Done state */}
+        {phase === 'done' && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex flex-col items-center py-4 gap-2"
+          >
+            <div className="w-12 h-12 rounded-full bg-teal-500/20 flex items-center justify-center">
+              <Check className="w-6 h-6 text-teal-400" />
+            </div>
+            <p className="text-sm font-semibold text-white">
+              {tr('安装完成!', 'Installation Complete!')}
+            </p>
+            <p className="text-xs text-white/50">
+              {tr('OpenClaw 已就绪。', 'OpenClaw is ready.')}
+            </p>
+          </motion.div>
+        )}
+
+        {/* Error state */}
+        {phase === 'error' && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-3"
+          >
+            <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
+              <p className="text-xs text-red-300 break-words">{errorMsg}</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => void detect()}
+                className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm text-white/70 hover:bg-white/10 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                {tr('重新检测', 'Re-detect')}
+              </button>
+              <button
+                onClick={retryFromFailed}
+                className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-teal-500/20 border border-teal-500/20 px-4 py-2.5 text-sm text-teal-300 hover:bg-teal-500/30 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                {tr('重试', 'Retry')}
+              </button>
             </div>
           </motion.div>
         )}
       </div>
-
-      {/* Input */}
-      <div className="px-4 py-3 border-t border-white/10">
-        <div className="flex gap-2">
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={loading}
-            placeholder={tr('输入消息...', 'Type a message...')}
-            className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/25 outline-none focus:border-teal-500/30 disabled:opacity-50 transition-colors"
-          />
-          <button
-            onClick={() => void handleSend()}
-            disabled={!input.trim() || loading}
-            className={cn(
-              'w-9 h-9 rounded-lg flex items-center justify-center transition-all',
-              input.trim() && !loading
-                ? 'bg-teal-500/20 text-teal-400 hover:bg-teal-500/30'
-                : 'bg-white/5 text-white/20',
-            )}
-          >
-            <Send className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
     </motion.div>
   );
+}
+
+export function AiInstallChat({ onClose, isPro }: AiInstallChatProps) {
+  if (!isPro) {
+    return <TrialQueueCard onClose={onClose} />;
+  }
+
+  return <AutoInstallPanel onClose={onClose} />;
 }

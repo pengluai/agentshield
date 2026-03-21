@@ -1083,6 +1083,12 @@ span {
   color: var(--muted-foreground);
 }
 
+.price-subline {
+  margin: -6px 0 10px;
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+}
+
 .plan-list {
   list-style: none;
   padding: 0;

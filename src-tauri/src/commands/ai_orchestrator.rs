@@ -58,6 +58,19 @@ pub struct ProAiQuotaStatus {
     pub monthly_limit: u32,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct EnvDetectionResult {
+    pub node_version: Option<String>,
+    pub npm_version: Option<String>,
+    pub git_version: Option<String>,
+    pub openclaw_version: Option<String>,
+    pub os: String,
+    pub arch: String,
+    pub region: String,
+    pub current_registry: String,
+    pub recommended_registry: Option<String>,
+}
+
 struct StepApprovalSpec {
     action_kind: &'static str,
     action_source: &'static str,
@@ -650,12 +663,348 @@ pub async fn ai_diagnose_error(
 }
 
 #[tauri::command]
+pub async fn detect_env_and_region() -> Result<EnvDetectionResult, String> {
+    // 1. Detect node version
+    let node_version = if which::which("node").is_ok() || win_fallback_which("node") {
+        let mut cmd = Command::new("node");
+        cmd.arg("--version");
+        command_output_async(cmd)
+            .await
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|v| v.trim().to_string())
+    } else {
+        None
+    };
+
+    // 2. Detect npm version
+    let npm_version = if which::which("npm").is_ok() || win_fallback_which("npm") {
+        let mut cmd = Command::new(npm_command());
+        cmd.arg("--version");
+        command_output_async(cmd)
+            .await
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|v| v.trim().to_string())
+    } else {
+        None
+    };
+
+    // 3. Detect git version
+    let git_version = if which::which("git").is_ok() || win_fallback_which("git") {
+        let mut cmd = Command::new("git");
+        cmd.arg("--version");
+        command_output_async(cmd)
+            .await
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|v| {
+                // "git version 2.39.0" -> "2.39.0"
+                let trimmed = v.trim();
+                trimmed
+                    .strip_prefix("git version ")
+                    .unwrap_or(trimmed)
+                    .to_string()
+            })
+    } else {
+        None
+    };
+
+    // 4. Detect openclaw version
+    let openclaw_version = if which::which("openclaw").is_ok() || win_fallback_which("openclaw") {
+        let mut cmd = Command::new(openclaw_command());
+        cmd.arg("--version");
+        command_output_async(cmd)
+            .await
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|v| v.trim().to_string())
+    } else {
+        None
+    };
+
+    // 5. OS and arch
+    let os = std::env::consts::OS.to_string();
+    let arch = std::env::consts::ARCH.to_string();
+
+    // 6. Network region detection
+    let region = {
+        let client = reqwest::Client::new();
+        let result = client
+            .head("https://registry.npmjs.org/")
+            .timeout(std::time::Duration::from_secs(3))
+            .send()
+            .await;
+        match result {
+            Ok(_) => "global".to_string(),
+            Err(_) => "cn".to_string(),
+        }
+    };
+
+    // 7. Current npm registry
+    let current_registry = if which::which("npm").is_ok() || win_fallback_which("npm") {
+        let mut cmd = Command::new(npm_command());
+        cmd.args(["config", "get", "registry"]);
+        command_output_async(cmd)
+            .await
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|v| v.trim().to_string())
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    // 8. Recommended registry
+    let recommended_registry = if region == "cn" && current_registry.contains("npmjs.org") {
+        Some("https://registry.npmmirror.com".to_string())
+    } else {
+        None
+    };
+
+    Ok(EnvDetectionResult {
+        node_version,
+        npm_version,
+        git_version,
+        openclaw_version,
+        os,
+        arch,
+        region,
+        current_registry,
+        recommended_registry,
+    })
+}
+
+#[tauri::command]
+pub async fn auto_install_prerequisite(
+    component: String,
+    region: String,
+) -> Result<StepResult, String> {
+    let step_id = format!("auto_install_{}", component);
+
+    match component.as_str() {
+        "node" => {
+            if cfg!(target_os = "macos") {
+                // Check if brew is available
+                if which::which("brew").is_err() {
+                    return Ok(StepResult {
+                        success: false,
+                        step_id,
+                        message: "需要先安装 Homebrew / Homebrew is required first".to_string(),
+                        output: None,
+                        error: Some(
+                            "需要先安装 Homebrew。请先安装 brew 组件。\nHomebrew is required. Please install the brew component first."
+                                .to_string(),
+                        ),
+                        needs_ai_help: true,
+                    });
+                }
+                let mut cmd = Command::new("/bin/bash");
+                cmd.args(["-c", "brew install node@22"]);
+                let output = command_output_async(cmd)
+                    .await
+                    .map_err(|e| format!("Failed to run brew: {e}"))?;
+                if output.status.success() {
+                    // Verify installation
+                    let mut verify_cmd = Command::new("node");
+                    verify_cmd.arg("--version");
+                    let version = command_output_async(verify_cmd)
+                        .await
+                        .ok()
+                        .and_then(|o| String::from_utf8(o.stdout).ok())
+                        .map(|v| v.trim().to_string())
+                        .unwrap_or_else(|| "installed".to_string());
+                    Ok(StepResult {
+                        success: true,
+                        step_id,
+                        message: format!("Node.js {} 安装成功 / installed successfully", version),
+                        output: Some(String::from_utf8_lossy(&output.stdout).to_string()),
+                        error: None,
+                        needs_ai_help: false,
+                    })
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                    Ok(StepResult {
+                        success: false,
+                        step_id,
+                        message: "Node.js 安装失败 / installation failed".to_string(),
+                        output: None,
+                        error: Some(stderr),
+                        needs_ai_help: true,
+                    })
+                }
+            } else if cfg!(target_os = "windows") {
+                let mut cmd = Command::new("winget");
+                cmd.args([
+                    "install",
+                    "OpenJS.NodeJS.LTS",
+                    "--accept-package-agreements",
+                    "--accept-source-agreements",
+                ]);
+                let output = command_output_async(cmd)
+                    .await
+                    .map_err(|e| format!("Failed to run winget: {e}"))?;
+                if output.status.success() {
+                    let mut verify_cmd = Command::new("node");
+                    verify_cmd.arg("--version");
+                    let version = command_output_async(verify_cmd)
+                        .await
+                        .ok()
+                        .and_then(|o| String::from_utf8(o.stdout).ok())
+                        .map(|v| v.trim().to_string())
+                        .unwrap_or_else(|| "installed".to_string());
+                    Ok(StepResult {
+                        success: true,
+                        step_id,
+                        message: format!("Node.js {} 安装成功 / installed successfully", version),
+                        output: Some(String::from_utf8_lossy(&output.stdout).to_string()),
+                        error: None,
+                        needs_ai_help: false,
+                    })
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                    Ok(StepResult {
+                        success: false,
+                        step_id,
+                        message: "Node.js 安装失败 / installation failed".to_string(),
+                        output: None,
+                        error: Some(stderr),
+                        needs_ai_help: true,
+                    })
+                }
+            } else {
+                Err(format!(
+                    "不支持的操作系统 / Unsupported OS: {}",
+                    std::env::consts::OS
+                ))
+            }
+        }
+
+        "git" => {
+            if cfg!(target_os = "macos") {
+                let mut cmd = Command::new("/bin/bash");
+                cmd.args(["-c", "xcode-select --install"]);
+                let output = command_output_async(cmd)
+                    .await
+                    .map_err(|e| format!("Failed to run xcode-select: {e}"))?;
+                // xcode-select --install opens a system dialog; it may return non-zero
+                // if already installed or if dialog was shown
+                Ok(StepResult {
+                    success: true,
+                    step_id,
+                    message: "已触发 Xcode Command Line Tools 安装对话框 / Xcode CLT install dialog triggered".to_string(),
+                    output: Some(String::from_utf8_lossy(&output.stdout).to_string()),
+                    error: if output.status.success() {
+                        None
+                    } else {
+                        Some(String::from_utf8_lossy(&output.stderr).to_string())
+                    },
+                    needs_ai_help: false,
+                })
+            } else if cfg!(target_os = "windows") {
+                let mut cmd = Command::new("winget");
+                cmd.args([
+                    "install",
+                    "Git.Git",
+                    "-e",
+                    "--accept-package-agreements",
+                    "--accept-source-agreements",
+                ]);
+                let output = command_output_async(cmd)
+                    .await
+                    .map_err(|e| format!("Failed to run winget: {e}"))?;
+                if output.status.success() {
+                    Ok(StepResult {
+                        success: true,
+                        step_id,
+                        message: "Git 安装成功 / installed successfully".to_string(),
+                        output: Some(String::from_utf8_lossy(&output.stdout).to_string()),
+                        error: None,
+                        needs_ai_help: false,
+                    })
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                    Ok(StepResult {
+                        success: false,
+                        step_id,
+                        message: "Git 安装失败 / installation failed".to_string(),
+                        output: None,
+                        error: Some(stderr),
+                        needs_ai_help: true,
+                    })
+                }
+            } else {
+                Err(format!(
+                    "不支持的操作系统 / Unsupported OS: {}",
+                    std::env::consts::OS
+                ))
+            }
+        }
+
+        "brew" => {
+            if !cfg!(target_os = "macos") {
+                return Err(
+                    "Homebrew 仅支持 macOS / Homebrew is macOS only".to_string()
+                );
+            }
+
+            let script = if region == "cn" {
+                concat!(
+                    "export NONINTERACTIVE=1 && ",
+                    "export HOMEBREW_BREW_GIT_REMOTE=https://mirrors.ustc.edu.cn/brew.git && ",
+                    "export HOMEBREW_CORE_GIT_REMOTE=https://mirrors.ustc.edu.cn/homebrew-core.git && ",
+                    "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+                )
+            } else {
+                concat!(
+                    "export NONINTERACTIVE=1 && ",
+                    "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+                )
+            };
+
+            let mut cmd = Command::new("/bin/bash");
+            cmd.args(["-c", script]);
+            let output = command_output_async(cmd)
+                .await
+                .map_err(|e| format!("Failed to run Homebrew installer: {e}"))?;
+
+            if output.status.success() {
+                Ok(StepResult {
+                    success: true,
+                    step_id,
+                    message: "Homebrew 安装成功 / installed successfully".to_string(),
+                    output: Some(String::from_utf8_lossy(&output.stdout).to_string()),
+                    error: None,
+                    needs_ai_help: false,
+                })
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                Ok(StepResult {
+                    success: false,
+                    step_id,
+                    message: "Homebrew 安装失败 / installation failed".to_string(),
+                    output: None,
+                    error: Some(stderr),
+                    needs_ai_help: true,
+                })
+            }
+        }
+
+        _ => Err(format!(
+            "未知组件 / Unknown component: {}",
+            component
+        )),
+    }
+}
+
+#[tauri::command]
 pub async fn execute_install_step(
     step_id: String,
     channel_id: Option<String>,
     token: Option<String>,
     platform_ids: Option<Vec<String>>,
     approval_ticket: Option<String>,
+    registry: Option<String>,
 ) -> Result<StepResult, String> {
     if is_paid_openclaw_step(&step_id) {
         let info = license::check_license_status().await?;
@@ -761,7 +1110,12 @@ pub async fn execute_install_step(
 
             // Run npm install
             let mut install_command = Command::new(npm_command());
-            install_command.args(["install", "-g", "openclaw@latest"]);
+            let mut install_args = vec!["install", "-g", "openclaw@latest"];
+            if let Some(ref reg) = registry {
+                install_args.push("--registry");
+                install_args.push(reg.as_str());
+            }
+            install_command.args(&install_args);
             let output = command_output_async(install_command)
                 .await
                 .map_err(|error| format!("Failed to run npm: {error}"))?;

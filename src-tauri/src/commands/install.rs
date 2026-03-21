@@ -257,16 +257,16 @@ async fn require_one_click_automation(operation: &str) -> Result<(), String> {
 
     let hint = match (info.plan.as_str(), info.status.as_str()) {
         ("trial", "expired") => format!(
-            "14 天试用已结束。免费版仅支持手动{operation}，一键{operation}需要完整版激活码。请前往「升级 Pro」输入许可证密钥。"
+            "14 天试用已结束。免费版仅支持手动{operation}，一键{operation}需要完整版激活码。请前往「升级 Pro」输入激活码。"
         ),
         ("pro" | "enterprise", "expired") => format!(
-            "Pro 许可证已过期。一键{operation}需要有效的许可证。请前往「升级 Pro」续费或输入新的许可证密钥。"
+            "Pro 许可证已过期。一键{operation}需要有效的许可证。请前往「升级 Pro」续费或输入新的激活码。"
         ),
         ("pro" | "enterprise", "suspended" | "cancelled") => format!(
             "许可证已被暂停。请前往「升级 Pro」重新激活或联系客服。"
         ),
         ("free", _) => format!(
-            "当前为免费版，一键{operation}需要 Pro 许可证。请前往「升级 Pro」开始试用或输入许可证密钥。"
+            "当前为免费版，一键{operation}需要 Pro 许可证。请前往「升级 Pro」开始试用或输入激活码。"
         ),
         _ => format!(
             "当前许可证状态（{}/{}）不支持一键{operation}。请前往「升级 Pro」激活许可证。",

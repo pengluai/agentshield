@@ -180,6 +180,8 @@ pub fn run() {
             ai_orchestrator::pro_ai_chat,
             ai_orchestrator::pro_ai_quota_status,
             ai_orchestrator::execute_install_step,
+            ai_orchestrator::detect_env_and_region,
+            ai_orchestrator::auto_install_prerequisite,
             semantic_guard::get_semantic_guard_status,
             semantic_guard::configure_semantic_guard,
             semantic_guard::clear_semantic_guard_key,
