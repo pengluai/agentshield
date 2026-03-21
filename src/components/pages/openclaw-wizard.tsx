@@ -757,12 +757,14 @@ export function OpenClawWizard({ onComplete }: OpenClawWizardProps) {
                 <span className="text-sm text-white/70">
                   OpenClaw{' '}
                   <span className="text-teal-400 font-mono">{currentVersion}</span>
-                  {hasUpdate && latestVersion ? (
-                    <>
-                      <span className="text-white/20 mx-1.5">→</span>
-                      <span className="text-amber-400 font-mono">{latestVersion}</span>
-                    </>
-                  ) : null}
+                  {latestVersion && (
+                    <span className="text-white/40 ml-2">
+                      {tr('最新', 'Latest')}:{' '}
+                      <span className={cn('font-mono', hasUpdate ? 'text-amber-400' : 'text-teal-400/70')}>
+                        {latestVersion}
+                      </span>
+                    </span>
+                  )}
                 </span>
               ) : (
                 <span className="text-sm text-white/50">
@@ -1281,8 +1283,8 @@ function SmallActionButton({
         'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all',
         'disabled:opacity-35 disabled:cursor-not-allowed',
         destructive
-          ? 'border-rose-400/20 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20'
-          : 'border-white/15 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/80',
+          ? 'border-rose-400/30 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25'
+          : 'border-teal-400/25 bg-teal-500/10 text-teal-300 hover:bg-teal-500/20',
       )}
     >
       {loading ? (
