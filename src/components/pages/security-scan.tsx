@@ -21,7 +21,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useProGate } from '@/hooks/useProGate';
 import { createBufferedPhaseVisualizer } from '@/lib/buffered-phase-visualizer';
 import { requestRuntimeGuardActionApproval } from '@/services/runtime-guard';
-import { containsCjk, localizedDynamicText } from '@/lib/locale-text';
+import { containsCjk, localizedDynamicText, translateBackendText } from '@/lib/locale-text';
 
 const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
 
@@ -239,8 +239,8 @@ export function mapRustIssue(ri: RustSecurityIssue): SecurityIssue {
   return {
     id: ri.id,
     severity,
-    title: localizedDynamicText(ri.title, fallbackTitle),
-    description: localizedDynamicText(ri.description, fallbackDescription),
+    title: localizedDynamicText(ri.title, translateBackendText(ri.title) !== ri.title ? translateBackendText(ri.title) : fallbackTitle),
+    description: localizedDynamicText(ri.description, translateBackendText(ri.description) !== ri.description ? translateBackendText(ri.description) : fallbackDescription),
     platform,
     hostName,
     componentType,
