@@ -39,9 +39,33 @@ const NOTIFICATION_BILINGUAL: Array<[string, string]> = [
   ['安全扫描已完成，请立即查看并处理高风险项目。', 'Security scan completed. Please review and handle critical issues now.'],
   ['建议运行首次安全扫描', 'Run your first security scan'],
   ['请前往安全扫描页面，运行首次 MCP 安全检查。', 'Go to Security Scan to run your first MCP security check.'],
-  // Runtime guard
+  // Runtime guard — network
   ['已拦下未允许的联网地址', 'Blocked unauthorized network address'],
   ['发现未允许的联网地址，但未能自动暂停', 'Unauthorized network address detected, but auto-suspend failed'],
+  ['已拦下一个联网请求', 'Blocked a network request'],
+  ['已拦下一个数据库外联请求', 'Blocked a database exfiltration request'],
+  // Runtime guard — approval titles
+  ['这次启动需要你点头', 'Approve this launch'],
+  ['这次安装操作需要你点头', 'Approve this installation'],
+  ['这次删除操作需要你点头', 'Approve this deletion'],
+  ['这次批量改动需要你点头', 'Approve this bulk modification'],
+  ['这次删除密钥需要你点头', 'Approve this credential deletion'],
+  ['这次导出密钥需要你点头', 'Approve this credential export'],
+  ['这次网页提交需要你点头', 'Approve this web submission'],
+  ['这次支付提交需要你点头', 'Approve this payment submission'],
+  ['这次发送邮件需要你点头', 'Approve this email'],
+  ['这次删改邮件需要你点头', 'Approve this email modification'],
+  ['这次执行命令需要你点头', 'Approve this command execution'],
+  ['这次数据库外联/外传需要你点头', 'Approve this database exfiltration'],
+  ['这次高危操作需要你点头', 'Approve this high-risk action'],
+  ['发现一个需要你决定的敏感操作', 'A sensitive action needs your approval'],
+  // Runtime guard — blocked actions
+  ['已拦下可疑删除动作', 'Blocked suspicious delete action'],
+  ['已拦下可疑命令执行', 'Blocked suspicious command execution'],
+  ['已拦下可疑批量文件操作', 'Blocked suspicious bulk file operation'],
+  ['已拦下可疑邮件发送', 'Blocked suspicious email send'],
+  ['已拦下可疑支付操作', 'Blocked suspicious payment action'],
+  ['已拦下可疑浏览器提交', 'Blocked suspicious browser submission'],
   // Generic
   ['安全通知', 'Security notification'],
   ['发现安全事件，请查看详情。', 'A security event was detected. Please review details.'],
@@ -80,6 +104,44 @@ function localizeNotificationText(text: string, fallback: string): string {
   for (const [cn, en] of NOTIFICATION_BILINGUAL) {
     if (text === cn || text.includes(cn)) return en;
   }
+
+  // Dynamic approval titles with host
+  const hostBlock = text.match(/已拦下连接 (.+) 的请求/);
+  if (hostBlock) return `Blocked connection to ${hostBlock[1]}`;
+  const dbHostBlock = text.match(/已拦下数据库外联到 (.+) 的请求/);
+  if (dbHostBlock) return `Blocked database exfiltration to ${dbHostBlock[1]}`;
+
+  // Dynamic approval summaries (component name + action description)
+  const SUMMARY_PATTERNS: Array<[RegExp, string]> = [
+    [/(.+) 想启动。第一次运行前，AgentShield 需要先确认你是否愿意放行。/, '$1 wants to launch. AgentShield needs your approval before first run.'],
+    [/(.+) 想连接 (.+)。在你点头前，这个地址不会被加入允许名单。/, '$1 wants to connect to $2. This address will not be allowed until you approve.'],
+    [/(.+) 想发起一次联网操作，正在等你决定。/, '$1 wants to make a network request. Waiting for your approval.'],
+    [/(.+) 想把数据库流量或数据发往 (.+)，正在等你决定。/, '$1 wants to send database traffic to $2. Waiting for your approval.'],
+    [/(.+) 想发起一次数据库外联或外传操作，正在等你决定。/, '$1 wants to initiate a database exfiltration. Waiting for your approval.'],
+    [/(.+) 想把新的扩展能力写入 (.+)。在你点头前，这次安装不会被放行。/, '$1 wants to install extensions to $2. Installation blocked until you approve.'],
+    [/(.+) 想删除 (.+)。在你点头前，这次删除不会被放行。/, '$1 wants to delete $2. Deletion blocked until you approve.'],
+    [/(.+) 想批量改动 (.+)。在你点头前，AgentShield 会继续拦住。/, '$1 wants to bulk modify $2. Blocked until you approve.'],
+    [/(.+) 想删除密钥 (.+)。在你点头前，这次删除不会被放行。/, '$1 wants to delete credential $2. Deletion blocked until you approve.'],
+    [/(.+) 想显示或导出密钥 (.+)。在你点头前，明文不会被取出。/, '$1 wants to export credential $2. Plaintext will not be revealed until you approve.'],
+    [/(.+) 想把内容提交到网页。AgentShield 正在等你确认目标与内容。/, '$1 wants to submit content to a web page. Waiting for your approval.'],
+    [/(.+) 想提交支付请求。AgentShield 正在等你确认金额与目标。/, '$1 wants to submit a payment. Waiting for your approval.'],
+    [/(.+) 想发送邮件。AgentShield 正在等你确认收件人与正文。/, '$1 wants to send an email. Waiting for your approval.'],
+    [/(.+) 想删除或归档邮件。AgentShield 正在等你确认范围。/, '$1 wants to delete or archive emails. Waiting for your approval.'],
+    [/(.+) 想执行命令。AgentShield 正在等你确认命令内容。/, '$1 wants to execute a command. Waiting for your approval.'],
+    [/(.+) 想把数据库内容或数据库连接流量发往外部目标。AgentShield 正在等你确认目标与范围。/, '$1 wants to send database content to an external target. Waiting for your approval.'],
+    [/(.+) 触发了一个需要你确认的敏感操作。/, '$1 triggered a sensitive action that needs your approval.'],
+  ];
+  for (const [pattern, template] of SUMMARY_PATTERNS) {
+    const m = text.match(pattern);
+    if (m) {
+      let result = template;
+      for (let i = 1; i < m.length; i++) {
+        result = result.replace(`$${i}`, m[i]);
+      }
+      return result;
+    }
+  }
+
   // Legacy patterns
   if (text.includes('免费版规则同步频率为每 7 天一次')) {
     return text.replace(

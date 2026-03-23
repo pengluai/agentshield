@@ -31,7 +31,7 @@ export function ManualModeGateDialog({
   manualLabel,
   onManual,
   onUpgrade,
-  upgradeLabel = isEnglishLocale ? '⚡ Unlock One-Click Fix' : '⚡ 解锁一键修复',
+  upgradeLabel = isEnglishLocale ? '⚡ Upgrade Pro' : '⚡ 升级 Pro',
 }: ManualModeGateDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

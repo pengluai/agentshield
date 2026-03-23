@@ -70,6 +70,14 @@ export default {
       return Response.redirect(releasesUrl, 302);
     }
 
-    return env.ASSETS.fetch(request);
+    const response = await env.ASSETS.fetch(request);
+    // Prevent browser caching of HTML pages so CSS/JS updates take effect immediately
+    if (url.pathname === "/" || url.pathname.endsWith(".html")) {
+      const newResponse = new Response(response.body, response);
+      newResponse.headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
+      newResponse.headers.set("Pragma", "no-cache");
+      return newResponse;
+    }
+    return response;
   },
 };

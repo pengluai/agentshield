@@ -423,7 +423,7 @@ function getScanPhaseLabels(): Record<(typeof SCAN_PHASE_ORDER)[number], string>
     key_security: tr('检查密码暴露风险', 'Checking for password exposure'),
     skill_security: tr('检查恶意插件风险', 'Checking for malicious plugins'),
     env_config: tr('检查插件配置权限风险', 'Checking MCP/Skill config permissions'),
-    system_protection: tr('检查后台偷跑风险', 'Checking background activity'),
+    system_protection: tr('检查后台活动', 'Checking background activity'),
   };
 }
 
@@ -456,7 +456,7 @@ function getScanSteps() {
     { icon: Lock, label: tr('检查密码暴露风险', 'Checking for password exposure') },
     { icon: Eye, label: tr('检查恶意插件风险', 'Checking for malicious plugins') },
     { icon: Search, label: tr('检查插件配置权限风险', 'Checking MCP/Skill config permissions') },
-    { icon: Shield, label: tr('检查后台偷跑风险', 'Checking background activity') },
+    { icon: Shield, label: tr('检查后台活动', 'Checking background activity') },
   ];
 }
 

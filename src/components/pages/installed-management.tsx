@@ -54,6 +54,20 @@ interface UpdateAuditItem {
   reason: string;
 }
 
+interface BatchUpdateTargetInput {
+  itemId: string;
+  platform?: string | null;
+  sourcePath?: string | null;
+}
+
+interface BatchUpdateTargetsReport {
+  requested: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  failures: string[];
+}
+
 interface GlobalCleanupDependencyTask {
   manager: 'npm_global' | 'pip_package' | 'winget_package' | 'choco_package' | string;
   identifier: string;
@@ -203,6 +217,42 @@ function safeScrollIntoView(target: Element | null) {
       behavior: 'smooth',
     });
   }
+}
+
+function formatManualCleanupPreview(component: GlobalCleanupComponentPlan): {
+  text: string;
+  copyValue: string;
+  copyLabel: string;
+} {
+  const renderedCommand = `${component.command} ${component.args.join(' ')}`.trim();
+
+  if (component.component_type === 'skill') {
+    return {
+      text: tr(
+        `手动删除 Skill 目录: ${component.config_path}`,
+        `Manually remove Skill directory: ${component.config_path}`,
+      ),
+      copyValue: component.config_path,
+      copyLabel: tr('复制路径', 'Copy path'),
+    };
+  }
+
+  if (renderedCommand.length > 0 && renderedCommand !== 'skill') {
+    return {
+      text: renderedCommand,
+      copyValue: renderedCommand,
+      copyLabel: tr('复制', 'Copy'),
+    };
+  }
+
+  return {
+    text: tr(
+      `手动处理配置路径: ${component.config_path}`,
+      `Manually handle config path: ${component.config_path}`,
+    ),
+    copyValue: component.config_path,
+    copyLabel: tr('复制路径', 'Copy path'),
+  };
 }
 
 const IDE_AI_TOOL_ORDER: Platform[] = [
@@ -513,8 +563,8 @@ function formatSensitiveCapability(value: string): string {
 }
 
 export function InstalledManagement({ onBack }: InstalledManagementProps) {
-  const { isPro, isTrial } = useProGate();
-  const oneClickOpsUnlocked = isPro || isTrial;
+  const { canAccess } = useProGate();
+  const oneClickOpsUnlocked = canAccess('auto_fix');
   const [items, setItems] = useState<GuardedInstalledMcp[]>([]);
   const [detectedTools, setDetectedTools] = useState<DetectedToolEntry[]>([]);
   const [detectedPlatformIds, setDetectedPlatformIds] = useState<Platform[]>([]);
@@ -1145,7 +1195,7 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
     }
 
     setGlobalCleanupRunning(true);
-    setUpdateStatus(null);
+    setUpdateStatus(tr('正在生成清理计划…', 'Generating cleanup plan...'));
     try {
       const preview = await requestCleanupPreview(scopePlatforms);
       const hasAutoWork =
@@ -1437,20 +1487,23 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
               <div className="space-y-1.5">
                 {cleanupPreviewData.components
                   .filter((comp) => !comp.auto_cleanup_supported)
-                  .map((comp, idx) => (
-                    <div key={`comp-${idx}`} className="flex items-start gap-2">
-                      <code className="flex-1 text-xs bg-slate-900 text-green-400 rounded px-2 py-1 font-mono break-all">
-                        {comp.command} {comp.args.join(' ')}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={() => void navigator.clipboard.writeText(`${comp.command} ${comp.args.join(' ')}`)}
-                        className="shrink-0 text-[10px] text-amber-700 hover:text-amber-900 px-1.5 py-0.5 rounded bg-amber-100"
-                      >
-                        {tr('复制', 'Copy')}
-                      </button>
-                    </div>
-                  ))}
+                  .map((comp, idx) => {
+                    const instruction = formatManualCleanupPreview(comp);
+                    return (
+                      <div key={`comp-${idx}`} className="flex items-start gap-2">
+                        <code className="flex-1 text-xs bg-slate-900 text-green-400 rounded px-2 py-1 font-mono break-all">
+                          {instruction.text}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => void navigator.clipboard.writeText(instruction.copyValue)}
+                          className="shrink-0 text-[10px] text-amber-700 hover:text-amber-900 px-1.5 py-0.5 rounded bg-amber-100"
+                        >
+                          {instruction.copyLabel}
+                        </button>
+                      </div>
+                    );
+                  })}
                 {cleanupPreviewData.dependency_tasks.map((task, idx) => (
                   <div key={`dep-${idx}`} className="flex items-start gap-2">
                     <code className="flex-1 text-xs bg-slate-900 text-green-400 rounded px-2 py-1 font-mono break-all">
@@ -1502,35 +1555,82 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
                     return;
                   }
                   if (!selectedHost) return;
-                  setUpdateStatus(null);
-                  const hostManagedIds = Array.from(
-                    new Set(
-                      items
-                        .filter((item) => item.platform_id === selectedHost.id && item.managedByAgentShield)
-                        .map((item) => item.item_id)
-                    )
-                  );
-                  if (hostManagedIds.length === 0) {
-                    setUpdateStatus(tr('该工具下没有可自动修复的已托管扩展。', 'No managed extensions under this tool can be auto-fixed.'));
-                    return;
-                  }
+                  setUpdateStatus(tr(`正在分析 ${selectedHost.name} 的可修复组件…`, `Analyzing fixable components in ${selectedHost.name}...`));
                   try {
+                    setCheckingUpdates(true);
+                    const normalized = (value?: string | null) => String(value || '').trim();
+                    const hostCandidates = selectedHostComponents;
+                    const updates = await invoke<UpdateAuditItem[]>('check_installed_updates');
+                    const targets: BatchUpdateTargetInput[] = [];
+                    const seenTargets = new Set<string>();
+
+                    for (const update of updates) {
+                      if (!update.has_update) {
+                        continue;
+                      }
+                      const updatePlatform = normalized(update.platform) || selectedHost.id;
+                      if (updatePlatform !== selectedHost.id) {
+                        continue;
+                      }
+
+                      const updateSource = normalized(update.source_path);
+                      const matchedItem = hostCandidates.find((item) => {
+                        if (item.item_id !== update.item_id) {
+                          return false;
+                        }
+                        if (!updateSource) {
+                          return true;
+                        }
+                        return normalized(item.sourceUrl) === updateSource;
+                      });
+
+                      if (!matchedItem && !update.tracked) {
+                        continue;
+                      }
+
+                      const sourcePath = updateSource || normalized(matchedItem?.sourceUrl) || null;
+                      const targetKey = `${update.item_id}|${updatePlatform}|${sourcePath ?? ''}`;
+                      if (seenTargets.has(targetKey)) {
+                        continue;
+                      }
+                      seenTargets.add(targetKey);
+                      targets.push({
+                        itemId: update.item_id,
+                        platform: updatePlatform,
+                        sourcePath,
+                      });
+                    }
+
+                    if (targets.length === 0) {
+                      setUpdateStatus(
+                        tr(
+                          `${selectedHost.name} 当前没有可自动修复/升级的组件。`,
+                          `${selectedHost.name} has no auto-fixable or updatable components right now.`,
+                        )
+                      );
+                      return;
+                    }
+
                     const approval = await requestRuntimeGuardActionApproval({
-                      component_id: 'agentshield:update:batch',
+                      component_id: 'agentshield:update:batch_targets',
                       component_name: tr(`${selectedHost.name} 批量修复`, `${selectedHost.name} batch fix`),
                       platform_id: selectedHost.id,
                       platform_name: selectedHost.name,
                       request_kind: 'component_update',
-                      trigger_event: 'host_batch_update_request',
+                      trigger_event: 'host_batch_update_targets_request',
                       action_kind: 'component_update',
-                      action_source: 'user_requested_batch_update',
-                      action_targets: hostManagedIds.map((itemId) => `managed:${itemId}`),
+                      action_source: 'user_requested_batch_update_targets',
+                      action_targets: targets.map((target) =>
+                        target.sourcePath && target.sourcePath.trim().length > 0
+                          ? target.sourcePath
+                          : `${target.platform || selectedHost.id}:${target.itemId}`
+                      ),
                       action_preview: [
                         tr(
-                          `批量修复 ${selectedHost.name} 的 ${hostManagedIds.length} 个扩展`,
-                          `Batch fix ${hostManagedIds.length} extensions in ${selectedHost.name}`,
+                          `批量修复 ${selectedHost.name} 的 ${targets.length} 个组件`,
+                          `Batch fix ${targets.length} components in ${selectedHost.name}`,
                         ),
-                        tr('将尝试升级可升级版本并同步真实配置', 'Will update available versions and sync real config files'),
+                        tr('将尝试修复可升级条目并同步真实配置', 'Will repair updatable entries and sync real config files'),
                       ],
                       sensitive_capabilities: [tr('修改扩展配置', 'Modify extension config')],
                       is_destructive: false,
@@ -1538,21 +1638,27 @@ export function InstalledManagement({ onBack }: InstalledManagementProps) {
                     });
                     if (approval.status === 'approved' && approval.approval_ticket) {
                       setUpdateStatus(tr(`正在修复 ${selectedHost.name}...`, `Fixing ${selectedHost.name}...`));
-                      const updatedCount = await invoke<number>('batch_update_items', {
-                        itemIds: hostManagedIds,
+                      const report = await invoke<BatchUpdateTargetsReport>('batch_update_targets', {
+                        targets,
                         approvalTicket: approval.approval_ticket,
                       });
                       await loadInstalledData();
-                      setUpdateStatus(
-                        updatedCount > 0
-                          ? tr(`${selectedHost.name} 已完成 ${updatedCount} 项修复`, `${selectedHost.name}: ${updatedCount} fixes completed`)
-                          : tr(`${selectedHost.name} 当前没有可修复项`, `${selectedHost.name}: no fixable items right now`)
+                      const baseStatus = tr(
+                        `${selectedHost.name} 修复结果：成功 ${report.updated}，跳过 ${report.skipped}，失败 ${report.failed}`,
+                        `${selectedHost.name} repair result: ${report.updated} updated, ${report.skipped} skipped, ${report.failed} failed`,
                       );
+                      if (report.failed > 0 && report.failures.length > 0) {
+                        setUpdateStatus(`${baseStatus} · ${localizedDynamicText(report.failures[0], translateBackendText(report.failures[0]))}`);
+                      } else {
+                        setUpdateStatus(baseStatus);
+                      }
                     } else {
                       setUpdateStatus(tr('请在弹出的对话框中确认操作。', 'Please approve the action in the popup dialog.'));
                     }
                   } catch (error) {
                     setUpdateStatus(getErrorMessage(error));
+                  } finally {
+                    setCheckingUpdates(false);
                   }
                 }}
                 className={cn(
@@ -1885,7 +1991,7 @@ function HostOverviewDetail({
   const riskConfig = {
     danger: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', label: tr('有安全风险', 'Security risk detected'), dot: 'bg-red-500' },
     warn: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', label: tr('需要关注', 'Needs attention'), dot: 'bg-amber-500' },
-    safe: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700', label: tr('暂时安全', 'Looks safe for now'), dot: 'bg-green-500' },
+    safe: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700', label: tr('全部安全', 'All Clear'), dot: 'bg-green-500' },
   }[overallRisk];
 
   return (

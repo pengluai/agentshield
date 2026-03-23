@@ -47,7 +47,7 @@ function getScanPhaseLabels(): Record<(typeof SCAN_PHASE_ORDER)[number], string>
     key_security: tr('检查密码暴露风险', 'Checking for password exposure'),
     skill_security: tr('检查恶意插件风险', 'Checking for malicious plugins'),
     env_config: tr('检查插件配置权限风险', 'Checking MCP/Skill config permissions'),
-    system_protection: tr('检查后台偷跑风险', 'Checking background activity'),
+    system_protection: tr('检查后台活动', 'Checking background activity'),
   };
 }
 
@@ -86,7 +86,7 @@ function getHomeCardTitles(): Record<string, string> {
     'key-security': tr('密码暴露风险', 'Password Exposure Risk'),
     'env-config': tr('权限失控风险', 'Permission Risk'),
     'skill-security': tr('恶意插件风险', 'Malicious Plugin Risk'),
-    'system-protection': tr('后台偷跑风险', 'Background Activity Risk'),
+    'system-protection': tr('后台活动风险', 'Background Activity Risk'),
   };
 }
 
@@ -625,18 +625,6 @@ function IdleState({ onStartScan, protectionStatus }: IdleStateProps) {
       >
         {t.welcomeSubtitle}
       </motion.p>
-      <motion.p
-        initial={false}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.45 }}
-        className="mb-8 max-w-3xl text-center text-sm leading-6 text-white/40"
-      >
-        {tr(
-          '扫描免费 · 手动修复免费 · 一键修复需要 Pro',
-          'Scan free · Manual fix free · One-click fix requires Pro'
-        )}
-      </motion.p>
-
       {/* CTA Button */}
       <motion.div
         initial={false}
