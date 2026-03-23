@@ -94,12 +94,14 @@ Cursor · Claude Code · Claude Desktop · VS Code/Cline · Windsurf · Zed · T
 | Full 23-check deep scan | ✅ | ✅ |
 | Real-time guard + sandbox | ✅ | ✅ |
 | Runtime approval (12 risk types) | ✅ | ✅ |
-| Key vault (system keychain) | ✅ | ✅ |
+| Key vault (up to 10 keys free) | ✅ | ✅ Unlimited |
 | Manual fix (guided commands) | ✅ | ✅ |
 | **One-click fix ALL risks** | — | ✅ |
 | **OpenClaw one-click install + AI setup** | — | ✅ |
 | **AI-guided fix suggestions** | — | ✅ |
+| **Vulnerability detection & auto-patch** | — | ✅ |
 | **Live threat rule updates** | — | ✅ |
+| **Advanced notifications & weekly report** | — | ✅ |
 | **AI semantic security analysis** | — | ✅ |
 | **AI approval advice (risk analysis)** | — | ✅ |
 | **AI pre-install risk scan** | — | ✅ |
