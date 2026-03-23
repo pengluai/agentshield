@@ -66,8 +66,8 @@ No account needed. No data uploaded. Everything runs on your machine.
 
 | Capability | What Happens |
 |-----------|-------------|
-| **Deep Scan** | 23-check scan across 16+ AI tools. Finds plaintext keys, loose permissions, malicious plugins, risky MCP configs |
-| **Real-time Guard** | Watches MCP configs and Skill dirs 24/7. Blocks file deletion, payments, shell exec — until you approve |
+| **Deep Scan** | 23-check scan across 16+ AI tools. Finds plaintext keys, loose permissions, malicious plugins, risky MCP configs. **AI semantic analysis on high-risk findings** *(Pro)* |
+| **Real-time Guard** | Monitors MCP configs and Skill directories. Blocks dangerous actions until you approve — **AI analyzes each action and recommends allow/deny** |
 | **Key Vault** | Moves your API keys from plaintext configs into the system keychain. Encrypted. One-click migration |
 | **Skill Store** | 228+ security-reviewed MCP extensions. Safety rated. One-click install with preview |
 | **Installed Management** | See every AI tool, every extension, every script. Fix, update, or remove — in bulk |
@@ -100,6 +100,10 @@ Cursor · Claude Code · Claude Desktop · VS Code/Cline · Windsurf · Zed · T
 | **OpenClaw one-click install + AI setup** | — | ✅ |
 | **AI-guided fix suggestions** | — | ✅ |
 | **Live threat rule updates** | — | ✅ |
+| **AI semantic security analysis** | — | ✅ |
+| **AI approval advice (risk analysis)** | — | ✅ |
+| **AI pre-install risk scan** | — | ✅ |
+| **AI error diagnosis & fix commands** | — | ✅ |
 | **Batch operations** | — | ✅ |
 
 > Free finds everything. Pro fixes everything in one click.

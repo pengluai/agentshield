@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { tauriInvoke as invoke } from '@/services/tauri';
 import { motion } from "framer-motion";
 import { Crown, Zap, Shield, Key, Bell, Star, ArrowRight, Bot } from "lucide-react";
@@ -129,11 +129,16 @@ const PRO_FEATURES = [
   { icon: Crown, textKey: 'proFeature6' as const },
   { icon: Shield, textKey: 'proFeature7' as const },
   { icon: Bot, textKey: 'proFeature8' as const },
+  { icon: Bot, textKey: 'proFeature9' as const },
+  { icon: Bot, textKey: 'proFeature10' as const },
+  { icon: Bot, textKey: 'proFeature11' as const },
+  { icon: Bot, textKey: 'proFeature12' as const },
 ];
 
+const tr = (zh: string, en: string) => (isEnglishLocale ? en : zh);
 
 export function UpgradePro({ onBack }: UpgradeProProps) {
-  const { plan, isPro, isTrial, trialDaysLeft, setLicenseInfo } = useLicenseStore();
+  const { plan, status, isPro, isTrial, trialDaysLeft, expiresAt, setLicenseInfo } = useLicenseStore();
   const [activating, setActivating] = useState(false);
   const [purchasingSku, setPurchasingSku] = useState<PurchaseOption['id'] | null>(null);
   const [licenseKey, setLicenseKey] = useState("");
@@ -183,6 +188,27 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
     },
   ];
 
+  const remainingTimeLabel = useMemo(() => {
+    if (!expiresAt) {
+      return tr('未设置到期时间（可能为长期/永久授权）', 'No expiry set (possibly long-term/lifetime).');
+    }
+    const expiresMs = new Date(expiresAt).getTime();
+    if (!Number.isFinite(expiresMs)) {
+      return tr('到期时间格式异常，请重新同步许可证状态', 'Expiry format is invalid. Please resync license status.');
+    }
+    const diffMs = expiresMs - Date.now();
+    const dateText = new Intl.DateTimeFormat(isEnglishLocale ? 'en-US' : 'zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(expiresMs));
+    if (diffMs <= 0) {
+      return tr(`已到期（到期日 ${dateText}）`, `Expired (expiry date ${dateText})`);
+    }
+    const daysLeft = Math.ceil(diffMs / 86_400_000);
+    return tr(`剩余 ${daysLeft} 天（到期日 ${dateText}）`, `${daysLeft} day(s) left (expires ${dateText})`);
+  }, [expiresAt]);
+
   const validatePromo = useCallback(async () => {
     const rawInput = promoCode.trim();
     if (!rawInput) { setPromoResult(null); return; }
@@ -219,7 +245,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
   }, [promoCode, isEnglishLocale]);
 
   const getDiscountedPrice = (price: number) => {
-    if (promoResult?.valid && promoResult.discount_pct > 0) {
+    if (showKeyInput && promoResult?.valid && promoResult.discount_pct > 0) {
       return Math.round(price * (100 - promoResult.discount_pct)) / 100;
     }
     return price;
@@ -231,7 +257,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
       url.searchParams.set('metadata[sku_code]', skuCode);
       url.searchParams.set('metadata[campaign]', 'desktop_upgrade');
       url.searchParams.set('metadata[source]', 'agentshield_app');
-      if (promoResult?.valid && promoCode.trim()) {
+      if (showKeyInput && promoResult?.valid && promoCode.trim()) {
         url.searchParams.set('discount_code', promoCode.trim().toUpperCase());
         url.searchParams.set('metadata[affiliate_id]', promoResult.affiliate_id);
         url.searchParams.set('metadata[promo_code]', promoCode.trim().toUpperCase());
@@ -329,35 +355,9 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
     }
   };
 
-  if (isPro) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full p-8">
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="text-center"
-        >
-          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-            <Crown className="w-10 h-10 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-white mb-2">{t.proActivated}</h1>
-          <p className="text-white/60 mb-8">{t.proActivatedDesc}</p>
-          {onBack && (
-            <button
-              onClick={onBack}
-              className="px-6 py-3 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-colors"
-            >
-              {t.back}
-            </button>
-          )}
-        </motion.div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex h-full flex-col overflow-hidden p-6">
-      <div className="max-w-5xl mx-auto w-full flex flex-col h-full">
+    <div className="flex h-full flex-col overflow-y-auto p-6">
+      <div className="max-w-5xl mx-auto w-full flex flex-col">
         {/* Header — compact */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -367,12 +367,41 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
           <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
             <Crown className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-1">{t.upgradePro}</h1>
-          <p className="text-white/60 text-sm">{t.upgradeProSubtitle}</p>
+          <h1 className="text-2xl font-bold text-white mb-1">
+            {isPro ? tr('Pro 续费与升级', 'Pro renewal & upgrade') : t.upgradePro}
+          </h1>
+          <p className="text-white/60 text-sm">
+            {isPro
+              ? tr('你当前已激活 Pro，可查看剩余时间并直接续费/升级档位。', 'Pro is active. Check remaining time and renew or change plan directly.')
+              : t.upgradeProSubtitle}
+          </p>
         </motion.div>
 
+        {isPro && status === 'active' ? (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-emerald-200">{tr('Pro 已激活', 'Pro is active')}</p>
+                <p className="mt-1 text-xs text-emerald-100/85">{remainingTimeLabel}</p>
+              </div>
+              {onBack ? (
+                <button
+                  onClick={onBack}
+                  className="rounded-lg border border-emerald-200/40 bg-white/10 px-3 py-1.5 text-xs font-medium text-emerald-100 hover:bg-white/20"
+                >
+                  {t.back}
+                </button>
+              ) : null}
+            </div>
+          </motion.div>
+        ) : null}
+
         {/* Main content — flex-1 */}
-        <div className="flex-1 min-h-0 grid grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           {/* Left: Free plan + Pro features */}
           <div className="flex flex-col gap-4 overflow-visible">
             {/* Free Plan — compact */}
@@ -416,7 +445,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.15 }}
-              className="flex-1 min-h-0 p-5 pt-6 rounded-2xl border-2 border-amber-500/50 bg-gradient-to-br from-amber-500/10 to-orange-500/10 relative overflow-visible"
+              className="p-5 pt-6 rounded-2xl border-2 border-amber-500/50 bg-gradient-to-br from-amber-500/10 to-orange-500/10 relative overflow-visible"
             >
               <div className="absolute -top-3 right-4 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-xs font-bold text-white z-10">
                 {t.recommended}
@@ -440,41 +469,6 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
             transition={{ delay: 0.2 }}
             className="flex flex-col gap-4"
           >
-            {/* Promo code input */}
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <h4 className="text-sm font-medium text-white/70 mb-2">
-                {t.promoCode}
-              </h4>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={promoCode}
-                  onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoResult(null); }}
-                  placeholder={t.promoCodePlaceholder}
-                  className="flex-1 rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white uppercase placeholder:normal-case placeholder-white/30 outline-none focus:ring-2 focus:ring-amber-500/50"
-                />
-                <button
-                  onClick={() => void validatePromo()}
-                  disabled={!promoCode.trim() || validatingPromo}
-                  className="rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/15 disabled:opacity-50 transition-colors"
-                >
-                  {validatingPromo ? t.promoChecking : t.promoApply}
-                </button>
-              </div>
-              <p className="mt-2 text-xs text-white/40">
-                {isEnglishLocale
-                  ? 'Promo code is for checkout discounts only. Activation codes (AGSH...) should be entered below.'
-                  : '优惠码仅用于折扣。AGSH 开头的是激活码，请在下方“输入激活码”区域填写。'}
-              </p>
-              {promoResult && (
-                <div className={`mt-2 text-sm ${promoResult.valid ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {promoResult.valid
-                    ? t.promoDiscountApplied.replace('{pct}', String(promoResult.discount_pct))
-                    : promoResult.message}
-                </div>
-              )}
-            </div>
-
             {/* Pricing cards */}
             <div className="flex flex-col gap-3">
               {purchaseOptions.map((option) => (
@@ -499,7 +493,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
                     <p className="text-xs text-white/50 mt-0.5">{option.validity}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    {promoResult?.valid && promoResult.discount_pct > 0 ? (
+                    {showKeyInput && promoResult?.valid && promoResult.discount_pct > 0 ? (
                       <>
                         <del className="text-sm text-white/40">{option.price}</del>
                         <span className="text-2xl font-bold text-emerald-400 ml-1">
@@ -542,7 +536,7 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
             </p>
 
             {/* Trial button */}
-            {!isTrial && (
+            {!isTrial && !isPro && (
               <button
                 onClick={handleStartTrial}
                 disabled={activating}
@@ -573,6 +567,42 @@ export function UpgradePro({ onBack }: UpgradeProProps) {
               {t.enterLicenseKey}
               <ArrowRight className="w-4 h-4" />
             </button>
+
+            {showKeyInput && (
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <h4 className="text-sm font-medium text-white/70 mb-2">
+                  {t.promoCode}
+                </h4>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={promoCode}
+                    onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoResult(null); }}
+                    placeholder={t.promoCodePlaceholder}
+                    className="flex-1 rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white uppercase placeholder:normal-case placeholder-white/30 outline-none focus:ring-2 focus:ring-amber-500/50"
+                  />
+                  <button
+                    onClick={() => void validatePromo()}
+                    disabled={!promoCode.trim() || validatingPromo}
+                    className="rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/15 disabled:opacity-50 transition-colors"
+                  >
+                    {validatingPromo ? t.promoChecking : t.promoApply}
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-white/40">
+                  {isEnglishLocale
+                    ? 'Promo code is for checkout discounts only. Activation codes (AGSH...) should be entered below.'
+                    : '优惠码仅用于折扣。AGSH 开头的是激活码，请在下方“输入激活码”区域填写。'}
+                </p>
+                {promoResult && (
+                  <div className={`mt-2 text-sm ${promoResult.valid ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {promoResult.valid
+                      ? t.promoDiscountApplied.replace('{pct}', String(promoResult.discount_pct))
+                      : promoResult.message}
+                  </div>
+                )}
+              </div>
+            )}
 
             {showKeyInput && (
               <motion.div

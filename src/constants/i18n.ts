@@ -416,6 +416,10 @@ interface Translations {
   proFeature6: string;
   proFeature7: string;
   proFeature8: string;
+  proFeature9: string;
+  proFeature10: string;
+  proFeature11: string;
+  proFeature12: string;
   freeBasicProtection: string;
   proFullProtection: string;
   currentPlan: string;
@@ -957,6 +961,10 @@ const zhCN: Translations = {
   proFeature6: '规则库自动更新',
   proFeature7: '批量操作',
   proFeature8: 'AI 一键安装 OpenClaw + 渠道对接',
+  proFeature9: 'AI 语义安全研判',
+  proFeature10: 'AI 审批建议（实时风险分析）',
+  proFeature11: 'AI 安装前风险扫描',
+  proFeature12: 'AI 错误诊断与修复',
   freeBasicProtection: '基础安全防护',
   proFullProtection: '完整安全防护 + 高级功能',
   currentPlan: '当前方案',
@@ -1498,6 +1506,10 @@ const enUS: Translations = {
   proFeature6: 'Auto rule updates',
   proFeature7: 'Batch operations',
   proFeature8: 'AI-guided OpenClaw + model + channel setup',
+  proFeature9: 'AI semantic security analysis',
+  proFeature10: 'AI approval advice (real-time risk analysis)',
+  proFeature11: 'AI pre-install risk scan',
+  proFeature12: 'AI error diagnosis & fix',
   freeBasicProtection: 'Basic security protection',
   proFullProtection: 'Full protection + advanced features',
   currentPlan: 'Current Plan',
